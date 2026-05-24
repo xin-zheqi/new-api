@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../helpers';
+import { normalizePlanRecords } from '../../helpers/subscription';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 
 export const useSubscriptionsData = () => {
@@ -45,7 +46,7 @@ export const useSubscriptionsData = () => {
     try {
       const res = await API.get('/api/subscription/admin/plans');
       if (res.data?.success) {
-        const next = res.data.data || [];
+        const next = normalizePlanRecords(res.data.data);
         setAllPlans(next);
 
         // Keep page in range after data changes

@@ -105,9 +105,33 @@ export const getRedemptionsColumns = ({
       },
     },
     {
+      title: t('兑换类型'),
+      dataIndex: 'redeem_type',
+      render: (text) => {
+        return (
+          <div>
+            <Tag color='grey' shape='circle'>
+              {text === 'subscription' ? t('订阅开通码') : t('额度充值码')}
+            </Tag>
+          </div>
+        );
+      },
+    },
+    {
       title: t('额度'),
       dataIndex: 'quota',
-      render: (text) => {
+      render: (text, record) => {
+        if (record.redeem_type === 'subscription') {
+          const planTitle = (record.subscription_plan_title || '').trim();
+          return (
+            <div>
+              <Tag color='blue' shape='circle'>
+                {planTitle ||
+                  t('套餐 #{{id}}', { id: record.subscription_plan_id })}
+              </Tag>
+            </div>
+          );
+        }
         return (
           <div>
             <Tag color='grey' shape='circle'>

@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 import type {
   ApiResponse,
   PlanRecord,
+  SubscriptionPlan,
   PlanPayload,
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
@@ -28,13 +29,126 @@ import type {
   SelfSubscriptionData,
 } from './types'
 
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+  return fallback
+}
+
+function toStringValue(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') {
+    return value
+  }
+  return fallback
+}
+
+function toBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  if (typeof value === 'number') {
+    return value !== 0
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true' || normalized === '1') {
+      return true
+    }
+    if (normalized === 'false' || normalized === '0') {
+      return false
+    }
+  }
+  return fallback
+}
+
+function normalizeSubscriptionPlan(value: unknown): SubscriptionPlan | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const candidate = value as Record<string, unknown>
+  const id = toNumber(candidate.id, 0)
+  const title = toStringValue(candidate.title).trim()
+  if (id <= 0 || title === '') {
+    return null
+  }
+  return {
+    id,
+    title,
+    subtitle: toStringValue(candidate.subtitle),
+    price_amount: toNumber(candidate.price_amount, 0),
+    currency: toStringValue(candidate.currency, 'USD') || 'USD',
+    duration_unit:
+      (toStringValue(candidate.duration_unit, 'month') as SubscriptionPlan['duration_unit']) ||
+      'month',
+    duration_value: toNumber(candidate.duration_value, 1),
+    custom_seconds: toNumber(candidate.custom_seconds, 0),
+    quota_reset_period:
+      (toStringValue(candidate.quota_reset_period, 'never') as SubscriptionPlan['quota_reset_period']) ||
+      'never',
+    quota_reset_custom_seconds: toNumber(
+      candidate.quota_reset_custom_seconds,
+      0
+    ),
+    enabled: toBoolean(candidate.enabled, true),
+    sort_order: toNumber(candidate.sort_order, 0),
+    max_purchase_per_user: toNumber(candidate.max_purchase_per_user, 0),
+    total_amount: toNumber(candidate.total_amount, 0),
+    upgrade_group: toStringValue(candidate.upgrade_group),
+    stripe_price_id: toStringValue(candidate.stripe_price_id),
+    creem_product_id: toStringValue(candidate.creem_product_id),
+    waffo_pancake_product_id: toStringValue(
+      candidate.waffo_pancake_product_id
+    ),
+  }
+}
+
+export function normalizePlanRecords(data: unknown): PlanRecord[] {
+  if (Array.isArray(data)) {
+    return data.flatMap((item) => {
+      if (item && typeof item === 'object' && 'plan' in item) {
+        const plan = normalizeSubscriptionPlan(
+          (item as Record<string, unknown>).plan
+        )
+        if (plan) {
+          return [{ plan }]
+        }
+      }
+      const plan = normalizeSubscriptionPlan(item)
+      if (plan) {
+        return [{ plan }]
+      }
+      return []
+    })
+  }
+  if (data && typeof data === 'object') {
+    const candidate = data as Record<string, unknown>
+    if (Array.isArray(candidate.items)) {
+      return normalizePlanRecords(candidate.items)
+    }
+    if (Array.isArray(candidate.plans)) {
+      return normalizePlanRecords(candidate.plans)
+    }
+  }
+  return []
+}
+
 // ============================================================================
 // Admin Plan Management
 // ============================================================================
 
 export async function getAdminPlans(): Promise<ApiResponse<PlanRecord[]>> {
   const res = await api.get('/api/subscription/admin/plans')
-  return res.data
+  return {
+    ...res.data,
+    data: normalizePlanRecords(res.data?.data),
+  }
 }
 
 export async function createPlan(
@@ -188,7 +302,10 @@ export async function getSelfSubscriptionFull(): Promise<
 
 export async function getPublicPlans(): Promise<ApiResponse<PlanRecord[]>> {
   const res = await api.get('/api/subscription/plans')
-  return res.data
+  return {
+    ...res.data,
+    data: normalizePlanRecords(res.data?.data),
+  }
 }
 
 export async function updateBillingPreference(

@@ -136,6 +136,27 @@ export function useRedemptionsColumns(): ColumnDef<Redemption>[] {
       },
     },
     {
+      accessorKey: 'redeem_type',
+      meta: { label: t('Type') },
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Type')} />
+      ),
+      cell: ({ row }) => {
+        const redeemType = row.original.redeem_type || 'quota'
+        return (
+          <StatusBadge
+            label={
+              redeemType === 'subscription'
+                ? t('Subscription Activation')
+                : t('Quota Top-up')
+            }
+            variant='neutral'
+            copyable={false}
+          />
+        )
+      },
+    },
+    {
       id: 'code',
       accessorKey: 'key',
       meta: { label: t('Code') },
@@ -161,11 +182,26 @@ export function useRedemptionsColumns(): ColumnDef<Redemption>[] {
     },
     {
       accessorKey: 'quota',
-      meta: { label: t('Quota') },
+      meta: { label: t('Benefit') },
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Quota')} />
+        <DataTableColumnHeader column={column} title={t('Benefit')} />
       ),
       cell: ({ row }) => {
+        if (row.original.redeem_type === 'subscription') {
+          const planTitle = row.original.subscription_plan_title?.trim()
+          return (
+            <StatusBadge
+              label={
+                planTitle ||
+                t('Plan #{{id}}', {
+                  id: row.original.subscription_plan_id,
+                })
+              }
+              variant='neutral'
+              copyable={false}
+            />
+          )
+        }
         const quota = row.getValue('quota') as number
         return (
           <StatusBadge

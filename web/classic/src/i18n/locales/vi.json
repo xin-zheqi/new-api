@@ -677,6 +677,8 @@
     "兑换码更新成功！": "Cập nhật mã đổi thưởng thành công!",
     "兑换码生成管理": "Quản lý tạo mã đổi thưởng",
     "兑换码管理": "Quản lý mã đổi thưởng",
+    "兑换": "Đổi",
+    "兑换类型": "Loại mã đổi",
     "兑换额度": "Đổi",
     "全局控制侧边栏区域和功能显示，管理员隐藏的功能用户无法启用": "Kiểm soát toàn cầu các khu vực và chức năng thanh bên, người dùng không thể bật các chức năng bị quản trị viên ẩn",
     "全局设置": "Cài đặt toàn cầu",
@@ -1563,6 +1565,7 @@
     "想起来了？": "Nhớ ra chưa?",
     "成功": "Thành công",
     "成功兑换额度：": "Số tiền đổi thành công:",
+    "兑换成功，已开通订阅：": "Đổi mã thành công! Đã kích hoạt gói đăng ký: ",
     "成功后切换亲和": "Chuyển ưu ái khi thành công",
     "成功时自动启用通道": "Bật kênh khi thành công",
     "我已了解禁用两步验证将永久删除所有相关设置和备用码，此操作不可撤销": "Tôi đã hiểu rằng việc vô hiệu hóa xác thực hai yếu tố sẽ xóa vĩnh viễn tất cả các cài đặt liên quan và mã dự phòng, thao tác này không thể hoàn tác",
@@ -3246,6 +3249,9 @@
     "订阅": "Đăng ký",
     "订阅剩余": "Đăng ký còn lại",
     "订阅套餐": "Gói đăng ký",
+    "订阅开通码": "Mã kích hoạt gói đăng ký",
+    "订阅兑换码": "Mã đổi gói đăng ký",
+    "订阅兑换码必须绑定一个订阅套餐": "Mã đổi gói đăng ký phải được gắn với một gói đăng ký",
     "订阅套餐管理": "Quản lý gói đăng ký",
     "订阅实例": "Phiên bản đăng ký",
     "订阅抵扣": "Khấu trừ gói đăng ký",
@@ -3638,6 +3644,7 @@
     "请选择要删除的记录": "Vui lòng chọn hồ sơ để xóa",
     "请选择要导出的数据": "Vui lòng chọn dữ liệu để xuất",
     "请选择订阅套餐": "Vui lòng chọn gói đăng ký",
+    "用户兑换后将开通所选订阅套餐": "Người dùng đổi mã này sẽ kích hoạt gói đăng ký đã chọn",
     "请选择该令牌支持的模型，留空支持所有模型": "Vui lòng chọn các mô hình được mã thông báo này hỗ trợ, để trống để hỗ trợ tất cả các mô hình",
     "请选择该渠道所支持的模型": "Vui lòng chọn mô hình được kênh này hỗ trợ",
     "请选择该渠道所支持的模型，留空则不更改": "Vui lòng chọn mô hình được kênh này hỗ trợ, để trống sẽ không thay đổi",
@@ -4221,6 +4228,8 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "套餐 #{{id}}": "Gói #{{id}}",
+    "额度充值码": "Mã nạp hạn mức"
   }
 }

@@ -684,6 +684,8 @@
     "兑换码更新成功！": "Code d'échange mis à jour avec succès !",
     "兑换码生成管理": "Génération de codes",
     "兑换码管理": "Codes d'échange",
+    "兑换": "Utiliser",
+    "兑换类型": "Type de code",
     "兑换额度": "Utiliser",
     "全局控制侧边栏区域和功能显示，管理员隐藏的功能用户无法启用": "Contrôle global des zones et des fonctions de la barre latérale, les utilisateurs ne peuvent pas activer les fonctions masquées par les administrateurs",
     "全局设置": "Paramètres globaux",
@@ -1591,6 +1593,7 @@
     "想起来了？": "Vous vous souvenez ?",
     "成功": "Succès",
     "成功兑换额度：": "Montant de l'échange réussi :",
+    "兑换成功，已开通订阅：": "Échange réussi ! Abonnement activé : ",
     "成功后切换亲和": "Changer l'affinité en cas de succès",
     "成功时自动启用通道": "Activer le canal en cas de succès",
     "我已了解禁用两步验证将永久删除所有相关设置和备用码，此操作不可撤销": "J'ai compris que la désactivation de l'authentification à deux facteurs supprimera définitivement tous les paramètres et codes de sauvegarde associés, cette opération ne peut pas être annulée",
@@ -2923,6 +2926,9 @@
     "订阅": "Abonnement",
     "订阅剩余": "Abonnement restant",
     "订阅套餐": "Plans d'abonnement",
+    "订阅开通码": "Code d'activation d'abonnement",
+    "订阅兑换码": "Code d'échange d'abonnement",
+    "订阅兑换码必须绑定一个订阅套餐": "Le code d'échange d'abonnement doit être lié à un plan d'abonnement",
     "订阅套餐管理": "Gestion des plans d'abonnement",
     "订阅实例": "Instance d'abonnement",
     "订阅抵扣": "Déduction d'abonnement",
@@ -3223,6 +3229,7 @@
     "请选择组类型": "Veuillez sélectionner le type de groupe",
     "请选择至少一个部署位置": "Please select at least one deployment location",
     "请选择订阅套餐": "Veuillez sélectionner un forfait d'abonnement",
+    "用户兑换后将开通所选订阅套餐": "Les utilisateurs qui échangent ce code activeront le plan d'abonnement sélectionné",
     "请选择该令牌支持的模型，留空支持所有模型": "Sélectionnez les modèles pris en charge par le jeton, laissez vide pour prendre en charge tous les modèles",
     "请选择该渠道所支持的模型": "Veuillez sélectionner le modèle pris en charge par ce canal",
     "请选择该渠道所支持的模型，留空则不更改": "Veuillez sélectionner les modèles pris en charge par le canal, laisser vide ne changera rien",
@@ -3687,6 +3694,8 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "套餐 #{{id}}": "Plan #{{id}}",
+    "额度充值码": "Code de recharge de quota"
   }
 }

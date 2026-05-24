@@ -32,7 +32,7 @@ export function Redemptions() {
           {t('Redemption Codes')}
         </SectionPageLayout.Title>
         <SectionPageLayout.Description>
-          {t('Manage redemption codes for quota top-up')}
+          {t('Manage redemption codes for quota top-up or subscription activation')}
         </SectionPageLayout.Description>
         <SectionPageLayout.Actions>
           <RedemptionsPrimaryButtons />

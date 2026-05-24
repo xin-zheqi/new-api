@@ -2244,6 +2244,7 @@
     "Manage multi-key status and configuration for this channel": "Quản lý trạng thái và cấu hình đa khóa cho kênh này",
     "Manage Ollama Models": "Quản lý mô hình Ollama",
     "Manage redemption codes for quota top-up": "Quản lý mã quy đổi để nạp thêm hạn mức",
+    "Manage redemption codes for quota top-up or subscription activation": "Quản lý mã đổi quà để nạp hạn mức hoặc kích hoạt gói đăng ký",
     "Manage server log files. Log files accumulate over time; regular cleanup is recommended to free disk space.": "Quản lý tệp nhật ký máy chủ. Tệp nhật ký tích lũy theo thời gian; nên dọn dẹp định kỳ để giải phóng dung lượng đĩa.",
     "Manage subscription plan creation, pricing and status": "Quản lý tạo, định giá và trạng thái gói đăng ký",
     "Manage subscription plans and pricing.": "Quản lý gói đăng ký và giá cả.",
@@ -3133,6 +3134,8 @@
     "Quota given to invited users": "Hạn mức được cấp cho người dùng được mời",
     "Quota given to users who invite others": "Limit for users inviting others",
     "Quota must be a positive number": "Hạn mức phải là một số dương",
+    "Quota redemption code must have a positive quota": "Mã đổi hạn mức phải có hạn mức lớn hơn 0",
+    "Quota Top-up": "Nạp hạn mức",
     "Quota must be zero or greater": "Hạn mức không được âm",
     "Quota Per Unit": "Định mức mỗi đơn vị",
     "Quota reminder (tokens)": "Nhắc nhở hạn mức (token)",
@@ -3201,6 +3204,8 @@
     "redemption codes.": "Mã đổi thưởng",
     "Redemption failed": "Đổi thưởng thất bại",
     "Redemption successful! Added: {{quota}}": "Đổi mã thành công! Đã thêm: {{quota}}",
+    "Redemption successful! Subscription activated: {{title}}": "Đổi mã thành công! Đã kích hoạt gói đăng ký: {{title}}",
+    "Redemption Type": "Loại mã đổi",
     "Redirecting to chat page...": "Đang chuyển hướng đến trang trò chuyện...",
     "Redirecting to Creem checkout...": "Đang chuyển hướng đến thanh toán Creem...",
     "Redirecting to GitHub...": "Đang chuyển hướng đến GitHub...",
@@ -3754,7 +3759,14 @@
     "Subscription Management": "Quản lý đăng ký",
     "Subscription Only": "Chỉ đăng ký",
     "Subscription plan creation and changes are locked until the administrator confirms compliance terms in Payment Gateway settings.": "Subscription plan creation and changes are locked until the administrator confirms compliance terms in Payment Gateway settings.",
+    "Subscription Activation": "Kích hoạt gói đăng ký",
+    "Subscription Plan": "Gói đăng ký",
     "Subscription Plans": "Gói đăng ký",
+<<<<<<< HEAD
+=======
+    "Subscription redemption code must be bound to a subscription plan": "Mã đổi gói đăng ký phải được gắn với một gói đăng ký",
+    "Subscription plans do NOT use the bound Product — each plan has its own dedicated Pancake product, set in the Subscriptions admin (or auto-minted via the \"+ Create\" button there).": "Subscription plans do NOT use the bound Product — each plan has its own dedicated Pancake product, set in the Subscriptions admin (or auto-minted via the \"+ Create\" button there).",
+>>>>>>> 4dccc3eb (添加订阅兑换码功能)
     "Subtract": "Trừ",
     "Success": "Thành công",
     "Success rate": "Tỷ lệ thành công",
@@ -4486,6 +4498,11 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Benefit": "Quyền lợi",
+    "Choose what this redemption code grants": "Chọn quyền lợi mà mã đổi này cấp",
+    "Plan #{{id}}": "Gói #{{id}}",
+    "Type": "Loại",
+    "Users who redeem this code will activate the selected subscription plan": "Người dùng đổi mã này sẽ kích hoạt gói đăng ký đã chọn"
   }
 }

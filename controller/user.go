@@ -1110,9 +1110,34 @@ func TopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	quota, err := model.Redeem(req.Key, id)
+	redeemResult, err := model.Redeem(req.Key, id)
 	if err != nil {
-		if errors.Is(err, model.ErrRedeemFailed) {
+		switch {
+		case errors.Is(err, model.ErrRedemptionInvalid):
+			common.ApiErrorI18n(c, i18n.MsgRedemptionInvalid)
+			return
+		case errors.Is(err, model.ErrRedemptionUsed):
+			common.ApiErrorI18n(c, i18n.MsgRedemptionUsed)
+			return
+		case errors.Is(err, model.ErrRedemptionExpired):
+			common.ApiErrorI18n(c, i18n.MsgRedemptionExpired)
+			return
+		case errors.Is(err, model.ErrRedemptionTypeInvalid):
+			common.ApiErrorI18n(c, i18n.MsgRedemptionTypeInvalid)
+			return
+		case errors.Is(err, model.ErrRedemptionQuotaInvalid):
+			common.ApiErrorI18n(c, i18n.MsgRedemptionQuotaPositive)
+			return
+		case errors.Is(err, model.ErrRedemptionPlanRequired):
+			common.ApiErrorI18n(c, i18n.MsgRedemptionSubscriptionPlanRequired)
+			return
+		case errors.Is(err, model.ErrRedemptionPlanNotFound):
+			common.ApiErrorI18n(c, i18n.MsgRedemptionSubscriptionPlanNotFound)
+			return
+		case err.Error() == "已达到该套餐购买上限":
+			common.ApiErrorI18n(c, i18n.MsgSubscriptionPurchaseMax)
+			return
+		case errors.Is(err, model.ErrRedeemFailed):
 			common.ApiErrorI18n(c, i18n.MsgRedeemFailed)
 			return
 		}
@@ -1120,9 +1145,11 @@ func TopUp(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    quota,
+		"success":         true,
+		"message":         "",
+		"data":            redeemResult.Quota,
+		"redemption_kind": redeemResult.Kind,
+		"subscription":    redeemResult.Subscription,
 	})
 }
 

@@ -34,6 +34,7 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { API, showError, showSuccess } from '../../../../helpers';
+import { normalizePlanRecords } from '../../../../helpers/subscription';
 import { convertUSDToCurrency } from '../../../../helpers/render';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import CardTable from '../../../common/ui/CardTable';
@@ -117,7 +118,7 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
     try {
       const res = await API.get('/api/subscription/admin/plans');
       if (res.data?.success) {
-        setPlans(res.data.data || []);
+        setPlans(normalizePlanRecords(res.data.data));
       } else {
         showError(res.data?.message || t('加载失败'));
       }

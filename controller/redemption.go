@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"unicode/utf8"
@@ -11,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func GetAllRedemptions(c *gin.Context) {
@@ -87,16 +89,22 @@ func AddRedemption(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
 		return
 	}
+	if err = validateRedemptionConfig(c, &redemption); err != nil {
+		handleRedemptionValidationError(c, err)
+		return
+	}
 	var keys []string
 	for i := 0; i < redemption.Count; i++ {
 		key := common.GetUUID()
 		cleanRedemption := model.Redemption{
-			UserId:      c.GetInt("id"),
-			Name:        redemption.Name,
-			Key:         key,
-			CreatedTime: common.GetTimestamp(),
-			Quota:       redemption.Quota,
-			ExpiredTime: redemption.ExpiredTime,
+			UserId:             c.GetInt("id"),
+			Name:               redemption.Name,
+			Key:                key,
+			CreatedTime:        common.GetTimestamp(),
+			Quota:              redemption.Quota,
+			RedeemType:         redemption.RedeemType,
+			SubscriptionPlanId: redemption.SubscriptionPlanId,
+			ExpiredTime:        redemption.ExpiredTime,
 		}
 		err = cleanRedemption.Insert()
 		if err != nil {
@@ -145,7 +153,15 @@ func UpdateRedemption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if cleanRedemption.Status == common.RedemptionCodeStatusUsed {
+		common.ApiErrorI18n(c, i18n.MsgRedemptionUsedImmutable)
+		return
+	}
 	if statusOnly == "" {
+		if utf8.RuneCountInString(redemption.Name) == 0 || utf8.RuneCountInString(redemption.Name) > 20 {
+			common.ApiErrorI18n(c, i18n.MsgRedemptionNameLength)
+			return
+		}
 		if valid, msg := validateExpiredTime(c, redemption.ExpiredTime); !valid {
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
 			return
@@ -153,7 +169,13 @@ func UpdateRedemption(c *gin.Context) {
 		// If you add more fields, please also update redemption.Update()
 		cleanRedemption.Name = redemption.Name
 		cleanRedemption.Quota = redemption.Quota
+		cleanRedemption.RedeemType = redemption.RedeemType
+		cleanRedemption.SubscriptionPlanId = redemption.SubscriptionPlanId
 		cleanRedemption.ExpiredTime = redemption.ExpiredTime
+		if err = validateRedemptionConfig(c, cleanRedemption); err != nil {
+			handleRedemptionValidationError(c, err)
+			return
+		}
 	}
 	if statusOnly != "" {
 		cleanRedemption.Status = redemption.Status
@@ -190,4 +212,54 @@ func validateExpiredTime(c *gin.Context, expired int64) (bool, string) {
 		return false, i18n.T(c, i18n.MsgRedemptionExpireTimeInvalid)
 	}
 	return true, ""
+}
+
+func validateRedemptionConfig(c *gin.Context, redemption *model.Redemption) error {
+	if redemption == nil {
+		return model.ErrRedemptionTypeInvalid
+	}
+	redeemType := model.NormalizeRedemptionType(redemption.RedeemType)
+	if redeemType == "" {
+		return model.ErrRedemptionTypeInvalid
+	}
+	redemption.RedeemType = redeemType
+	switch redeemType {
+	case model.RedemptionTypeQuota:
+		if redemption.Quota <= 0 {
+			return model.ErrRedemptionQuotaInvalid
+		}
+		redemption.SubscriptionPlanId = 0
+	case model.RedemptionTypeSubscription:
+		redemption.Quota = 0
+		if redemption.SubscriptionPlanId <= 0 {
+			return model.ErrRedemptionPlanRequired
+		}
+		_, err := model.GetSubscriptionPlanById(redemption.SubscriptionPlanId)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return model.ErrRedemptionPlanNotFound
+			}
+			return err
+		}
+	default:
+		return model.ErrRedemptionTypeInvalid
+	}
+	return nil
+}
+
+func handleRedemptionValidationError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, model.ErrRedemptionTypeInvalid):
+		common.ApiErrorI18n(c, i18n.MsgRedemptionTypeInvalid)
+	case errors.Is(err, model.ErrRedemptionQuotaInvalid):
+		common.ApiErrorI18n(c, i18n.MsgRedemptionQuotaPositive)
+	case errors.Is(err, model.ErrRedemptionPlanRequired):
+		common.ApiErrorI18n(c, i18n.MsgRedemptionSubscriptionPlanRequired)
+	case errors.Is(err, model.ErrRedemptionPlanNotFound):
+		common.ApiErrorI18n(c, i18n.MsgRedemptionSubscriptionPlanNotFound)
+	case errors.Is(err, model.ErrRedemptionUsedImmutable):
+		common.ApiErrorI18n(c, i18n.MsgRedemptionUsedImmutable)
+	default:
+		common.ApiError(c, err)
+	}
 }

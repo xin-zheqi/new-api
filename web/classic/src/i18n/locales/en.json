@@ -680,6 +680,8 @@
     "兑换码更新成功！": "Redemption code updated successfully!",
     "兑换码生成管理": "Redemption code generation management",
     "兑换码管理": "Redemption Code Management",
+    "兑换": "Redeem",
+    "兑换类型": "Redemption Type",
     "兑换额度": "Redeem",
     "全局控制侧边栏区域和功能显示，管理员隐藏的功能用户无法启用": "Global control of sidebar areas and functions, users cannot enable functions hidden by administrators",
     "全局设置": "Global Settings",
@@ -1578,6 +1580,7 @@
     "想起来了？": "Remember?",
     "成功": "Success",
     "成功兑换额度：": "Successful redemption amount:",
+    "兑换成功，已开通订阅：": "Redemption successful! Subscription activated: ",
     "成功后切换亲和": "Switch Affinity on Success",
     "成功时自动启用通道": "Enable channel when successful",
     "我已了解禁用两步验证将永久删除所有相关设置和备用码，此操作不可撤销": "I have understood that disabling two-factor authentication will permanently delete all related settings and backup codes, this operation cannot be undone",
@@ -2930,6 +2933,9 @@
     "订阅": "Subscription",
     "订阅剩余": "Subscription Remaining",
     "订阅套餐": "Subscription Plans",
+    "订阅开通码": "Subscription activation code",
+    "订阅兑换码": "Subscription redemption code",
+    "订阅兑换码必须绑定一个订阅套餐": "Subscription redemption code must be bound to a subscription plan",
     "订阅套餐管理": "Subscription Plan Management",
     "订阅实例": "Subscription Instance",
     "订阅抵扣": "Subscription deduction",
@@ -3231,6 +3237,7 @@
     "请选择组类型": "Please select group type",
     "请选择至少一个部署位置": "Please select at least one deployment location",
     "请选择订阅套餐": "Please select a subscription plan",
+    "用户兑换后将开通所选订阅套餐": "Users who redeem this code will activate the selected subscription plan",
     "请选择该令牌支持的模型，留空支持所有模型": "Select models supported by the token, leave blank to support all models",
     "请选择该渠道所支持的模型": "Please select the model supported by this channel",
     "请选择该渠道所支持的模型，留空则不更改": "Please select the models supported by the channel, leaving blank will not change",
@@ -3825,6 +3832,8 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "套餐 #{{id}}": "Plan #{{id}}",
+    "额度充值码": "Quota top-up code"
   }
 }

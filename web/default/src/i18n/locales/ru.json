@@ -3762,11 +3762,8 @@
     "Subscription Activation": "Активация подписки",
     "Subscription Plan": "План подписки",
     "Subscription Plans": "Планы подписки",
-<<<<<<< HEAD
-=======
     "Subscription redemption code must be bound to a subscription plan": "Код активации подписки должен быть привязан к плану подписки",
     "Subscription plans do NOT use the bound Product — each plan has its own dedicated Pancake product, set in the Subscriptions admin (or auto-minted via the \"+ Create\" button there).": "Subscription plans do NOT use the bound Product — each plan has its own dedicated Pancake product, set in the Subscriptions admin (or auto-minted via the \"+ Create\" button there).",
->>>>>>> 4dccc3eb (添加订阅兑换码功能)
     "Subtract": "Вычесть",
     "Success": "Успешно",
     "Success rate": "Доля успешных запросов",

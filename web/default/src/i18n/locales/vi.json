@@ -3762,11 +3762,8 @@
     "Subscription Activation": "Kích hoạt gói đăng ký",
     "Subscription Plan": "Gói đăng ký",
     "Subscription Plans": "Gói đăng ký",
-<<<<<<< HEAD
-=======
     "Subscription redemption code must be bound to a subscription plan": "Mã đổi gói đăng ký phải được gắn với một gói đăng ký",
     "Subscription plans do NOT use the bound Product — each plan has its own dedicated Pancake product, set in the Subscriptions admin (or auto-minted via the \"+ Create\" button there).": "Subscription plans do NOT use the bound Product — each plan has its own dedicated Pancake product, set in the Subscriptions admin (or auto-minted via the \"+ Create\" button there).",
->>>>>>> 4dccc3eb (添加订阅兑换码功能)
     "Subtract": "Trừ",
     "Success": "Thành công",
     "Success rate": "Tỷ lệ thành công",

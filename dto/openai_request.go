@@ -386,7 +386,18 @@ func (m *MediaContent) ToFileSource() types.FileSource {
 		if file == nil || file.FileData == "" {
 			return nil
 		}
-		return types.NewFileSourceFromData(file.FileData, "")
+		mimeType := ""
+		if file.FileName != "" {
+			if dot := strings.LastIndex(file.FileName, "."); dot != -1 && dot+1 < len(file.FileName) {
+				switch strings.ToLower(file.FileName[dot+1:]) {
+				case "pdf":
+					mimeType = "application/pdf"
+				case "txt", "md", "markdown", "csv", "json", "xml", "html", "htm":
+					mimeType = "text/plain"
+				}
+			}
+		}
+		return types.NewFileSourceFromData(file.FileData, mimeType)
 	case ContentTypeVideoUrl:
 		video := m.GetVideoUrl()
 		if video == nil || video.Url == "" {

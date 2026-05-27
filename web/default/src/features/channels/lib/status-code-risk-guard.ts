@@ -35,6 +35,34 @@ function parseStatusCodeMappingTarget(rawValue: unknown): number | null {
   return null
 }
 
+function parseStatusCodeMapping(
+  statusCodeMappingStr: string
+): Map<number, number> {
+  const mapping = new Map<number, number>()
+  if (!statusCodeMappingStr?.trim()) return mapping
+
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(statusCodeMappingStr)
+  } catch {
+    return mapping
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return mapping
+  }
+
+  for (const [rawKey, rawValue] of Object.entries(parsed)) {
+    const fromCode = parseStatusCodeKey(rawKey)
+    const toCode = parseStatusCodeMappingTarget(rawValue)
+    if (fromCode !== null && toCode !== null) {
+      mapping.set(fromCode, toCode)
+    }
+  }
+
+  return mapping
+}
+
 export function collectInvalidStatusCodeEntries(
   statusCodeMappingStr: string
 ): string[] {
@@ -58,4 +86,22 @@ export function collectInvalidStatusCodeEntries(
     }
   }
   return invalid
+}
+
+export function collectNewDisallowedStatusCodeRedirects(
+  previousStatusCodeMappingStr: string,
+  nextStatusCodeMappingStr: string
+): string[] {
+  const previous = parseStatusCodeMapping(previousStatusCodeMappingStr)
+  const next = parseStatusCodeMapping(nextStatusCodeMappingStr)
+  const riskyRedirects: string[] = []
+
+  for (const [fromCode, toCode] of next.entries()) {
+    if (previous.get(fromCode) === toCode) continue
+    if (fromCode >= 400 && toCode < 400) {
+      riskyRedirects.push(`${fromCode} → ${toCode}`)
+    }
+  }
+
+  return riskyRedirects
 }

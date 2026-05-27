@@ -52,6 +52,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  SideDrawerSection,
+  sideDrawerContentClassName,
+  sideDrawerFooterClassName,
+  sideDrawerFormClassName,
+  sideDrawerHeaderClassName,
+} from '@/components/drawer-layout'
 import { createRedemption, updateRedemption, getRedemption } from '../api'
 import { SUCCESS_MESSAGES } from '../constants'
 import {
@@ -199,8 +206,8 @@ export function RedemptionsMutateDrawer({
         }
       }}
     >
-      <SheetContent className='flex h-dvh w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[600px]'>
-        <SheetHeader className='border-b px-4 py-3 text-start sm:px-6 sm:py-4'>
+      <SheetContent className={sideDrawerContentClassName('sm:max-w-[600px]')}>
+        <SheetHeader className={sideDrawerHeaderClassName()}>
           <SheetTitle>
             {isUpdate
               ? t('Update Redemption Code')
@@ -219,247 +226,250 @@ export function RedemptionsMutateDrawer({
           <form
             id='redemption-form'
             onSubmit={form.handleSubmit(onSubmit)}
-            className='flex-1 space-y-4 overflow-y-auto px-3 py-3 pb-4 sm:space-y-6 sm:px-4'
+            className={sideDrawerFormClassName()}
           >
-            <FormField
-              control={form.control}
-              name='name'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Name')}</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder={t('Enter a name')} />
-                  </FormControl>
-                  <FormDescription>
-                    {t('Name for this redemption code (1-20 characters)')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='redeem_type'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Redemption Type')}</FormLabel>
-                  <FormControl>
-                    <Select
-                      value={field.value}
-                      onValueChange={(value) =>
-                        field.onChange(value as 'quota' | 'subscription')
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent alignItemWithTrigger={false}>
-                        <SelectItem value='quota'>
-                          {t('Quota Top-up')}
-                        </SelectItem>
-                        <SelectItem value='subscription'>
-                          {t('Subscription Activation')}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FormControl>
-                  <FormDescription>
-                    {t('Choose what this redemption code grants')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {redeemType === 'quota' ? (
+            <SideDrawerSection>
               <FormField
                 control={form.control}
-                name='quota_dollars'
+                name='name'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{quotaLabel}</FormLabel>
+                    <FormLabel>{t('Name')}</FormLabel>
                     <FormControl>
-                      <Input
-                        {...field}
-                        type='number'
-                        step={tokensOnly ? 1 : 0.01}
-                        placeholder={quotaPlaceholder}
-                        onChange={(e) =>
-                          field.onChange(parseFloat(e.target.value) || 0)
-                        }
-                      />
+                      <Input {...field} placeholder={t('Enter a name')} />
                     </FormControl>
                     <FormDescription>
-                      {tokensOnly
-                        ? t('Enter the quota amount in tokens')
-                        : t('Enter the quota amount in {{currency}}', {
-                            currency: currencyLabel,
-                          })}
+                      {t('Name for this redemption code (1-20 characters)')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            ) : (
+
               <FormField
                 control={form.control}
-                name='subscription_plan_id'
+                name='redeem_type'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Subscription Plan')}</FormLabel>
+                    <FormLabel>{t('Redemption Type')}</FormLabel>
                     <FormControl>
                       <Select
-                        value={
-                          field.value && field.value > 0
-                            ? String(field.value)
-                            : undefined
+                        value={field.value}
+                        onValueChange={(value) =>
+                          field.onChange(value as 'quota' | 'subscription')
                         }
-                        disabled={isPlansLoading || plans.length === 0}
-                        onValueChange={(value) => {
-                          if (value) field.onChange(parseInt(value, 10))
-                        }}
                       >
                         <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              isPlansLoading
-                                ? t('Loading...')
-                                : plans.length === 0
-                                  ? t('No enabled subscription plans')
-                                  : t('Select subscription plan')
-                            }
-                          />
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent alignItemWithTrigger={false}>
-                          {plans.map((record) => {
-                            const meta = renderPlanMeta(record)
-                            const subtitle = record.plan.subtitle?.trim() ?? ''
-                            return (
-                              <SelectItem
-                                key={record.plan.id}
-                                value={String(record.plan.id)}
-                              >
-                                <div className='flex min-w-0 flex-col py-1'>
-                                  <span className='truncate font-medium'>
-                                    {`ID ${record.plan.id} · ${record.plan.title}`}
-                                  </span>
-                                  <span className='text-muted-foreground truncate text-xs'>
-                                    {subtitle
-                                      ? `${subtitle} · ${t('Total Quota')}: ${meta.quota} · ${t('Validity')}: ${meta.duration} · ${meta.price} · ${meta.statusLabel}`
-                                      : `${t('Total Quota')}: ${meta.quota} · ${t('Validity')}: ${meta.duration} · ${meta.price} · ${meta.statusLabel}`}
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            )
-                          })}
+                          <SelectItem value='quota'>
+                            {t('Quota Top-up')}
+                          </SelectItem>
+                          <SelectItem value='subscription'>
+                            {t('Subscription Activation')}
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </FormControl>
                     <FormDescription>
-                      {isPlansLoading
-                        ? t('Loading subscription plans...')
-                        : plans.length === 0
-                          ? t(
-                              'No enabled subscription plans found. Enable or create a subscription plan first.'
-                            )
-                          : t(
-                              'Users who redeem this code will activate the selected subscription plan'
-                            )}
+                      {t('Choose what this redemption code grants')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            )}
 
-            <FormField
-              control={form.control}
-              name='expired_time'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Expiration Time')}</FormLabel>
-                  <div className='space-y-2'>
-                    <FormControl>
-                      <DateTimePicker
-                        value={field.value}
-                        onChange={field.onChange}
-                        placeholder={t('Never expires')}
-                      />
-                    </FormControl>
-                    <div className='grid grid-cols-4 gap-1.5 sm:flex sm:gap-2'>
-                      <Button
-                        type='button'
-                        variant='outline'
-                        size='sm'
-                        onClick={() => handleSetExpiry(0, 0, 0)}
-                      >
-                        {t('Never')}
-                      </Button>
-                      <Button
-                        type='button'
-                        variant='outline'
-                        size='sm'
-                        onClick={() => handleSetExpiry(1, 0, 0)}
-                      >
-                        {t('1M')}
-                      </Button>
-                      <Button
-                        type='button'
-                        variant='outline'
-                        size='sm'
-                        onClick={() => handleSetExpiry(0, 7, 0)}
-                      >
-                        {t('1W')}
-                      </Button>
-                      <Button
-                        type='button'
-                        variant='outline'
-                        size='sm'
-                        onClick={() => handleSetExpiry(0, 1, 0)}
-                      >
-                        {t('1 Day')}
-                      </Button>
-                    </div>
-                  </div>
-                  <FormDescription>
-                    {t('Leave empty for never expires')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
+              {redeemType === 'quota' ? (
+                <FormField
+                  control={form.control}
+                  name='quota_dollars'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{quotaLabel}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          step={tokensOnly ? 1 : 0.01}
+                          placeholder={quotaPlaceholder}
+                          onChange={(e) =>
+                            field.onChange(parseFloat(e.target.value) || 0)
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {tokensOnly
+                          ? t('Enter the quota amount in tokens')
+                          : t('Enter the quota amount in {{currency}}', {
+                              currency: currencyLabel,
+                            })}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <FormField
+                  control={form.control}
+                  name='subscription_plan_id'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Subscription Plan')}</FormLabel>
+                      <FormControl>
+                        <Select
+                          value={
+                            field.value && field.value > 0
+                              ? String(field.value)
+                              : undefined
+                          }
+                          disabled={isPlansLoading || plans.length === 0}
+                          onValueChange={(value) => {
+                            if (value) field.onChange(parseInt(value, 10))
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                isPlansLoading
+                                  ? t('Loading...')
+                                  : plans.length === 0
+                                    ? t('No enabled subscription plans')
+                                    : t('Select subscription plan')
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent alignItemWithTrigger={false}>
+                            {plans.map((record) => {
+                              const meta = renderPlanMeta(record)
+                              const subtitle =
+                                record.plan.subtitle?.trim() ?? ''
+                              return (
+                                <SelectItem
+                                  key={record.plan.id}
+                                  value={String(record.plan.id)}
+                                >
+                                  <div className='flex min-w-0 flex-col py-1'>
+                                    <span className='truncate font-medium'>
+                                      {`ID ${record.plan.id} · ${record.plan.title}`}
+                                    </span>
+                                    <span className='text-muted-foreground truncate text-xs'>
+                                      {subtitle
+                                        ? `${subtitle} · ${t('Total Quota')}: ${meta.quota} · ${t('Validity')}: ${meta.duration} · ${meta.price} · ${meta.statusLabel}`
+                                        : `${t('Total Quota')}: ${meta.quota} · ${t('Validity')}: ${meta.duration} · ${meta.price} · ${meta.statusLabel}`}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              )
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormDescription>
+                        {isPlansLoading
+                          ? t('Loading subscription plans...')
+                          : plans.length === 0
+                            ? t(
+                                'No enabled subscription plans found. Enable or create a subscription plan first.'
+                              )
+                            : t(
+                                'Users who redeem this code will activate the selected subscription plan'
+                              )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
-            />
 
-            {!isUpdate && (
               <FormField
                 control={form.control}
-                name='count'
+                name='expired_time'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Quantity')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type='number'
-                        min='1'
-                        max='100'
-                        placeholder={t('Number of codes to create')}
-                        onChange={(e) =>
-                          field.onChange(parseInt(e.target.value, 10) || 1)
-                        }
-                      />
-                    </FormControl>
+                    <FormLabel>{t('Expiration Time')}</FormLabel>
+                    <div className='flex flex-col gap-2'>
+                      <FormControl>
+                        <DateTimePicker
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder={t('Never expires')}
+                        />
+                      </FormControl>
+                      <div className='grid grid-cols-4 gap-1.5 sm:flex sm:gap-2'>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          onClick={() => handleSetExpiry(0, 0, 0)}
+                        >
+                          {t('Never')}
+                        </Button>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          onClick={() => handleSetExpiry(1, 0, 0)}
+                        >
+                          {t('1M')}
+                        </Button>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          onClick={() => handleSetExpiry(0, 7, 0)}
+                        >
+                          {t('1W')}
+                        </Button>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          onClick={() => handleSetExpiry(0, 1, 0)}
+                        >
+                          {t('1 Day')}
+                        </Button>
+                      </div>
+                    </div>
                     <FormDescription>
-                      {t('Create multiple redemption codes at once (1-100)')}
+                      {t('Leave empty for never expires')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            )}
+
+              {!isUpdate && (
+                <FormField
+                  control={form.control}
+                  name='count'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Quantity')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min='1'
+                          max='100'
+                          placeholder={t('Number of codes to create')}
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value, 10) || 1)
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Create multiple redemption codes at once (1-100)')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+            </SideDrawerSection>
           </form>
         </Form>
-        <SheetFooter className='grid grid-cols-2 gap-2 border-t px-4 py-3 sm:flex sm:px-6 sm:py-4'>
+        <SheetFooter className={sideDrawerFooterClassName()}>
           <SheetClose render={<Button variant='outline' />}>
             {t('Close')}
           </SheetClose>

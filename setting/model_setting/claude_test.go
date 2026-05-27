@@ -58,3 +58,37 @@ func TestClaudeSettingsWriteHeadersDeduplicatesAcrossCommaSeparatedAndRepeatedVa
 		t.Fatalf("expected deduplicated merged header %q, got %q", expected, got[0])
 	}
 }
+
+func TestClaudeSettingsShouldApplyThinkingSignatureCompatibilityByChannel(t *testing.T) {
+	settings := &ClaudeSettings{
+		ThinkingSignatureCompatibilityPolicy: ChatCompletionsToResponsesPolicy{
+			Enabled:     true,
+			AllChannels: false,
+			ChannelIDs:  []int{12},
+		},
+	}
+
+	if !settings.ShouldApplyThinkingSignatureCompatibility(12, 0, "claude-sonnet-4-20250514") {
+		t.Fatal("expected configured channel id to enable compatibility")
+	}
+	if settings.ShouldApplyThinkingSignatureCompatibility(13, 0, "claude-sonnet-4-20250514") {
+		t.Fatal("expected unconfigured channel id to be disabled")
+	}
+}
+
+func TestClaudeSettingsShouldApplyThinkingSignatureCompatibilityRespectsModelPatterns(t *testing.T) {
+	settings := &ClaudeSettings{
+		ThinkingSignatureCompatibilityPolicy: ChatCompletionsToResponsesPolicy{
+			Enabled:       true,
+			AllChannels:   true,
+			ModelPatterns: []string{"^claude-.*$"},
+		},
+	}
+
+	if !settings.ShouldApplyThinkingSignatureCompatibility(0, 0, "claude-sonnet-4-20250514") {
+		t.Fatal("expected matching model pattern to enable compatibility")
+	}
+	if settings.ShouldApplyThinkingSignatureCompatibility(0, 0, "gpt-4o") {
+		t.Fatal("expected non-matching model pattern to disable compatibility")
+	}
+}

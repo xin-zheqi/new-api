@@ -166,6 +166,7 @@ export function ModelMutateDrawer({
       'claude.default_max_tokens': '',
       'claude.thinking_adapter_enabled': true,
       'claude.thinking_adapter_budget_tokens_percentage': 0.8,
+      'claude.thinking_signature_compatibility_policy': '{}',
       ModelPrice: '',
       ModelRatio: '',
       CacheRatio: '',

@@ -316,9 +316,9 @@ export function RedemptionsMutateDrawer({
                             : undefined
                         }
                         disabled={isPlansLoading || plans.length === 0}
-                        onValueChange={(value) =>
-                          field.onChange(parseInt(value, 10))
-                        }
+                        onValueChange={(value) => {
+                          if (value) field.onChange(parseInt(value, 10))
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue
@@ -334,6 +334,7 @@ export function RedemptionsMutateDrawer({
                         <SelectContent alignItemWithTrigger={false}>
                           {plans.map((record) => {
                             const meta = renderPlanMeta(record)
+                            const subtitle = record.plan.subtitle?.trim() ?? ''
                             return (
                               <SelectItem
                                 key={record.plan.id}
@@ -344,8 +345,8 @@ export function RedemptionsMutateDrawer({
                                     {`ID ${record.plan.id} · ${record.plan.title}`}
                                   </span>
                                   <span className='text-muted-foreground truncate text-xs'>
-                                    {record.plan.subtitle?.trim()
-                                      ? `${record.plan.subtitle.trim()} · ${t('Total Quota')}: ${meta.quota} · ${t('Validity')}: ${meta.duration} · ${meta.price} · ${meta.statusLabel}`
+                                    {subtitle
+                                      ? `${subtitle} · ${t('Total Quota')}: ${meta.quota} · ${t('Validity')}: ${meta.duration} · ${meta.price} · ${meta.statusLabel}`
                                       : `${t('Total Quota')}: ${meta.quota} · ${t('Validity')}: ${meta.duration} · ${meta.price} · ${meta.statusLabel}`}
                                   </span>
                                 </div>

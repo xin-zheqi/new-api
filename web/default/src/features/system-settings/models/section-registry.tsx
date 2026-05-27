@@ -104,6 +104,10 @@ const MODELS_SECTIONS = [
               settings['claude.thinking_adapter_enabled'],
             thinking_adapter_budget_tokens_percentage:
               settings['claude.thinking_adapter_budget_tokens_percentage'],
+            thinking_signature_compatibility_policy: formatJsonForEditor(
+              settings['claude.thinking_signature_compatibility_policy'],
+              '{}'
+            ),
           },
         }}
       />

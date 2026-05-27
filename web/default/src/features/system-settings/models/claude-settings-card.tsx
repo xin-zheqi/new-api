@@ -43,6 +43,27 @@ import {
   validateJsonString,
 } from './utils'
 
+const thinkingSignaturePolicySpecificChannelsExample = JSON.stringify(
+  {
+    enabled: true,
+    all_channels: false,
+    channel_ids: [1, 2],
+    model_patterns: ['^claude-.*$'],
+  },
+  null,
+  2
+)
+
+const thinkingSignaturePolicyAllClaudeChannelsExample = JSON.stringify(
+  {
+    enabled: true,
+    all_channels: true,
+    model_patterns: ['^claude-.*$'],
+  },
+  null,
+  2
+)
+
 const schema = z.object({
   claude: z.object({
     model_headers_settings: z.string().superRefine((value, ctx) => {
@@ -68,6 +89,17 @@ const schema = z.object({
       .number()
       .min(0.1, { message: 'Must be at least 0.1' })
       .max(1, { message: 'Must be 1 or less' }),
+    thinking_signature_compatibility_policy: z.string().superRefine(
+      (value, ctx) => {
+        const result = validateJsonString(value)
+        if (!result.valid) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: result.message || 'Invalid JSON',
+          })
+        }
+      }
+    ),
   }),
 })
 
@@ -79,6 +111,7 @@ type FlatClaudeSettings = {
   'claude.default_max_tokens': string
   'claude.thinking_adapter_enabled': boolean
   'claude.thinking_adapter_budget_tokens_percentage': number
+  'claude.thinking_signature_compatibility_policy': string
 }
 
 type ClaudeSettingsCardProps = {
@@ -100,6 +133,9 @@ export function ClaudeSettingsCard({ defaultValues }: ClaudeSettingsCardProps) {
     'claude.thinking_adapter_budget_tokens_percentage': Number(
       defaultValues.claude.thinking_adapter_budget_tokens_percentage
     ),
+    'claude.thinking_signature_compatibility_policy': normalizeJsonString(
+      defaultValues.claude.thinking_signature_compatibility_policy
+    ),
   })
 
   const buildFormDefaults = (
@@ -115,6 +151,9 @@ export function ClaudeSettingsCard({ defaultValues }: ClaudeSettingsCardProps) {
       thinking_adapter_enabled: values.claude.thinking_adapter_enabled,
       thinking_adapter_budget_tokens_percentage:
         values.claude.thinking_adapter_budget_tokens_percentage,
+      thinking_signature_compatibility_policy: formatJsonForTextarea(
+        values.claude.thinking_signature_compatibility_policy
+      ),
     },
   })
 
@@ -140,6 +179,9 @@ export function ClaudeSettingsCard({ defaultValues }: ClaudeSettingsCardProps) {
       'claude.thinking_adapter_budget_tokens_percentage': Number(
         defaultValues.claude.thinking_adapter_budget_tokens_percentage
       ),
+      'claude.thinking_signature_compatibility_policy': normalizeJsonString(
+        defaultValues.claude.thinking_signature_compatibility_policy
+      ),
     }
 
     form.reset(buildFormDefaults(defaultValues))
@@ -156,6 +198,9 @@ export function ClaudeSettingsCard({ defaultValues }: ClaudeSettingsCardProps) {
       'claude.thinking_adapter_enabled': values.claude.thinking_adapter_enabled,
       'claude.thinking_adapter_budget_tokens_percentage':
         values.claude.thinking_adapter_budget_tokens_percentage,
+      'claude.thinking_signature_compatibility_policy': normalizeJsonString(
+        values.claude.thinking_signature_compatibility_policy
+      ),
     }
 
     const updates = (
@@ -268,6 +313,83 @@ export function ClaudeSettingsCard({ defaultValues }: ClaudeSettingsCardProps) {
               )}
             />
           </div>
+
+          <FormField
+            control={form.control}
+            name='claude.thinking_signature_compatibility_policy'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  {t('Thinking Signature Compatibility Policy')}
+                </FormLabel>
+                <FormControl>
+                  <Textarea
+                    rows={8}
+                    placeholder={`${t('Example (specific channels):')}\n${thinkingSignaturePolicySpecificChannelsExample}\n\n${t('Example (all channels):')}\n${thinkingSignaturePolicyAllClaudeChannelsExample}`}
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Enable by channel to remove stale `thinking` and `redacted_thinking` blocks from incoming Claude messages and avoid invalid signature errors in clients such as Claude Code. Empty model_patterns matches all models on enabled channels.'
+                  )}
+                </FormDescription>
+                <div className='flex flex-wrap gap-2'>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={() =>
+                      form.setValue(
+                        'claude.thinking_signature_compatibility_policy',
+                        thinkingSignaturePolicySpecificChannelsExample,
+                        { shouldDirty: true }
+                      )
+                    }
+                  >
+                    {t('Fill example (specific channels)')}
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={() =>
+                      form.setValue(
+                        'claude.thinking_signature_compatibility_policy',
+                        thinkingSignaturePolicyAllClaudeChannelsExample,
+                        { shouldDirty: true }
+                      )
+                    }
+                  >
+                    {t('Fill example (all channels)')}
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={() => {
+                      const raw = form.getValues(
+                        'claude.thinking_signature_compatibility_policy'
+                      )
+                      if (!raw || !raw.trim()) return
+                      try {
+                        form.setValue(
+                          'claude.thinking_signature_compatibility_policy',
+                          JSON.stringify(JSON.parse(raw), null, 2),
+                          { shouldDirty: true }
+                        )
+                      } catch {
+                        toast.error(t('Invalid JSON format'))
+                      }
+                    }}
+                  >
+                    {t('Format JSON')}
+                  </Button>
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
           <Button type='submit' disabled={updateOption.isPending}>
             {updateOption.isPending ? t('Saving...') : t('Save Changes')}

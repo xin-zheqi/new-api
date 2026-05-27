@@ -25,6 +25,10 @@ func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dt
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
+	claudeSettings := model_setting.GetClaudeSettings()
+	if info != nil && claudeSettings.ShouldApplyThinkingSignatureCompatibility(info.ChannelId, info.ChannelType, info.OriginModelName) {
+		request.RemoveThinkingBlocksFromMessages()
+	}
 	return request, nil
 }
 

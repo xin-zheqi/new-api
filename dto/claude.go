@@ -236,6 +236,99 @@ type ClaudeRequest struct {
 	ServiceTier string `json:"service_tier,omitempty"`
 }
 
+const (
+	ClaudeContentTypeThinking         = "thinking"
+	ClaudeContentTypeRedactedThinking = "redacted_thinking"
+)
+
+// RemoveThinkingBlocksFromMessages strips stale Anthropic thinking blocks from
+// message content while preserving all visible content and tool-use blocks.
+func (c *ClaudeRequest) RemoveThinkingBlocksFromMessages() int {
+	if c == nil {
+		return 0
+	}
+
+	removed := 0
+	for i := range c.Messages {
+		cleaned, count, changed := removeClaudeThinkingBlocks(c.Messages[i].Content)
+		if changed {
+			c.Messages[i].Content = cleaned
+		}
+		removed += count
+	}
+	return removed
+}
+
+func removeClaudeThinkingBlocks(content any) (any, int, bool) {
+	switch items := content.(type) {
+	case []ClaudeMediaMessage:
+		filtered := make([]ClaudeMediaMessage, 0, len(items))
+		removed := 0
+		for _, item := range items {
+			if isClaudeThinkingBlockType(item.Type) {
+				removed++
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		return filtered, removed, removed > 0
+	case []*ClaudeMediaMessage:
+		filtered := make([]*ClaudeMediaMessage, 0, len(items))
+		removed := 0
+		for _, item := range items {
+			if item != nil && isClaudeThinkingBlockType(item.Type) {
+				removed++
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		return filtered, removed, removed > 0
+	case []any:
+		filtered := make([]any, 0, len(items))
+		removed := 0
+		for _, item := range items {
+			if isClaudeThinkingBlock(item) {
+				removed++
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		return filtered, removed, removed > 0
+	default:
+		return content, 0, false
+	}
+}
+
+func isClaudeThinkingBlock(item any) bool {
+	switch block := item.(type) {
+	case ClaudeMediaMessage:
+		return isClaudeThinkingBlockType(block.Type)
+	case *ClaudeMediaMessage:
+		return block != nil && isClaudeThinkingBlockType(block.Type)
+	case map[string]any:
+		blockType, _ := block["type"].(string)
+		return isClaudeThinkingBlockType(blockType)
+	case map[string]string:
+		return isClaudeThinkingBlockType(block["type"])
+	default:
+		var probe struct {
+			Type string `json:"type"`
+		}
+		data, err := common.Marshal(item)
+		if err != nil {
+			return false
+		}
+		if err := common.Unmarshal(data, &probe); err != nil {
+			return false
+		}
+		return isClaudeThinkingBlockType(probe.Type)
+	}
+}
+
+func isClaudeThinkingBlockType(blockType string) bool {
+	return blockType == ClaudeContentTypeThinking || blockType == ClaudeContentTypeRedactedThinking
+}
+
 // OutputConfigForEffort just for extract effort
 type OutputConfigForEffort struct {
 	Effort string `json:"effort,omitempty"`

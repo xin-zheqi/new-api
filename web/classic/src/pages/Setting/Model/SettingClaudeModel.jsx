@@ -56,6 +56,19 @@ const CLAUDE_DEFAULT_MAX_TOKENS = {
   'claude-3-7-sonnet-20250219-thinking': 8192,
 };
 
+const CLAUDE_THINKING_SIGNATURE_POLICY = {
+  enabled: true,
+  all_channels: false,
+  channel_ids: [1, 2],
+  model_patterns: ['^claude-.*$'],
+};
+
+const CLAUDE_THINKING_SIGNATURE_POLICY_ALL_CHANNELS = {
+  enabled: true,
+  all_channels: true,
+  model_patterns: ['^claude-.*$'],
+};
+
 export default function SettingClaudeModel(props) {
   const { t } = useTranslation();
 
@@ -65,6 +78,7 @@ export default function SettingClaudeModel(props) {
     'claude.thinking_adapter_enabled': true,
     'claude.default_max_tokens': '',
     'claude.thinking_adapter_budget_tokens_percentage': 0.8,
+    'claude.thinking_signature_compatibility_policy': '{}',
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -231,6 +245,56 @@ export default function SettingClaudeModel(props) {
                     setInputs({
                       ...inputs,
                       'claude.thinking_adapter_budget_tokens_percentage': value,
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+            <Row>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.TextArea
+                  label={t('Claude思考签名兼容策略')}
+                  field={'claude.thinking_signature_compatibility_policy'}
+                  placeholder={
+                    t('为一个 JSON 文本，例如：') +
+                    '\n' +
+                    JSON.stringify(CLAUDE_THINKING_SIGNATURE_POLICY, null, 2) +
+                    '\n\n' +
+                    t('全部渠道示例：') +
+                    '\n' +
+                    JSON.stringify(
+                      CLAUDE_THINKING_SIGNATURE_POLICY_ALL_CHANNELS,
+                      null,
+                      2,
+                    )
+                  }
+                  extraText={
+                    <div>
+                      <div>
+                        {t(
+                          '按渠道启用后，会从传入的 Claude 消息中移除过期的 thinking 和 redacted_thinking 内容块，避免 Claude Code 等客户端出现无效签名错误。',
+                        )}
+                      </div>
+                      <div>
+                        {t(
+                          '配置格式与 ChatCompletions -> Responses 兼容配置一致；model_patterns 为空时匹配已启用渠道上的所有模型。',
+                        )}
+                      </div>
+                    </div>
+                  }
+                  autosize={{ minRows: 6, maxRows: 12 }}
+                  trigger='blur'
+                  stopValidateWithError
+                  rules={[
+                    {
+                      validator: (rule, value) => verifyJSON(value),
+                      message: t('不是合法的 JSON 字符串'),
+                    },
+                  ]}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      'claude.thinking_signature_compatibility_policy': value,
                     })
                   }
                 />

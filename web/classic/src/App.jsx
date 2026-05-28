@@ -36,6 +36,7 @@ import Token from './pages/Token';
 import Redemption from './pages/Redemption';
 import TopUp from './pages/TopUp';
 import Log from './pages/Log';
+import TokenUsage from './pages/TokenUsage';
 import Chat from './pages/Chat';
 import Chat2Link from './pages/Chat2Link';
 import Midjourney from './pages/Midjourney';
@@ -282,6 +283,14 @@ function App() {
           element={
             <PrivateRoute>
               <Log />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/token-usage'
+          element={
+            <PrivateRoute>
+              <TokenUsage />
             </PrivateRoute>
           }
         />

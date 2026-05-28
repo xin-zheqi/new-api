@@ -3846,6 +3846,27 @@
     "Well-Known URL 必须以 http:// 或 https:// 开头": "Well-Known URL must start with http:// or https://",
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Webhook signature key for whsec_xxx, sensitive information not displayed",
     "Worker地址": "Worker Address",
-    "Worker密钥": "Worker Key"
+    "Worker密钥": "Worker Key",
+    "7天": "7 Days",
+    "30天": "30 Days",
+    "按令牌名称筛选": "Filter by token name",
+    "按令牌查看不同模型的用量分布": "View per-model usage distribution by token",
+    "本月": "This Month",
+    "补全 Tokens": "Completion Tokens",
+    "活跃令牌": "Active Tokens",
+    "加载令牌用量失败": "Failed to load token usage",
+    "令牌用量": "Token Usage",
+    "模型分布": "Model Distribution",
+    "模型明细": "Model Details",
+    "今天": "Today",
+    "全部时间": "All Time",
+    "提示 Tokens": "Prompt Tokens",
+    "请求次数": "Requests",
+    "昨天": "Yesterday",
+    "暂无令牌用量": "No token usage",
+    "暂无用量数据": "No usage data",
+    "总 Tokens": "Total Tokens",
+    "总用量": "Total Usage",
+    "用量": "Usage"
   }
 }

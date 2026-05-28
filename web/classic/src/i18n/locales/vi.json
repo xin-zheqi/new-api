@@ -4230,6 +4230,27 @@
     "，": ", ",
     "、": ", ",
     "套餐 #{{id}}": "Gói #{{id}}",
-    "额度充值码": "Mã nạp hạn mức"
+    "额度充值码": "Mã nạp hạn mức",
+    "7天": "7 ngày",
+    "30天": "30 ngày",
+    "按令牌名称筛选": "Lọc theo tên token",
+    "按令牌查看不同模型的用量分布": "Xem phân bố mức dùng theo mô hình cho từng token",
+    "本月": "Tháng này",
+    "补全 Tokens": "Tokens hoàn tất",
+    "活跃令牌": "Token đang hoạt động",
+    "加载令牌用量失败": "Không tải được mức dùng token",
+    "令牌用量": "Mức dùng token",
+    "模型分布": "Phân bố mô hình",
+    "模型明细": "Chi tiết mô hình",
+    "今天": "Hôm nay",
+    "全部时间": "Toàn bộ thời gian",
+    "提示 Tokens": "Tokens prompt",
+    "请求次数": "Số yêu cầu",
+    "昨天": "Hôm qua",
+    "暂无令牌用量": "Chưa có mức dùng token",
+    "暂无用量数据": "Chưa có dữ liệu mức dùng",
+    "总 Tokens": "Tổng Tokens",
+    "总用量": "Tổng mức dùng",
+    "用量": "Mức dùng"
   }
 }

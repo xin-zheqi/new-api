@@ -3696,6 +3696,27 @@
     "，": ", ",
     "、": ", ",
     "套餐 #{{id}}": "Plan #{{id}}",
-    "额度充值码": "Code de recharge de quota"
+    "额度充值码": "Code de recharge de quota",
+    "7天": "7 jours",
+    "30天": "30 jours",
+    "按令牌名称筛选": "Filtrer par nom de jeton",
+    "按令牌查看不同模型的用量分布": "Voir la répartition d'utilisation des modèles par jeton",
+    "本月": "Ce mois-ci",
+    "补全 Tokens": "Tokens de complétion",
+    "活跃令牌": "Jetons actifs",
+    "加载令牌用量失败": "Échec du chargement de l'utilisation des jetons",
+    "令牌用量": "Utilisation des jetons",
+    "模型分布": "Répartition des modèles",
+    "模型明细": "Détails des modèles",
+    "今天": "Aujourd'hui",
+    "全部时间": "Tout le temps",
+    "提示 Tokens": "Tokens de prompt",
+    "请求次数": "Requêtes",
+    "昨天": "Hier",
+    "暂无令牌用量": "Aucune utilisation de jeton",
+    "暂无用量数据": "Aucune donnée d'utilisation",
+    "总 Tokens": "Total des tokens",
+    "总用量": "Utilisation totale",
+    "用量": "Utilisation"
   }
 }

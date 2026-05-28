@@ -23,6 +23,7 @@ import {
   FileText,
   FlaskConical,
   Key,
+  PieChart,
   LayoutDashboard,
   ListTodo,
   MessageSquare,
@@ -81,6 +82,11 @@ export function useSidebarData(): SidebarData {
             title: t('API Keys'),
             url: '/keys',
             icon: Key,
+          },
+          {
+            title: t('API Key Usage'),
+            url: '/token-usage',
+            icon: PieChart,
           },
           {
             title: t('Usage Logs'),

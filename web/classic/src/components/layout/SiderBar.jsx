@@ -39,6 +39,7 @@ const routerMap = {
   user: '/console/user',
   subscription: '/console/subscription',
   log: '/console/log',
+  token_usage: '/console/token-usage',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
   about: '/about',
@@ -85,6 +86,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/token',
       },
       {
+        text: t('令牌用量'),
+        itemKey: 'token_usage',
+        configKey: 'token',
+        to: '/token-usage',
+      },
+      {
         text: t('使用日志'),
         itemKey: 'log',
         to: '/log',
@@ -109,7 +116,10 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 
     // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
-      const configVisible = isModuleVisible('console', item.itemKey);
+      const configVisible = isModuleVisible(
+        'console',
+        item.configKey || item.itemKey,
+      );
       return configVisible;
     });
 

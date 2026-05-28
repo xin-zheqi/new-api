@@ -1819,7 +1819,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment",
     "For private deployments, format: https://fastgpt.run/api/openapi": "For private deployments, format: https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Force a syntactically valid JSON response",
@@ -4605,6 +4605,22 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "API Key Usage": "API Key Usage",
+    "Prompt Tokens": "Prompt Tokens",
+    "Completion Tokens": "Completion Tokens",
+    "Requests": "Requests",
+    "Model Distribution": "Model Distribution",
+    "Model Details": "Model Details",
+    "Unknown Model": "Unknown Model",
+    "No usage data": "No usage data",
+    "No model usage in selected range": "No model usage in selected range",
+    "No API key usage found": "No API key usage found",
+    "Adjust the time range or key filter.": "Adjust the time range or key filter.",
+    "Failed to load token usage": "Failed to load token usage",
+    "Filter by API key name...": "Filter by API key name...",
+    "Yesterday": "Yesterday",
+    "All Time": "All Time",
+    "{{count}} active keys": "{{count}} active keys"
   }
 }

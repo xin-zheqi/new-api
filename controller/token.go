@@ -9,7 +9,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,6 +31,65 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
 	}
 	return maskedTokens
+}
+
+func normalizeAndValidateTokenGroup(c *gin.Context, token *model.Token) bool {
+	if token == nil {
+		return true
+	}
+	if len(token.Group) > model.MaxTokenGroupConfigLength {
+		common.ApiError(c, fmt.Errorf("令牌分组配置过长"))
+		return false
+	}
+	token.NormalizeGroup()
+	if token.Group == "" {
+		token.CrossGroupRetry = false
+		return true
+	}
+	groups := token.GetGroups()
+	maxGroupCount := operation_setting.GetMaxGroupCount()
+	if len(groups) > maxGroupCount {
+		common.ApiError(c, fmt.Errorf("令牌分组数量过多，最多允许 %d 个分组", maxGroupCount))
+		return false
+	}
+	for _, group := range groups {
+		if len(group) > model.MaxTokenGroupNameLength {
+			common.ApiError(c, fmt.Errorf("分组 %s 名称过长", group))
+			return false
+		}
+	}
+	if token.IsMultiGroup() {
+		for _, group := range groups {
+			if group == "auto" {
+				common.ApiError(c, fmt.Errorf("多分组令牌不能同时选择 auto 分组"))
+				return false
+			}
+		}
+	}
+	userGroup := c.GetString("group")
+	if userGroup == "" {
+		userGroup = c.GetString("user_group")
+	}
+	if userGroup == "" {
+		if dbGroup, err := model.GetUserGroup(c.GetInt("id"), false); err == nil {
+			userGroup = dbGroup
+		}
+	}
+	userUsableGroups := service.GetUserUsableGroups(userGroup)
+	for _, group := range groups {
+		if _, ok := userUsableGroups[group]; !ok {
+			common.ApiError(c, fmt.Errorf("无权访问 %s 分组", group))
+			return false
+		}
+		if !ratio_setting.ContainsGroupRatio(group) && group != "auto" {
+			common.ApiError(c, fmt.Errorf("分组 %s 已被弃用", group))
+			return false
+		}
+	}
+	if !token.IsAutoGroup() && !token.IsMultiGroup() {
+		token.CrossGroupRetry = false
+	}
+	return true
 }
 
 func GetAllTokens(c *gin.Context) {
@@ -196,6 +257,9 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
+	if !normalizeAndValidateTokenGroup(c, &token) {
+		return
+	}
 	// 非无限额度时，检查额度值是否超出有效范围
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
@@ -279,6 +343,9 @@ func UpdateToken(c *gin.Context) {
 	}
 	if len(token.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
+		return
+	}
+	if !normalizeAndValidateTokenGroup(c, &token) {
 		return
 	}
 	if !token.UnlimitedQuota {

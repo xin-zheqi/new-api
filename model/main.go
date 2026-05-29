@@ -298,6 +298,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := migrateTokenModelLimitsToText(); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 

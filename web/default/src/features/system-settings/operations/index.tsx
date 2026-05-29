@@ -62,6 +62,7 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  'token_setting.max_group_count': 50,
 }
 
 export function OperationsSettings() {

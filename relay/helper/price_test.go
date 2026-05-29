@@ -6,10 +6,12 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -59,4 +61,53 @@ func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	require.Equal(t, "stream", info.TieredBillingSnapshot.EstimatedTier)
 	require.Equal(t, billing_setting.BillingModeTieredExpr, info.TieredBillingSnapshot.BillingMode)
 	require.Equal(t, common.QuotaPerUnit, info.TieredBillingSnapshot.QuotaPerUnit)
+}
+
+func TestHandleGroupRatioUsesSelectedMultiGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
+	})
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":2.5}`))
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	common.SetContextKey(ctx, constant.ContextKeyAutoGroup, "vip")
+
+	info := &relaycommon.RelayInfo{
+		UserGroup:  "default",
+		UsingGroup: "default,vip",
+	}
+
+	groupRatio := HandleGroupRatio(ctx, info)
+
+	require.Equal(t, "vip", info.UsingGroup)
+	require.Equal(t, 2.5, groupRatio.GroupRatio)
+	require.False(t, groupRatio.HasSpecialRatio)
+}
+
+func TestHandleGroupRatioKeepsSingleGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatio))
+	})
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1.25,"vip":2.5}`))
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+
+	info := &relaycommon.RelayInfo{
+		UserGroup:  "default",
+		UsingGroup: "default",
+	}
+
+	groupRatio := HandleGroupRatio(ctx, info)
+
+	require.Equal(t, "default", info.UsingGroup)
+	require.Equal(t, 1.25, groupRatio.GroupRatio)
+	require.False(t, groupRatio.HasSpecialRatio)
 }

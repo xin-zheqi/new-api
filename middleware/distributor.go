@@ -92,7 +92,13 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					if playgroundRequest.Group != "" {
-						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
+						if service.TokenGroupIsAuto(usingGroup) || service.TokenGroupIsMulti(usingGroup) {
+							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+							if !common.StringsContains(service.GetTokenRouteGroups(usingGroup, userGroup), playgroundRequest.Group) {
+								abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
+								return
+							}
+						} else if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
 							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
 							return
 						}
@@ -109,10 +115,10 @@ func Distribute() func(c *gin.Context) {
 								abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorAffinityChannelDisabled))
 								return
 							}
-						} else if usingGroup == "auto" {
+						} else if service.TokenGroupIsAuto(usingGroup) || service.TokenGroupIsMulti(usingGroup) {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-							autoGroups := service.GetUserAutoGroup(userGroup)
-							for _, g := range autoGroups {
+							routeGroups := service.GetTokenRouteGroups(usingGroup, userGroup)
+							for _, g := range routeGroups {
 								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
@@ -138,8 +144,10 @@ func Distribute() func(c *gin.Context) {
 					})
 					if err != nil {
 						showGroup := usingGroup
-						if usingGroup == "auto" {
+						if service.TokenGroupIsAuto(usingGroup) {
 							showGroup = fmt.Sprintf("auto(%s)", selectGroup)
+						} else if service.TokenGroupIsMulti(usingGroup) {
+							showGroup = fmt.Sprintf("%s(%s)", usingGroup, selectGroup)
 						}
 						message := i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Group": showGroup, "Model": modelRequest.Model, "Error": err.Error()})
 						// 如果错误，但是渠道不为空，说明是数据库一致性问题
@@ -229,7 +237,21 @@ func getJSONStringValue(result gjson.Result, field string) (string, error) {
 	if result.Type != gjson.String {
 		return "", fmt.Errorf("field %s must be a string", field)
 	}
-	return result.String(), nil
+	value := result.String()
+	if field == "group" && len(value) > model.MaxTokenGroupConfigLength {
+		return "", fmt.Errorf("field %s is too long", field)
+	}
+	return value, nil
+}
+
+func validateModelRequest(modelRequest *ModelRequest) error {
+	if modelRequest == nil || modelRequest.Model == "" {
+		return nil
+	}
+	if len(modelRequest.Model) > model.MaxRelayModelNameLength {
+		return fmt.Errorf("field model is too long")
+	}
+	return nil
 }
 
 func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
@@ -392,6 +414,9 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") && modelRequest.Model != "" {
 		modelRequest.Model = ratio_setting.WithCompactModelSuffix(modelRequest.Model)
+	}
+	if err := validateModelRequest(&modelRequest); err != nil {
+		return nil, false, err
 	}
 	return &modelRequest, shouldSelectChannel, nil
 }

@@ -80,6 +80,7 @@ const OperationSetting = () => {
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,
+    'token_setting.max_group_count': 50,
   });
 
   let [loading, setLoading] = useState(false);

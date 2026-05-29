@@ -334,23 +334,27 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if types.IsSkipRetryError(openaiErr) {
 		return false
 	}
-	if retryTimes <= 0 {
-		return false
-	}
 	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
 	}
 	code := openaiErr.StatusCode
+	retryable := false
 	if code >= 200 && code < 300 {
 		return false
+	} else if operation_setting.IsAlwaysSkipRetryCode(openaiErr.GetErrorCode()) {
+		return false
+	} else if code < 100 || code > 599 {
+		retryable = true
+	} else {
+		retryable = operation_setting.ShouldRetryByStatusCode(code)
 	}
-	if code < 100 || code > 599 {
-		return true
-	}
-	if operation_setting.IsAlwaysSkipRetryCode(openaiErr.GetErrorCode()) {
+	if !retryable {
 		return false
 	}
-	return operation_setting.ShouldRetryByStatusCode(code)
+	if common.GetContextKeyBool(c, constant.ContextKeyTokenCrossGroupRetry) {
+		return !common.GetContextKeyBool(c, constant.ContextKeyCrossGroupExhausted)
+	}
+	return retryTimes > 0
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
@@ -628,9 +632,6 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
-	if retryTimes <= 0 {
-		return false
-	}
 	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
 	}
@@ -638,11 +639,19 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 		return false
 	}
 	code := taskErr.StatusCode
+	retryable := false
 	if code >= 200 && code < 300 {
 		return false
+	} else if code < 100 || code > 599 {
+		retryable = true
+	} else {
+		retryable = operation_setting.ShouldRetryByStatusCode(code)
 	}
-	if code < 100 || code > 599 {
-		return true
+	if !retryable {
+		return false
 	}
-	return operation_setting.ShouldRetryByStatusCode(code)
+	if common.GetContextKeyBool(c, constant.ContextKeyTokenCrossGroupRetry) {
+		return !common.GetContextKeyBool(c, constant.ContextKeyCrossGroupExhausted)
+	}
+	return retryTimes > 0
 }

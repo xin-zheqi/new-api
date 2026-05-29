@@ -76,7 +76,7 @@ import {
 } from '../lib'
 import { type ApiKey } from '../types'
 import {
-  ApiKeyGroupCombobox,
+  ApiKeyGroupOrderSelector,
   type ApiKeyGroupOption,
 } from './api-key-group-combobox'
 import { useApiKeys } from './api-keys-provider'
@@ -150,16 +150,20 @@ export function ApiKeysMutateDrawer({
   // Correct group after groups load: if the form value is not in available groups, fall back
   useEffect(() => {
     if (groups.length === 0) return
-    const currentGroup = form.getValues('group')
-    if (currentGroup && !groups.some((g) => g.value === currentGroup)) {
+    const currentGroups = form.getValues('groups') || []
+    const validGroups = currentGroups.filter((group) =>
+      groups.some((item) => item.value === group)
+    )
+    if (validGroups.length !== currentGroups.length || validGroups.length === 0) {
       const fallback =
         groups.find((g) => g.value === 'default')?.value ??
         groups[0]?.value ??
         ''
+      form.setValue('groups', fallback ? [fallback] : [])
       form.setValue('group', fallback)
-      if (currentGroup === 'auto') {
-        form.setValue('cross_group_retry', false)
-      }
+      form.setValue('cross_group_retry', fallback === 'auto')
+    } else {
+      form.setValue('group', validGroups.join(','))
     }
   }, [groups, form])
 
@@ -243,7 +247,9 @@ export function ApiKeysMutateDrawer({
   const quotaPlaceholder = tokensOnly
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
-  const selectedGroup = form.watch('group')
+  const selectedGroups = form.watch('groups') || []
+  const showCrossGroupRetry =
+    selectedGroups.includes('auto') || selectedGroups.length > 1
   const unlimitedQuota = form.watch('unlimited_quota')
 
   return (
@@ -297,16 +303,27 @@ export function ApiKeysMutateDrawer({
 
               <FormField
                 control={form.control}
-                name='group'
+                name='groups'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Group')}</FormLabel>
+                    <FormLabel>{t('Groups')}</FormLabel>
+                    <FormDescription className='mb-1'>
+                      {t(
+                        'Requests use the first group that has an available channel for the model.'
+                      )}
+                    </FormDescription>
                     <FormControl>
-                      <ApiKeyGroupCombobox
+                      <ApiKeyGroupOrderSelector
                         options={groups}
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        placeholder={t('Select a group')}
+                        values={field.value}
+                        onValuesChange={(values) => {
+                          field.onChange(values)
+                          form.setValue('group', values.join(','))
+                          if (!values.includes('auto') && values.length <= 1) {
+                            form.setValue('cross_group_retry', false)
+                          }
+                        }}
+                        placeholder={t('Add a group')}
                       />
                     </FormControl>
                     <FormMessage />
@@ -314,7 +331,7 @@ export function ApiKeysMutateDrawer({
                 )}
               />
 
-              {selectedGroup === 'auto' && (
+              {showCrossGroupRetry && (
                 <FormField
                   control={form.control}
                   name='cross_group_retry'

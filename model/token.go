@@ -27,8 +27,56 @@ type Token struct {
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
-	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，auto 或多分组令牌有效
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
+}
+
+const (
+	MaxTokenGroupConfigLength = 2048
+	MaxTokenGroupNameLength   = 128
+	MaxRelayModelNameLength   = 255
+)
+
+func NormalizeTokenGroupList(group string) []string {
+	group = strings.TrimSpace(group)
+	if group == "" {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	groups := make([]string, 0)
+	for _, item := range strings.Split(group, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		groups = append(groups, item)
+	}
+	return groups
+}
+
+func NormalizeTokenGroup(group string) string {
+	return strings.Join(NormalizeTokenGroupList(group), ",")
+}
+
+func (token *Token) NormalizeGroup() {
+	token.Group = NormalizeTokenGroup(token.Group)
+}
+
+func (token *Token) GetGroups() []string {
+	return NormalizeTokenGroupList(token.Group)
+}
+
+func (token *Token) IsAutoGroup() bool {
+	groups := token.GetGroups()
+	return len(groups) == 1 && groups[0] == "auto"
+}
+
+func (token *Token) IsMultiGroup() bool {
+	return len(token.GetGroups()) > 1
 }
 
 func (token *Token) Clean() {
@@ -278,6 +326,7 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 
 func (token *Token) Insert() error {
 	var err error
+	token.NormalizeGroup()
 	err = DB.Create(token).Error
 	return err
 }
@@ -294,6 +343,7 @@ func (token *Token) Update() (err error) {
 			})
 		}
 	}()
+	token.NormalizeGroup()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
 		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry").Updates(token).Error
 	return err

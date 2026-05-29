@@ -49,6 +49,8 @@ import {
 } from '@douyinfe/semi-ui';
 import {
   IconCreditCard,
+  IconChevronDown,
+  IconChevronUp,
   IconLink,
   IconSave,
   IconClose,
@@ -80,9 +82,36 @@ const EditTokenModal = (props) => {
     model_limits: [],
     allow_ips: '',
     group: '',
+    groups: [],
     cross_group_retry: false,
     tokenCount: 1,
   });
+
+  const normalizeGroups = (group) =>
+    String(group || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const syncGroupValues = (nextGroups) => {
+    const uniqueGroups = Array.from(new Set(nextGroups.filter(Boolean)));
+    formApiRef.current?.setValue('groups', uniqueGroups);
+    formApiRef.current?.setValue('group', uniqueGroups.join(','));
+    if (!uniqueGroups.includes('auto') && uniqueGroups.length <= 1) {
+      formApiRef.current?.setValue('cross_group_retry', false);
+    }
+  };
+
+  const moveGroup = (groups, index, direction) => {
+    const nextGroups = [...groups];
+    const target = index + direction;
+    if (target < 0 || target >= nextGroups.length) return;
+    [nextGroups[index], nextGroups[target]] = [
+      nextGroups[target],
+      nextGroups[index],
+    ];
+    syncGroupValues(nextGroups);
+  };
 
   const handleCancel = () => {
     props.handleClose();
@@ -169,6 +198,7 @@ const EditTokenModal = (props) => {
       } else {
         data.model_limits = [];
       }
+      data.groups = normalizeGroups(data.group);
       data.remain_amount = Number(
         quotaToDisplayAmount(data.remain_quota || 0).toFixed(6),
       );
@@ -238,6 +268,14 @@ const EditTokenModal = (props) => {
       }
       localInputs.model_limits = localInputs.model_limits.join(',');
       localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
+      localInputs.group = (localInputs.groups || []).join(',');
+      delete localInputs.groups;
+      if (
+        localInputs.group !== 'auto' &&
+        localInputs.group.split(',').filter(Boolean).length <= 1
+      ) {
+        localInputs.cross_group_retry = false;
+      }
       let res = await API.put(`/api/token/`, {
         ...localInputs,
         id: parseInt(props.editingToken.id),
@@ -282,6 +320,14 @@ const EditTokenModal = (props) => {
         }
         localInputs.model_limits = localInputs.model_limits.join(',');
         localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
+        localInputs.group = (localInputs.groups || []).join(',');
+        delete localInputs.groups;
+        if (
+          localInputs.group !== 'auto' &&
+          localInputs.group.split(',').filter(Boolean).length <= 1
+        ) {
+          localInputs.cross_group_retry = false;
+        }
         let res = await API.post(`/api/token/`, localInputs);
         const { success, message } = res.data;
         if (success) {
@@ -384,23 +430,49 @@ const EditTokenModal = (props) => {
                   </Col>
                   <Col span={24}>
                     {groups.length > 0 ? (
-                      <Form.Select
-                        field='group'
-                        label={t('令牌分组')}
-                        placeholder={t('令牌分组，默认为用户的分组')}
-                        optionList={groups}
-                        renderOptionItem={renderGroupOption}
-                        filter={(input, option) => {
-                          const q = input.toLowerCase();
-                          return (
-                            option.value?.toLowerCase().includes(q) ||
-                            (typeof option.label === 'string' &&
-                              option.label.toLowerCase().includes(q))
-                          );
-                        }}
-                        showClear
-                        style={{ width: '100%' }}
-                      />
+                      <>
+                        <Form.Select
+                          field='groups'
+                          label={t('令牌分组')}
+                          placeholder={t('请选择令牌可用分组')}
+                          optionList={groups}
+                          renderOptionItem={renderGroupOption}
+                          multiple
+                          maxTagCount={3}
+                          onChange={(value) => {
+                            const nextGroups = Array.isArray(value)
+                              ? value
+                              : value
+                                ? [value]
+                                : [];
+                            if (nextGroups.includes('auto')) {
+                              syncGroupValues(['auto']);
+                            } else {
+                              syncGroupValues(nextGroups);
+                            }
+                          }}
+                          filter={(input, option) => {
+                            const q = input.toLowerCase();
+                            return (
+                              option.value?.toLowerCase().includes(q) ||
+                              (typeof option.label === 'string' &&
+                                option.label.toLowerCase().includes(q))
+                            );
+                          }}
+                          showClear
+                          style={{ width: '100%' }}
+                        />
+                        <div className='mt-1 text-xs text-gray-500'>
+                          {t(
+                            '请求时会按下方顺序使用第一个拥有该模型可用渠道的分组',
+                          )}
+                        </div>
+                        <Form.Input
+                          field='group'
+                          noLabel
+                          style={{ display: 'none' }}
+                        />
+                      </>
                     ) : (
                       <Form.Select
                         placeholder={t('管理员未设置用户可选分组')}
@@ -410,10 +482,55 @@ const EditTokenModal = (props) => {
                       />
                     )}
                   </Col>
+                  {Array.isArray(values.groups) && values.groups.length > 0 && (
+                    <Col span={24}>
+                      <div className='flex flex-col gap-1.5'>
+                        {values.groups.map((group, index) => {
+                          const info = groups.find((item) => item.value === group);
+                          return (
+                            <div
+                              key={`${group}-${index}`}
+                              className='flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2'
+                            >
+                              <Text type='tertiary' size='small'>
+                                {index + 1}
+                              </Text>
+                              <div className='min-w-0 flex-1'>
+                                <div className='truncate text-sm font-medium'>
+                                  {info?.label || group}
+                                </div>
+                                <div className='truncate text-xs text-gray-500'>
+                                  {group}
+                                </div>
+                              </div>
+                              <Button
+                                theme='borderless'
+                                type='tertiary'
+                                icon={<IconChevronUp />}
+                                disabled={index === 0}
+                                onClick={() => moveGroup(values.groups, index, -1)}
+                              />
+                              <Button
+                                theme='borderless'
+                                type='tertiary'
+                                icon={<IconChevronDown />}
+                                disabled={index === values.groups.length - 1}
+                                onClick={() => moveGroup(values.groups, index, 1)}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Col>
+                  )}
                   <Col
                     span={24}
                     style={{
-                      display: values.group === 'auto' ? 'block' : 'none',
+                      display:
+                        values.group === 'auto' ||
+                        (Array.isArray(values.groups) && values.groups.length > 1)
+                          ? 'block'
+                          : 'none',
                     }}
                   >
                     <Form.Switch

@@ -223,6 +223,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "token_setting.max_group_count":
+		value, convErr := strconv.Atoi(strings.TrimSpace(option.Value.(string)))
+		if convErr != nil || value < operation_setting.MinMaxGroupCount || value > operation_setting.MaxMaxGroupCount {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("令牌最大分组数必须在 %d 到 %d 之间", operation_setting.MinMaxGroupCount, operation_setting.MaxMaxGroupCount),
+			})
+			return
+		}
 	case "GroupRatio":
 		err = ratio_setting.CheckGroupRatio(option.Value.(string))
 		if err != nil {

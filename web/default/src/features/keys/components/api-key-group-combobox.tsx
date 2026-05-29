@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo, useState } from 'react'
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, ChevronsUpDown, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -47,6 +47,14 @@ type ApiKeyGroupComboboxProps = {
   options: ApiKeyGroupOption[]
   value?: string
   onValueChange: (value: string) => void
+  placeholder?: string
+  disabled?: boolean
+}
+
+type ApiKeyGroupOrderSelectorProps = {
+  options: ApiKeyGroupOption[]
+  values?: string[]
+  onValuesChange: (values: string[]) => void
   placeholder?: string
   disabled?: boolean
 }
@@ -205,5 +213,131 @@ export function ApiKeyGroupCombobox({
         </Command>
       </PopoverContent>
     </Popover>
+  )
+}
+
+export function ApiKeyGroupOrderSelector({
+  options,
+  values = [],
+  onValuesChange,
+  placeholder,
+  disabled,
+}: ApiKeyGroupOrderSelectorProps) {
+  const { t } = useTranslation()
+  const normalizedValues = values.filter(Boolean)
+  const selectedValues =
+    normalizedValues.length > 0
+      ? normalizedValues
+      : options[0]?.value
+        ? [options[0].value]
+        : []
+  const selectedSet = new Set(selectedValues)
+  const hasAuto = selectedSet.has('auto')
+  const selectedOptions = selectedValues
+    .map((value) => options.find((option) => option.value === value))
+    .filter((option): option is ApiKeyGroupOption => Boolean(option))
+  const selectableOptions = options.map((option) => ({
+    ...option,
+    disabled: hasAuto && option.value !== 'auto',
+  }))
+
+  const commit = (nextValues: string[]) => {
+    const uniqueValues = Array.from(new Set(nextValues.filter(Boolean)))
+    onValuesChange(uniqueValues)
+  }
+
+  const handleSelect = (value: string) => {
+    if (value === 'auto') {
+      commit(['auto'])
+      return
+    }
+    if (selectedSet.has(value)) {
+      const nextValues = selectedValues.filter((item) => item !== value)
+      commit(nextValues.length > 0 ? nextValues : [value])
+      return
+    }
+    commit([...selectedValues.filter((item) => item !== 'auto'), value])
+  }
+
+  const move = (index: number, direction: -1 | 1) => {
+    const nextValues = [...selectedValues]
+    const target = index + direction
+    if (target < 0 || target >= nextValues.length) return
+    ;[nextValues[index], nextValues[target]] = [
+      nextValues[target],
+      nextValues[index],
+    ]
+    commit(nextValues)
+  }
+
+  const remove = (value: string) => {
+    const nextValues = selectedValues.filter((item) => item !== value)
+    if (nextValues.length === 0) return
+    commit(nextValues)
+  }
+
+  return (
+    <div className='space-y-1.5'>
+      <ApiKeyGroupCombobox
+        options={selectableOptions.filter((option) => !option.disabled)}
+        value=''
+        onValueChange={handleSelect}
+        placeholder={placeholder || t('Add a group')}
+        disabled={disabled}
+      />
+      <div className='space-y-1.5'>
+        {selectedOptions.map((option, index) => (
+          <div
+            key={option.value}
+            className='border-border bg-muted/30 flex min-h-12 items-center gap-2 rounded-lg border px-3 py-2'
+          >
+            <span className='text-muted-foreground w-5 shrink-0 text-xs'>
+              {index + 1}
+            </span>
+            <span className='min-w-0 flex-1'>
+              <span className='block truncate text-sm font-medium'>
+                {option.label}
+              </span>
+              {option.desc && (
+                <span className='text-muted-foreground block truncate text-xs'>
+                  {option.desc}
+                </span>
+              )}
+            </span>
+            <GroupRatioBadge ratio={option.ratio} />
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon-sm'
+              disabled={index === 0 || disabled}
+              onClick={() => move(index, -1)}
+              title={t('Move up')}
+            >
+              <ChevronUp className='size-4' />
+            </Button>
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon-sm'
+              disabled={index === selectedOptions.length - 1 || disabled}
+              onClick={() => move(index, 1)}
+              title={t('Move down')}
+            >
+              <ChevronDown className='size-4' />
+            </Button>
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon-sm'
+              disabled={selectedOptions.length <= 1 || disabled}
+              onClick={() => remove(option.value)}
+              title={t('Remove')}
+            >
+              <X className='size-4' />
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

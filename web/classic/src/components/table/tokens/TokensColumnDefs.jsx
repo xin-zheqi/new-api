@@ -89,6 +89,10 @@ const renderStatus = (text, record, t) => {
 
 // Render group column
 const renderGroupColumn = (text, record, t, groupRatios = {}) => {
+  const groups = String(text || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
   if (text === 'auto') {
     return (
       <Tooltip
@@ -102,6 +106,22 @@ const renderGroupColumn = (text, record, t, groupRatios = {}) => {
           {record && record.cross_group_retry ? `(${t('跨分组')})` : ''}
         </Tag>
       </Tooltip>
+    );
+  }
+  if (groups.length > 1) {
+    return (
+      <span className='flex flex-wrap items-center gap-1'>
+        {groups.map((group, index) => (
+          <Tag key={`${group}-${index}`} color='white' shape='circle'>
+            {index + 1}. {group}
+          </Tag>
+        ))}
+        {record && record.cross_group_retry ? (
+          <Tag size='small' color='blue' shape='circle'>
+            {t('跨分组')}
+          </Tag>
+        ) : null}
+      </span>
     );
   }
   const ratio = groupRatios[text];

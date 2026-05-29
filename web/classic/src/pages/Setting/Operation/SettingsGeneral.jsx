@@ -58,6 +58,7 @@ export default function GeneralSettings(props) {
     DemoSiteEnabled: false,
     SelfUseModeEnabled: false,
     'token_setting.max_user_tokens': 1000,
+    'token_setting.max_group_count': 50,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -401,6 +402,28 @@ export default function GeneralSettings(props) {
                   extraText={t('每个用户最多可创建的令牌数量，默认 1000，设置过大可能会影响性能')}
                   placeholder={'1000'}
                   onChange={handleFieldChange('token_setting.max_user_tokens')}
+                />
+              </Col>
+            </Row>
+          </Form.Section>
+
+          <Form.Section text={t('令牌安全限制')}>
+            <Banner
+              type='info'
+              description={t(
+                '限制单个令牌可选择的分组数量，避免过多分组造成额外路由检查。',
+              )}
+              style={{ marginBottom: 16 }}
+            />
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  field={'token_setting.max_group_count'}
+                  label={t('单个令牌最大分组数')}
+                  extraText={t('允许范围：1-100。默认：50。')}
+                  min={1}
+                  max={100}
+                  onChange={handleFieldChange('token_setting.max_group_count')}
                 />
               </Col>
             </Row>

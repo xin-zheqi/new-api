@@ -199,7 +199,16 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
       cell: ({ row }) => {
         const apiKey = row.original
         const group = row.getValue('group') as string
-        const ratio = group && group !== 'auto' ? groupRatios[group] : undefined
+        const groups = group
+          ? group
+              .split(',')
+              .map((item) => item.trim())
+              .filter(Boolean)
+          : []
+        const ratio =
+          groups.length === 1 && groups[0] !== 'auto'
+            ? groupRatios[groups[0]]
+            : undefined
 
         if (group === 'auto') {
           return (
@@ -226,6 +235,26 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
                 </span>
               </TooltipContent>
             </Tooltip>
+          )
+        }
+        if (groups.length > 1) {
+          return (
+            <div className='flex max-w-64 flex-wrap gap-1'>
+              {groups.map((item, index) => (
+                <GroupBadge
+                  key={`${item}-${index}`}
+                  group={`${index + 1}. ${item}`}
+                  ratio={undefined}
+                />
+              ))}
+              {apiKey.cross_group_retry && (
+                <StatusBadge
+                  label={t('Cross-group')}
+                  variant='info'
+                  copyable={false}
+                />
+              )}
+            </div>
           )
         }
         return <GroupBadge group={group} ratio={ratio} />

@@ -39,6 +39,7 @@ import {
   renderQuota,
   getModelCategories,
   showError,
+  stringToColor,
 } from '../../../helpers';
 import {
   IconTreeTriangleDown,
@@ -89,6 +90,12 @@ const renderStatus = (text, record, t) => {
 
 // Render group column
 const renderGroupColumn = (text, record, t, groupRatios = {}) => {
+  const tagColors = {
+    vip: 'yellow',
+    pro: 'yellow',
+    svip: 'red',
+    premium: 'red',
+  };
   const groups = String(text || '')
     .split(',')
     .map((item) => item.trim())
@@ -101,10 +108,11 @@ const renderGroupColumn = (text, record, t, groupRatios = {}) => {
         )}
         position='top'
       >
-        <Tag color='white' shape='circle'>
-          {t('智能熔断')}
-          {record && record.cross_group_retry ? `(${t('跨分组')})` : ''}
-        </Tag>
+        <span className='flex flex-wrap items-center gap-1'>
+          <Tag color='white' shape='circle'>
+            {t('智能熔断')}
+          </Tag>
+        </span>
       </Tooltip>
     );
   }
@@ -112,15 +120,14 @@ const renderGroupColumn = (text, record, t, groupRatios = {}) => {
     return (
       <span className='flex flex-wrap items-center gap-1'>
         {groups.map((group, index) => (
-          <Tag key={`${group}-${index}`} color='white' shape='circle'>
+          <Tag
+            key={`${group}-${index}`}
+            color={tagColors[group] || stringToColor(group)}
+            shape='circle'
+          >
             {index + 1}. {group}
           </Tag>
         ))}
-        {record && record.cross_group_retry ? (
-          <Tag size='small' color='blue' shape='circle'>
-            {t('跨分组')}
-          </Tag>
-        ) : null}
       </span>
     );
   }
@@ -134,6 +141,21 @@ const renderGroupColumn = (text, record, t, groupRatios = {}) => {
         </Tag>
       )}
     </span>
+  );
+};
+
+const renderRetryStrategy = (record, t) => {
+  if (record && record.cross_group_retry) {
+    return (
+      <Tag size='small' color='blue' shape='circle'>
+        {t('跨分组')}
+      </Tag>
+    );
+  }
+  return (
+    <Tag size='small' color='grey' shape='circle'>
+      {t('默认')}
+    </Tag>
   );
 };
 
@@ -522,6 +544,12 @@ export const getTokensColumns = ({
       dataIndex: 'group',
       key: 'group',
       render: (text, record) => renderGroupColumn(text, record, t, groupRatios),
+    },
+    {
+      title: t('跨分组重试'),
+      dataIndex: 'cross_group_retry',
+      key: 'cross_group_retry',
+      render: (text, record) => renderRetryStrategy(record, t),
     },
     {
       title: t('密钥'),

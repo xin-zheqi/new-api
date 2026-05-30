@@ -67,6 +67,10 @@ function useGroupRatios(): Record<string, number> {
   return data ?? {}
 }
 
+function renderRetryStrategyBadge(label: string, variant: 'neutral' | 'info') {
+  return <StatusBadge label={label} variant={variant} copyable={false} />
+}
+
 export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
   const { t } = useTranslation()
   const groupRatios = useGroupRatios()
@@ -219,13 +223,6 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
                 }
               >
                 <GroupBadge group='auto' />
-                {apiKey.cross_group_retry && (
-                  <StatusBadge
-                    label={t('Cross-group')}
-                    variant='info'
-                    copyable={false}
-                  />
-                )}
               </TooltipTrigger>
               <TooltipContent>
                 <span className='text-xs'>
@@ -243,23 +240,31 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
               {groups.map((item, index) => (
                 <GroupBadge
                   key={`${item}-${index}`}
-                  group={`${index + 1}. ${item}`}
+                  group={item}
+                  label={`${index + 1}. ${item}`}
                   ratio={undefined}
                 />
               ))}
-              {apiKey.cross_group_retry && (
-                <StatusBadge
-                  label={t('Cross-group')}
-                  variant='info'
-                  copyable={false}
-                />
-              )}
             </div>
           )
         }
         return <GroupBadge group={group} ratio={ratio} />
       },
       meta: { label: t('Group'), mobileHidden: true },
+    },
+    {
+      id: 'retry_strategy',
+      accessorKey: 'cross_group_retry',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Cross-group retry')} />
+      ),
+      cell: ({ row }) => {
+        const enabled = !!row.original.cross_group_retry
+        return enabled
+          ? renderRetryStrategyBadge(t('Cross-group'), 'info')
+          : renderRetryStrategyBadge(t('Standard'), 'neutral')
+      },
+      meta: { label: t('Cross-group retry'), mobileHidden: true },
     },
     {
       id: 'model_limits',

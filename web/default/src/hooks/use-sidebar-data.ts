@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { type SidebarData } from '@/components/layout/types'
+import { ROLE } from '@/lib/roles'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -143,9 +144,15 @@ export function useSidebarData(): SidebarData {
             icon: Ticket,
           },
           {
-            title: t('Subscription Management'),
+            title: t('Subscription Settings'),
             url: '/subscriptions',
             icon: CreditCard,
+          },
+          {
+            title: t('Subscription Management'),
+            url: '/subscriptions/users',
+            icon: CreditCard,
+            minRole: ROLE.SUPER_ADMIN,
           },
           {
             title: t('System Settings'),

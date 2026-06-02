@@ -348,6 +348,27 @@ func AdminBindSubscription(c *gin.Context) {
 
 // ---- Admin: user subscription management ----
 
+func AdminListAllUserSubscriptions(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	planId, _ := strconv.Atoi(c.Query("plan_id"))
+	userId, _ := strconv.Atoi(c.Query("user_id"))
+
+	records, total, err := model.ListAdminUserSubscriptions(model.AdminUserSubscriptionQuery{
+		Keyword: strings.TrimSpace(c.Query("keyword")),
+		Status:  strings.TrimSpace(c.Query("status")),
+		PlanId:  planId,
+		UserId:  userId,
+		Source:  strings.TrimSpace(c.Query("source")),
+	}, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func AdminListUserSubscriptions(c *gin.Context) {
 	userId, _ := strconv.Atoi(c.Param("id"))
 	if userId <= 0 {

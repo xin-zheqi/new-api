@@ -90,19 +90,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
-			switch relayFormat {
-			case types.RelayFormatOpenAIRealtime:
-				helper.WssError(c, ws, newAPIError.ToOpenAIError())
-			case types.RelayFormatClaude:
-				c.JSON(newAPIError.StatusCode, gin.H{
-					"type":  "error",
-					"error": newAPIError.ToClaudeError(),
-				})
-			default:
-				c.JSON(newAPIError.StatusCode, gin.H{
-					"error": newAPIError.ToOpenAIError(),
-				})
-			}
+			writeRelayErrorResponse(c, relayFormat, ws, newAPIError)
 		}
 	}()
 
@@ -230,6 +218,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
+		// 流式请求一旦开始向客户端写入响应（HTTP headers + SSE 数据），就不能再重试。
+		// StreamScannerHandler 延迟到首个上游 SSE 数据到达才下发 headers，
+		// 所以 c.Writer.Written() == true 意味着至少有一条 SSE 数据已经写给客户端，
+		// 此时重试会导致两个流交叉，Claude 客户端会报 "Content block not found"。
+		// 上游 4xx/5xx 或连接失败（未进入 StreamScannerHandler）时，Written() 仍为 false，可以正常重试。
+		if c.Writer.Written() {
+			logger.LogWarn(c, "cannot retry: response already started streaming to client")
+			break
+		}
+
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
 		}
@@ -243,6 +241,34 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if newAPIError != nil {
 		gopool.Go(func() {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
+		})
+	}
+}
+
+func writeRelayErrorResponse(c *gin.Context, relayFormat types.RelayFormat, ws *websocket.Conn, newAPIError *types.NewAPIError) {
+	if newAPIError == nil {
+		return
+	}
+
+	if relayFormat == types.RelayFormatOpenAIRealtime {
+		helper.WssError(c, ws, newAPIError.ToOpenAIError())
+		return
+	}
+
+	if c != nil && c.Writer != nil && c.Writer.Written() {
+		logger.LogWarn(c, "skip relay error response: client response already started")
+		return
+	}
+
+	switch relayFormat {
+	case types.RelayFormatClaude:
+		c.JSON(newAPIError.StatusCode, gin.H{
+			"type":  "error",
+			"error": newAPIError.ToClaudeError(),
+		})
+	default:
+		c.JSON(newAPIError.StatusCode, gin.H{
+			"error": newAPIError.ToOpenAIError(),
 		})
 	}
 }
@@ -357,6 +383,13 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	return retryTimes > 0
 }
 
+func getActualLogGroup(c *gin.Context) string {
+	if group := common.GetContextKeyString(c, constant.ContextKeyAutoGroup); group != "" {
+		return group
+	}
+	return common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+}
+
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
@@ -373,7 +406,7 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		tokenName := c.GetString("token_name")
 		modelName := c.GetString("original_model")
 		tokenId := c.GetInt("token_id")
-		userGroup := c.GetString("group")
+		actualGroup := getActualLogGroup(c)
 		channelId := c.GetInt("channel_id")
 		other := make(map[string]interface{})
 		if c.Request != nil && c.Request.URL != nil {
@@ -409,7 +442,7 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), actualGroup, other)
 	}
 
 }

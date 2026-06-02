@@ -38,6 +38,7 @@ const routerMap = {
   topup: '/console/topup',
   user: '/console/user',
   subscription: '/console/subscription',
+  user_subscriptions: '/console/subscription/users',
   log: '/console/log',
   token_usage: '/console/token-usage',
   midjourney: '/console/midjourney',
@@ -164,10 +165,17 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {
-        text: t('订阅管理'),
+        text: t('订阅设置'),
         itemKey: 'subscription',
         to: '/subscription',
         className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('订阅管理'),
+        itemKey: 'user_subscriptions',
+        to: '/subscription/users',
+        configKey: 'subscription',
+        className: isRoot() ? '' : 'tableHiddle',
       },
       {
         text: t('模型管理'),
@@ -203,7 +211,10 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 
     // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
-      const configVisible = isModuleVisible('admin', item.itemKey);
+      const configVisible = isModuleVisible(
+        'admin',
+        item.configKey || item.itemKey,
+      );
       return configVisible;
     });
 

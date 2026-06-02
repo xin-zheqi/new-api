@@ -36,7 +36,7 @@ function SubscriptionsContent() {
     <>
       <SectionPageLayout>
         <SectionPageLayout.Title>
-          {t('Subscription Management')}
+          {t('Subscription Settings')}
         </SectionPageLayout.Title>
         <SectionPageLayout.Actions>
           <div className='flex items-center gap-2'>

@@ -168,11 +168,12 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.PATCH("/plans/:id", controller.AdminUpdateSubscriptionPlanStatus)
 			subscriptionAdminRoute.POST("/bind", controller.AdminBindSubscription)
 
-			// User subscription management (admin)
-			subscriptionAdminRoute.GET("/users/:id/subscriptions", controller.AdminListUserSubscriptions)
-			subscriptionAdminRoute.POST("/users/:id/subscriptions", controller.AdminCreateUserSubscription)
-			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
-			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
+			// User subscription instance management (root only).
+			subscriptionAdminRoute.GET("/user_subscriptions", middleware.RootAuth(), controller.AdminListAllUserSubscriptions)
+			subscriptionAdminRoute.GET("/users/:id/subscriptions", middleware.RootAuth(), controller.AdminListUserSubscriptions)
+			subscriptionAdminRoute.POST("/users/:id/subscriptions", middleware.RootAuth(), controller.AdminCreateUserSubscription)
+			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", middleware.RootAuth(), controller.AdminInvalidateUserSubscription)
+			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", middleware.RootAuth(), controller.AdminDeleteUserSubscription)
 		}
 
 		// Subscription payment callbacks (no auth)

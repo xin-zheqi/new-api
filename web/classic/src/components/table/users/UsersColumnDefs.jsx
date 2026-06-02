@@ -33,6 +33,7 @@ import {
   renderGroup,
   renderNumber,
   renderQuota,
+  isRoot,
   timestamp2string,
 } from '../../../helpers';
 
@@ -224,14 +225,18 @@ const renderOperations = (
   }
 
   const moreMenu = [
-    {
-      node: 'item',
-      name: t('订阅管理'),
-      onClick: () => showUserSubscriptionsModal(record),
-    },
-    {
-      node: 'divider',
-    },
+    ...(isRoot()
+      ? [
+          {
+            node: 'item',
+            name: t('订阅管理'),
+            onClick: () => showUserSubscriptionsModal(record),
+          },
+          {
+            node: 'divider',
+          },
+        ]
+      : []),
     {
       node: 'item',
       name: t('重置 Passkey'),

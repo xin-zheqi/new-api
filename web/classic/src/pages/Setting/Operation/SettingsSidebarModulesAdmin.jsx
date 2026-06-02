@@ -262,8 +262,8 @@ export default function SettingsSidebarModulesAdmin(props) {
         },
         {
           key: 'subscription',
-          title: t('订阅管理'),
-          description: t('订阅套餐管理'),
+          title: t('订阅设置'),
+          description: t('订阅套餐设置和用户订阅管理'),
         },
         {
           key: 'redemption',

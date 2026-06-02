@@ -356,6 +356,7 @@ func TestStreamScannerHandler_PingSentDuringSlowUpstream(t *testing.T) {
 	go func() {
 		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
 			count.Add(1)
+			_ = StringData(c, data)
 		})
 		close(done)
 	}()
@@ -419,6 +420,7 @@ func TestStreamScannerHandler_PingDisabledByRelayInfo(t *testing.T) {
 	go func() {
 		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
 			count.Add(1)
+			_ = StringData(c, data)
 		})
 		close(done)
 	}()
@@ -670,6 +672,7 @@ func TestStreamScannerHandler_PingInterleavesWithSlowUpstream(t *testing.T) {
 	go func() {
 		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
 			count.Add(1)
+			_ = StringData(c, data)
 		})
 		close(done)
 	}()
@@ -687,4 +690,178 @@ func TestStreamScannerHandler_PingInterleavesWithSlowUpstream(t *testing.T) {
 	t.Logf("received %d pings interleaved with 10 chunks over 5s", pingCount)
 	assert.GreaterOrEqual(t, pingCount, 3,
 		"expected at least 3 pings during 5s stream with 1s ping interval; got %d", pingCount)
+}
+
+// ---------- Deferred SSE headers (retry safety) ----------
+
+// 上游 body 为空时，headers 不应该下发，c.Writer.Written() 应该为 false，
+// 这样上层 controller 才能安全地重试到下一个渠道。
+func TestStreamScannerHandler_DeferredHeaders_EmptyBody(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(""))}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
+
+	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+
+	assert.Empty(t, rec.Body.String(), "no bytes should be written for empty upstream body")
+	assert.False(t, c.Writer.Written(), "Writer.Written() must be false when upstream produced no SSE data")
+	assert.Empty(t, c.Writer.Header().Get("Content-Type"),
+		"SSE Content-Type should not be set when no data is written")
+}
+
+// 上游只回了非 data: 行（如纯注释或空行），同样不应触发 headers 下发，
+// 因为没有任何数据真正写给客户端。
+func TestStreamScannerHandler_DeferredHeaders_NoDataLines(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	body := ": comment-only\n\n"
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(body))}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
+
+	var handlerCalled atomic.Bool
+	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+		handlerCalled.Store(true)
+	})
+
+	assert.False(t, handlerCalled.Load(), "handler should not be called when no data: lines arrive")
+	assert.False(t, c.Writer.Written(), "Writer.Written() must be false when no SSE data was forwarded")
+}
+
+// 上游有数据时，headers 在第一条数据写出前下发，c.Writer.Written() 变为 true。
+func TestStreamScannerHandler_DeferredHeaders_SetOnFirstChunk(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	body := "data: {\"id\":1}\ndata: [DONE]\n"
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(body))}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
+
+	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+		_ = StringData(c, data)
+	})
+
+	assert.True(t, c.Writer.Written(), "Writer.Written() should be true after at least one chunk was forwarded")
+	assert.Equal(t, "text/event-stream", c.Writer.Header().Get("Content-Type"),
+		"SSE Content-Type should be set once data starts flowing")
+}
+
+// 上游缓慢且最终没有数据时，ping 不应在 headers 之前抢先发送。
+// 否则就会导致 c.Writer.Written() == true 但实际没收到任何业务数据，
+// 让上层无法区分"已经写过响应"和"还没写过响应"。
+func TestStreamScannerHandler_DeferredHeaders_PingWaitsForFirstChunk(t *testing.T) {
+	setting := operation_setting.GetGeneralSetting()
+	oldEnabled := setting.PingIntervalEnabled
+	oldSeconds := setting.PingIntervalSeconds
+	setting.PingIntervalEnabled = true
+	setting.PingIntervalSeconds = 1
+	t.Cleanup(func() {
+		setting.PingIntervalEnabled = oldEnabled
+		setting.PingIntervalSeconds = oldSeconds
+	})
+
+	// 上游在 2.5 秒内没有任何 data: 行，仅在 ping 间隔触发若干次后才结束
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		time.Sleep(2500 * time.Millisecond)
+	}()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	resp := &http.Response{Body: pr}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
+
+	done := make(chan struct{})
+	go func() {
+		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for stream to finish")
+	}
+
+	body := rec.Body.String()
+	assert.NotContains(t, body, ": PING",
+		"ping must not be flushed before the first SSE data chunk; otherwise retry safety breaks")
+	assert.False(t, c.Writer.Written(),
+		"Writer.Written() must remain false when only ping ticks fired without upstream data")
+}
+
+// 上游首个 data: 到达后，回调可能暂不写客户端（例如先缓存、等下一块再输出）。
+// 这种情况下 ping 也不应抢先发送，否则客户端会先收到 ping 而不是首个业务 chunk。
+func TestStreamScannerHandler_DeferredHeaders_PingWaitsForFirstActualWrite(t *testing.T) {
+	setting := operation_setting.GetGeneralSetting()
+	oldEnabled := setting.PingIntervalEnabled
+	oldSeconds := setting.PingIntervalSeconds
+	setting.PingIntervalEnabled = true
+	setting.PingIntervalSeconds = 1
+	t.Cleanup(func() {
+		setting.PingIntervalEnabled = oldEnabled
+		setting.PingIntervalSeconds = oldSeconds
+	})
+
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		fmt.Fprint(pw, "data: first\n")
+		time.Sleep(1500 * time.Millisecond)
+		fmt.Fprint(pw, "data: second\n")
+		time.Sleep(200 * time.Millisecond)
+		fmt.Fprint(pw, "data: [DONE]\n")
+	}()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	resp := &http.Response{Body: pr}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
+
+	var pending string
+	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+		if pending == "" {
+			pending = data
+			return
+		}
+		_ = StringData(c, pending)
+		pending = data
+	})
+
+	body := rec.Body.String()
+	firstDataIdx := strings.Index(body, "data: first")
+	require.NotEqual(t, -1, firstDataIdx, "buffered first chunk should eventually be written")
+
+	pingIdx := strings.Index(body, ": PING")
+	if pingIdx != -1 {
+		assert.Greater(t, pingIdx, firstDataIdx,
+			"ping must not appear before the first actual client-visible chunk")
+	}
 }

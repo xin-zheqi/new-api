@@ -34,6 +34,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { useAuthStore } from '@/stores/auth-store'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,6 +64,7 @@ interface DataTableRowActionsProps {
 export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const { t } = useTranslation()
   const user = row.original
+  const currentUserRole = useAuthStore((state) => state.auth.user?.role)
   const { setOpen, setCurrentRow, triggerRefresh } = useUsers()
   const [resetPasskeyOpen, setResetPasskeyOpen] = useState(false)
   const [resetTwoFAOpen, setResetTwoFAOpen] = useState(false)
@@ -130,6 +132,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const isDisabled = user.status === USER_STATUS.DISABLED
   const isAdmin = user.role >= USER_ROLE.ADMIN
   const isRoot = user.role === USER_ROLE.ROOT
+  const isCurrentUserRoot = currentUserRole === USER_ROLE.ROOT
 
   if (isUserDeleted(user)) {
     return null
@@ -208,17 +211,19 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             </DropdownMenuShortcut>
           </DropdownMenuItem>
 
-          <DropdownMenuItem
-            onSelect={(event) => {
-              event.preventDefault()
-              setSubscriptionsDialogOpen(true)
-            }}
-          >
-            {t('Manage Subscriptions')}
-            <DropdownMenuShortcut>
-              <CreditCard size={16} />
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
+          {isCurrentUserRoot && (
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                setSubscriptionsDialogOpen(true)
+              }}
+            >
+              {t('Manage Subscriptions')}
+              <DropdownMenuShortcut>
+                <CreditCard size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          )}
 
           <DropdownMenuSeparator />
 

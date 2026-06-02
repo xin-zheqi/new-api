@@ -18,27 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Typography } from '@douyinfe/semi-ui';
-import { CalendarClock } from 'lucide-react';
-import CompactModeToggle from '../../common/ui/CompactModeToggle';
+import UserSubscriptionsPage from '../../components/table/user-subscriptions';
 
-const { Text } = Typography;
-
-const SubscriptionsDescription = ({ compactMode, setCompactMode, t }) => {
+const UserSubscription = () => {
   return (
-    <div className='flex flex-col md:flex-row justify-between items-start md:items-center gap-2 w-full'>
-      <div className='flex items-center text-blue-500'>
-        <CalendarClock size={16} className='mr-2' />
-        <Text>{t('订阅设置')}</Text>
-      </div>
-
-      <CompactModeToggle
-        compactMode={compactMode}
-        setCompactMode={setCompactMode}
-        t={t}
-      />
+    <div className='mt-[60px] px-2'>
+      <UserSubscriptionsPage />
     </div>
   );
 };
 
-export default SubscriptionsDescription;
+export default UserSubscription;

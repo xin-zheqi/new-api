@@ -52,6 +52,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	}()
 
 	streamingTimeout := time.Duration(constant.StreamingTimeout) * time.Second
+	if streamingTimeout <= 0 {
+		streamingTimeout = 30 * time.Second
+	}
 
 	var (
 		stopChan   = make(chan bool, 3) // 增加缓冲区避免阻塞
@@ -107,7 +110,25 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 	scanner.Buffer(make([]byte, InitialScannerBufferSize), getScannerBufferSize())
 	scanner.Split(bufio.ScanLines)
-	SetEventStreamHeaders(c)
+
+	// 延迟到首个上游 SSE 数据到达再准备 SSE headers。
+	// 只有当回调实际写出了首个字节后，才允许 ping 继续发送，
+	// 否则像 OpenAI 这类“首包先缓存、次包再写”的流处理会被 ping 抢先写出空流。
+	streamStarted := make(chan struct{})
+	var headersOnce sync.Once
+	var streamStartedOnce sync.Once
+	prepareHeaders := func() {
+		headersOnce.Do(func() {
+			SetEventStreamHeaders(c)
+		})
+	}
+	markStreamStarted := func() {
+		if c != nil && c.Writer != nil && c.Writer.Written() {
+			streamStartedOnce.Do(func() {
+				close(streamStarted)
+			})
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -136,6 +157,16 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			for {
 				select {
 				case <-pingTicker.C:
+					// Ping 必须等真正有业务数据写给客户端后才能发，
+					// 否则会把“空流 + ping”提前暴露给客户端，破坏重试安全性。
+					select {
+					case <-streamStarted:
+					case <-ctx.Done():
+						return
+					case <-stopChan:
+						return
+					}
+
 					// 使用超时机制防止写操作阻塞
 					done := make(chan error, 1)
 					gopool.Go(func() {
@@ -192,7 +223,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		for data := range dataChan {
 			sr.reset()
 			writeMutex.Lock()
+			// 真正要写第一条数据给客户端之前准备 SSE headers
+			prepareHeaders()
 			dataHandler(data, sr)
+			markStreamStarted()
 			writeMutex.Unlock()
 			if sr.IsStopped() {
 				return

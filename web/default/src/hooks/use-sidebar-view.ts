@@ -51,9 +51,35 @@ export function useSidebarView(): ResolvedSidebarView {
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
     const isAdmin = userRole !== undefined && userRole >= ROLE.ADMIN
-    return configFilteredRoot.filter((group) =>
-      group.id === 'admin' ? isAdmin : true
-    )
+    const filterByRole = (items: NavGroup['items']) =>
+      items
+        .map((item) => {
+          if ('items' in item && item.items) {
+            return {
+              ...item,
+              items: item.items.filter(
+                (subItem) =>
+                  !subItem.minRole ||
+                  (userRole !== undefined && userRole >= subItem.minRole)
+              ),
+            }
+          }
+          return item
+        })
+        .filter(
+          (item) =>
+            (!item.minRole ||
+              (userRole !== undefined && userRole >= item.minRole)) &&
+            (!('items' in item) || !item.items || item.items.length > 0)
+        )
+
+    return configFilteredRoot
+      .filter((group) => (group.id === 'admin' ? isAdmin : true))
+      .map((group) => ({
+        ...group,
+        items: filterByRole(group.items),
+      }))
+      .filter((group) => group.items.length > 0)
   }, [configFilteredRoot, userRole])
 
   const view = resolveSidebarView(pathname)

@@ -201,7 +201,6 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
         <DataTableColumnHeader column={column} title={t('Group')} />
       ),
       cell: ({ row }) => {
-        const apiKey = row.original
         const group = row.getValue('group') as string
         const groups = group
           ? group

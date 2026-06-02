@@ -273,6 +273,192 @@ type SubscriptionSummary struct {
 	Subscription *UserSubscription `json:"subscription"`
 }
 
+const (
+	UserSubscriptionEffectiveStatusActive    = "active"
+	UserSubscriptionEffectiveStatusExhausted = "exhausted"
+	UserSubscriptionEffectiveStatusExpired   = "expired"
+	UserSubscriptionEffectiveStatusCancelled = "cancelled"
+)
+
+type AdminUserSubscriptionQuery struct {
+	Keyword string
+	Status  string
+	PlanId  int
+	UserId  int
+	Source  string
+}
+
+type AdminUserSubscriptionRecord struct {
+	Id     int `json:"id" gorm:"column:id"`
+	UserId int `json:"user_id" gorm:"column:user_id"`
+	PlanId int `json:"plan_id" gorm:"column:plan_id"`
+
+	Username    string `json:"username" gorm:"column:username"`
+	DisplayName string `json:"display_name" gorm:"column:display_name"`
+	Email       string `json:"email" gorm:"column:email"`
+	PlanTitle   string `json:"plan_title" gorm:"column:plan_title"`
+
+	AmountTotal     int64   `json:"amount_total" gorm:"column:amount_total"`
+	AmountUsed      int64   `json:"amount_used" gorm:"column:amount_used"`
+	AmountRemaining int64   `json:"amount_remaining" gorm:"-"`
+	UsagePercent    float64 `json:"usage_percent" gorm:"-"`
+
+	StartTime int64  `json:"start_time" gorm:"column:start_time"`
+	EndTime   int64  `json:"end_time" gorm:"column:end_time"`
+	Status    string `json:"status" gorm:"column:status"`
+	Source    string `json:"source" gorm:"column:source"`
+
+	LastResetTime int64 `json:"last_reset_time" gorm:"column:last_reset_time"`
+	NextResetTime int64 `json:"next_reset_time" gorm:"column:next_reset_time"`
+
+	UpgradeGroup  string `json:"upgrade_group" gorm:"column:upgrade_group"`
+	PrevUserGroup string `json:"prev_user_group" gorm:"column:prev_user_group"`
+
+	CreatedAt       int64  `json:"created_at" gorm:"column:created_at"`
+	UpdatedAt       int64  `json:"updated_at" gorm:"column:updated_at"`
+	EffectiveStatus string `json:"effective_status" gorm:"-"`
+}
+
+func GetUserSubscriptionEffectiveStatus(sub *UserSubscription, now int64) string {
+	if sub == nil {
+		return UserSubscriptionEffectiveStatusExpired
+	}
+	status := strings.TrimSpace(sub.Status)
+	if status == UserSubscriptionEffectiveStatusCancelled {
+		return UserSubscriptionEffectiveStatusCancelled
+	}
+	if status == UserSubscriptionEffectiveStatusExpired || (status == "active" && sub.EndTime > 0 && sub.EndTime <= now) {
+		return UserSubscriptionEffectiveStatusExpired
+	}
+	if status == "active" && (sub.EndTime == 0 || sub.EndTime > now) && sub.AmountTotal > 0 && sub.AmountUsed >= sub.AmountTotal {
+		return UserSubscriptionEffectiveStatusExhausted
+	}
+	if status == "active" && (sub.EndTime == 0 || sub.EndTime > now) {
+		return UserSubscriptionEffectiveStatusActive
+	}
+	return status
+}
+
+func fillAdminUserSubscriptionComputedFields(records []AdminUserSubscriptionRecord) {
+	now := GetDBTimestamp()
+	for i := range records {
+		if records[i].AmountTotal > 0 {
+			remaining := records[i].AmountTotal - records[i].AmountUsed
+			if remaining < 0 {
+				remaining = 0
+			}
+			records[i].AmountRemaining = remaining
+			percent := float64(records[i].AmountUsed) / float64(records[i].AmountTotal) * 100
+			if percent < 0 {
+				percent = 0
+			}
+			if percent > 100 {
+				percent = 100
+			}
+			records[i].UsagePercent = percent
+		}
+		sub := &UserSubscription{
+			AmountTotal: records[i].AmountTotal,
+			AmountUsed:  records[i].AmountUsed,
+			EndTime:     records[i].EndTime,
+			Status:      records[i].Status,
+		}
+		records[i].EffectiveStatus = GetUserSubscriptionEffectiveStatus(sub, now)
+	}
+}
+
+func applyAdminUserSubscriptionFilters(query *gorm.DB, params AdminUserSubscriptionQuery) *gorm.DB {
+	now := GetDBTimestamp()
+	switch strings.ToLower(strings.TrimSpace(params.Status)) {
+	case UserSubscriptionEffectiveStatusActive:
+		query = query.Where("us.status = ? AND (us.end_time = 0 OR us.end_time > ?) AND (us.amount_total = 0 OR us.amount_used < us.amount_total)", "active", now)
+	case UserSubscriptionEffectiveStatusExhausted:
+		query = query.Where("us.status = ? AND (us.end_time = 0 OR us.end_time > ?) AND us.amount_total > 0 AND us.amount_used >= us.amount_total", "active", now)
+	case UserSubscriptionEffectiveStatusExpired:
+		query = query.Where("(us.status = ? OR (us.status = ? AND us.end_time > 0 AND us.end_time <= ?))", UserSubscriptionEffectiveStatusExpired, "active", now)
+	case UserSubscriptionEffectiveStatusCancelled, "invalidated":
+		query = query.Where("us.status = ?", UserSubscriptionEffectiveStatusCancelled)
+	}
+	if params.PlanId > 0 {
+		query = query.Where("us.plan_id = ?", params.PlanId)
+	}
+	if params.UserId > 0 {
+		query = query.Where("us.user_id = ?", params.UserId)
+	}
+	if source := strings.TrimSpace(params.Source); source != "" {
+		query = query.Where("us.source = ?", source)
+	}
+	if keyword := strings.TrimSpace(params.Keyword); keyword != "" {
+		like := "%" + strings.ToLower(keyword) + "%"
+		conditions := []string{
+			"LOWER(u.username) LIKE ?",
+			"LOWER(u.display_name) LIKE ?",
+			"LOWER(u.email) LIKE ?",
+			"LOWER(sp.title) LIKE ?",
+		}
+		args := []interface{}{like, like, like, like}
+		if id, err := strconv.Atoi(keyword); err == nil && id > 0 {
+			conditions = append(conditions, "us.id = ?", "us.user_id = ?", "us.plan_id = ?")
+			args = append(args, id, id, id)
+		}
+		query = query.Where("("+strings.Join(conditions, " OR ")+")", args...)
+	}
+	return query
+}
+
+func ListAdminUserSubscriptions(params AdminUserSubscriptionQuery, offset int, limit int) ([]AdminUserSubscriptionRecord, int64, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = common.ItemsPerPage
+	}
+	buildQuery := func() *gorm.DB {
+		query := DB.Table("user_subscriptions AS us").
+			Joins("LEFT JOIN users AS u ON u.id = us.user_id").
+			Joins("LEFT JOIN subscription_plans AS sp ON sp.id = us.plan_id")
+		return applyAdminUserSubscriptionFilters(query, params)
+	}
+
+	var total int64
+	if err := buildQuery().Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var records []AdminUserSubscriptionRecord
+	selectColumns := strings.Join([]string{
+		"us.id",
+		"us.user_id",
+		"us.plan_id",
+		"COALESCE(u.username, '') AS username",
+		"COALESCE(u.display_name, '') AS display_name",
+		"COALESCE(u.email, '') AS email",
+		"COALESCE(sp.title, '') AS plan_title",
+		"us.amount_total",
+		"us.amount_used",
+		"us.start_time",
+		"us.end_time",
+		"us.status",
+		"us.source",
+		"us.last_reset_time",
+		"us.next_reset_time",
+		"us.upgrade_group",
+		"us.prev_user_group",
+		"us.created_at",
+		"us.updated_at",
+	}, ", ")
+	if err := buildQuery().
+		Select(selectColumns).
+		Order("us.end_time desc, us.id desc").
+		Offset(offset).
+		Limit(limit).
+		Find(&records).Error; err != nil {
+		return nil, 0, err
+	}
+	fillAdminUserSubscriptionComputedFields(records)
+	return records, total, nil
+}
+
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 	if plan == nil {
 		return 0, errors.New("plan is nil")

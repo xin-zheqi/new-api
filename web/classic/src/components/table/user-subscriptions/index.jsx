@@ -24,6 +24,8 @@ import {
   Empty,
   Input,
   Modal,
+  Popover,
+  Progress,
   Select,
   SideSheet,
   Space,
@@ -44,7 +46,7 @@ import { createCardProPagination } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { useTranslation } from 'react-i18next';
 
-const { Text, Title } = Typography;
+const { Paragraph, Text, Title } = Typography;
 
 const STATUS_OPTIONS = [
   { label: '可用中', value: 'active' },
@@ -65,10 +67,82 @@ function formatTs(ts) {
   return new Date(ts * 1000).toLocaleString();
 }
 
-function formatPercent(value) {
-  const num = Number(value || 0);
-  if (!Number.isFinite(num)) return '0%';
-  return `${Math.min(100, Math.max(0, num)).toFixed(1)}%`;
+const getQuotaProgressColor = (pct) => {
+  if (pct === 100) return 'var(--semi-color-success)';
+  if (pct <= 10) return 'var(--semi-color-danger)';
+  if (pct <= 30) return 'var(--semi-color-warning)';
+  return undefined;
+};
+
+function toFiniteNumber(value, fallback = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function renderQuotaUsage(record, t) {
+  const totalAmount = toFiniteNumber(record?.amount_total);
+  const usedAmount = toFiniteNumber(record?.amount_used);
+  const remainAmount =
+    totalAmount > 0
+      ? Math.max(
+          0,
+          toFiniteNumber(record?.amount_remaining, totalAmount - usedAmount),
+        )
+      : 0;
+
+  if (totalAmount <= 0) {
+    const popoverContent = (
+      <div className='text-xs p-2'>
+        <Paragraph copyable={{ content: renderQuota(usedAmount, 2) }}>
+          {t('已用额度')}: {renderQuota(usedAmount, 2)}
+        </Paragraph>
+      </div>
+    );
+    return (
+      <Popover content={popoverContent} position='top'>
+        <Tag color='white' shape='circle'>
+          {t('无限额度')}
+        </Tag>
+      </Popover>
+    );
+  }
+
+  const percent = Math.min(
+    100,
+    Math.max(0, (remainAmount / totalAmount) * 100),
+  );
+  const popoverContent = (
+    <div className='text-xs p-2'>
+      <Paragraph copyable={{ content: renderQuota(usedAmount, 2) }}>
+        {t('已用额度')}: {renderQuota(usedAmount, 2)}
+      </Paragraph>
+      <Paragraph copyable={{ content: renderQuota(remainAmount, 2) }}>
+        {t('剩余额度')}: {renderQuota(remainAmount, 2)} ({percent.toFixed(0)}%)
+      </Paragraph>
+      <Paragraph copyable={{ content: renderQuota(totalAmount, 2) }}>
+        {t('总额度')}: {renderQuota(totalAmount, 2)}
+      </Paragraph>
+    </div>
+  );
+
+  return (
+    <Popover content={popoverContent} position='top'>
+      <Tag color='white' shape='circle'>
+        <div className='flex flex-col items-end'>
+          <span className='text-xs leading-none'>
+            {`${renderQuota(remainAmount, 2)} / ${renderQuota(totalAmount, 2)}`}
+          </span>
+          <Progress
+            percent={percent}
+            stroke={getQuotaProgressColor(percent)}
+            aria-label='subscription quota usage'
+            format={() => `${percent.toFixed(0)}%`}
+            style={{ width: '100%', marginTop: '1px', marginBottom: 0 }}
+          />
+        </div>
+      </Tag>
+    </Popover>
+  );
 }
 
 function getStatusMeta(status) {
@@ -343,28 +417,10 @@ const UserSubscriptionsPage = () => {
         },
       },
       {
-        title: t('额度使用'),
+        title: t('剩余额度/总额度'),
         key: 'usage',
         width: 190,
-        render: (_, record) => {
-          const totalAmount = Number(record?.amount_total || 0);
-          const usedAmount = Number(record?.amount_used || 0);
-          const remainAmount = Number(record?.amount_remaining || 0);
-          if (totalAmount <= 0) {
-            return <Text type='tertiary'>{t('不限')}</Text>;
-          }
-          return (
-            <div className='text-xs text-gray-600'>
-              <div>
-                {renderQuota(usedAmount, 2)} / {renderQuota(totalAmount, 2)}
-              </div>
-              <div>
-                {t('剩余')}: {renderQuota(remainAmount, 2)} ·{' '}
-                {formatPercent(record?.usage_percent)}
-              </div>
-            </div>
-          );
-        },
+        render: (_, record) => renderQuotaUsage(record, t),
       },
       {
         title: t('有效期'),
@@ -455,14 +511,6 @@ const UserSubscriptionsPage = () => {
           {t('用户订阅')}
         </Tag>
       </div>
-      <Banner
-        type='info'
-        description={t(
-          '本页面只管理用户已经开通的订阅实例；已过期或已作废订阅保留为只读记录，不提供恢复、调额、延期或删除。',
-        )}
-        closeIcon={null}
-        className='!rounded-lg'
-      />
     </div>
   );
 

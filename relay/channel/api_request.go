@@ -17,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -496,26 +495,31 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		client = service.GetHttpClient()
 	}
 
-	var stopPinger context.CancelFunc
+	if info.IsStream {
+		guard := info.StartFirstResponseTimeoutGuard()
+		if guard != nil {
+			parentCtx := req.Context()
+			if c != nil && c.Request != nil {
+				parentCtx = c.Request.Context()
+			}
+			reqCtx, _ := guard.WithCancel(parentCtx)
+			req = req.WithContext(reqCtx)
+		}
+	} else {
+		info.CancelFirstResponseTimeoutGuard()
+		info.FirstResponseTimeoutGuard = nil
+	}
+
 	if info.IsStream {
 		helper.SetEventStreamHeaders(c)
-		// 处理流式请求的 ping 保活
-		generalSettings := operation_setting.GetGeneralSetting()
-		if generalSettings.PingIntervalEnabled && !info.DisablePing {
-			pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
-			stopPinger = startPingKeepAlive(c, pingInterval)
-			// 使用defer确保在任何情况下都能停止ping goroutine
-			defer func() {
-				if stopPinger != nil {
-					stopPinger()
-					logger.LogDebug(c, "SSE ping goroutine stopped by defer")
-				}
-			}()
-		}
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if info.IsStream && info.IsFirstResponseTimedOut() {
+			logger.LogError(c, "upstream first response timeout")
+			return nil, common.NewFirstResponseTimeoutError(info)
+		}
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}

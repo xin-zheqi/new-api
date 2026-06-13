@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -30,6 +31,7 @@ const (
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodBalance      = "balance"
+	PaymentMethodManual       = "manual"
 )
 
 const (
@@ -39,6 +41,7 @@ const (
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderBalance      = "balance"
+	PaymentProviderManual       = "manual"
 )
 
 var (
@@ -46,6 +49,16 @@ var (
 	ErrTopUpNotFound         = errors.New("topup not found")
 	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
 )
+
+type ManualTopUpParams struct {
+	UserId        int
+	Amount        int64
+	Money         float64
+	PaymentMethod string
+	CreateTime    int64
+	CallerIp      string
+	CreditBalance bool
+}
 
 func (topUp *TopUp) Insert() error {
 	var err error
@@ -389,6 +402,80 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
 	return nil
 }
+
+// CreateManualTopUp creates a completed recharge record, optionally crediting the user.
+func CreateManualTopUp(params ManualTopUpParams) (*TopUp, error) {
+	if params.UserId <= 0 {
+		return nil, errors.New("用户不存在")
+	}
+	if params.Amount <= 0 {
+		return nil, errors.New("充值额度必须大于 0")
+	}
+	if params.Money < 0 {
+		return nil, errors.New("支付金额不能为负数")
+	}
+	if params.PaymentMethod == "" {
+		return nil, errors.New("支付方式不能为空")
+	}
+	if params.CreateTime <= 0 {
+		return nil, errors.New("创建时间无效")
+	}
+
+	tradeNo := strconv.FormatInt(common.NextSnowflakeID(), 10)
+	quotaToAdd := 0
+	if params.CreditBalance {
+		quotaToAdd = int(decimal.NewFromInt(params.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
+		if quotaToAdd <= 0 {
+			return nil, errors.New("无效的充值额度")
+		}
+	}
+
+	topUp := &TopUp{
+		UserId:          params.UserId,
+		Amount:          params.Amount,
+		Money:           params.Money,
+		TradeNo:         tradeNo,
+		PaymentMethod:   params.PaymentMethod,
+		PaymentProvider: PaymentProviderManual,
+		CreateTime:      params.CreateTime,
+		CompleteTime:    params.CreateTime,
+		Status:          common.TopUpStatusSuccess,
+	}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := tx.Select("id").Where("id = ?", params.UserId).First(&user).Error; err != nil {
+			return errors.New("用户不存在")
+		}
+		if err := tx.Create(topUp).Error; err != nil {
+			return err
+		}
+		if params.CreditBalance {
+			result := tx.Model(&User{}).Where("id = ?", params.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd))
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return errors.New("用户不存在")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if params.CreditBalance {
+		if err := cacheIncrUserQuota(params.UserId, int64(quotaToAdd)); err != nil {
+			common.SysLog("failed to increase user quota cache: " + err.Error())
+		}
+		RecordTopupLog(params.UserId, fmt.Sprintf("超级管理员创建充值记录成功，充值金额: %v，支付金额：%.2f", logger.FormatQuota(quotaToAdd), params.Money), params.CallerIp, params.PaymentMethod, PaymentProviderManual)
+	} else {
+		RecordLog(params.UserId, LogTypeManage, fmt.Sprintf("超级管理员补录充值记录，未增加余额，充值额度: %d，支付金额：%.2f", params.Amount, params.Money))
+	}
+	return topUp, nil
+}
+
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")

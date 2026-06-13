@@ -27,6 +27,9 @@ import {
   Button,
   Input,
   Tag,
+  Select,
+  DatePicker,
+  Switch,
 } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
@@ -35,7 +38,7 @@ import {
 import { Coins } from 'lucide-react';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { API, timestamp2string } from '../../../helpers';
-import { isAdmin } from '../../../helpers/utils';
+import { isAdmin, isRoot } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 const { Text } = Typography;
 
@@ -63,6 +66,19 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
+  const [manualModalVisible, setManualModalVisible] = useState(false);
+  const [manualCreating, setManualCreating] = useState(false);
+  const [manualUsersLoading, setManualUsersLoading] = useState(false);
+  const [manualUsers, setManualUsers] = useState([]);
+  const [manualUserKeyword, setManualUserKeyword] = useState('');
+  const [manualForm, setManualForm] = useState({
+    user_id: undefined,
+    payment_method: 'bank_transfer',
+    amount: 1,
+    money: 0,
+    create_time: new Date(),
+    credit_balance: false,
+  });
   const isMobile = useIsMobile();
 
   const loadTopups = async (currentPage, currentPageSize) => {
@@ -134,6 +150,100 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     });
   };
 
+  const resetManualForm = () => {
+    setManualForm({
+      user_id: undefined,
+      payment_method: 'bank_transfer',
+      amount: 1,
+      money: 0,
+      create_time: new Date(),
+      credit_balance: false,
+    });
+    setManualUserKeyword('');
+  };
+
+  const openManualModal = () => {
+    resetManualForm();
+    setManualModalVisible(true);
+  };
+
+  const closeManualModal = () => {
+    setManualModalVisible(false);
+    resetManualForm();
+  };
+
+  const loadManualUsers = async () => {
+    setManualUsersLoading(true);
+    try {
+      const keyword = manualUserKeyword.trim();
+      const endpoint = keyword
+        ? `/api/user/search?keyword=${encodeURIComponent(keyword)}&p=1&page_size=20`
+        : '/api/user/?p=1&page_size=20';
+      const res = await API.get(endpoint);
+      const { success, data } = res.data;
+      setManualUsers(success ? data.items || [] : []);
+    } catch (e) {
+      setManualUsers([]);
+    } finally {
+      setManualUsersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!manualModalVisible) return;
+    const timer = setTimeout(loadManualUsers, 250);
+    return () => clearTimeout(timer);
+  }, [manualModalVisible, manualUserKeyword]);
+
+  const getManualCreateTimestamp = () => {
+    const value = manualForm.create_time;
+    const date = value instanceof Date ? value : new Date(value);
+    const timestamp = Math.floor(date.getTime() / 1000);
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  };
+
+  const handleCreateManualTopup = async () => {
+    const payload = {
+      user_id: Number(manualForm.user_id || 0),
+      payment_method: String(manualForm.payment_method || '').trim(),
+      amount: Number(manualForm.amount || 0),
+      money: Number(manualForm.money || 0),
+      create_time: getManualCreateTimestamp(),
+      credit_balance: !!manualForm.credit_balance,
+    };
+    if (
+      payload.user_id <= 0 ||
+      !payload.payment_method ||
+      payload.amount <= 0 ||
+      payload.money < 0 ||
+      payload.create_time <= 0
+    ) {
+      Toast.error({ content: t('请完整填写充值记录信息') });
+      return;
+    }
+    if (payload.payment_method.length > 50) {
+      Toast.error({ content: t('支付方式不能超过 50 个字符') });
+      return;
+    }
+
+    setManualCreating(true);
+    try {
+      const res = await API.post('/api/user/topup/manual', payload);
+      const { success, message } = res.data;
+      if (success) {
+        Toast.success({ content: t('创建充值记录成功') });
+        closeManualModal();
+        await loadTopups(page, pageSize);
+      } else {
+        Toast.error({ content: message || t('创建充值记录失败') });
+      }
+    } catch (e) {
+      Toast.error({ content: t('创建充值记录失败') });
+    } finally {
+      setManualCreating(false);
+    }
+  };
+
   // 渲染状态徽章
   const renderStatusBadge = (status) => {
     const config = STATUS_CONFIG[status] || { type: 'primary', key: status };
@@ -158,6 +268,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   // 检查是否为管理员
   const userIsAdmin = useMemo(() => isAdmin(), []);
+  const userIsRoot = useMemo(() => isRoot(), []);
 
   const columns = useMemo(() => {
     const baseColumns = [
@@ -253,49 +364,169 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   }, [t, userIsAdmin]);
 
   return (
-    <Modal
-      title={t('充值账单')}
-      visible={visible}
-      onCancel={onCancel}
-      footer={null}
-      size={isMobile ? 'full-width' : 'large'}
-    >
-      <div className='mb-3'>
-        <Input
-          prefix={<IconSearch />}
-          placeholder={t('订单号')}
-          value={keyword}
-          onChange={handleKeywordChange}
-          showClear
-        />
-      </div>
-      <Table
-        columns={columns}
-        dataSource={topups}
-        loading={loading}
-        rowKey='id'
-        pagination={{
-          currentPage: page,
-          pageSize: pageSize,
-          total: total,
-          showSizeChanger: true,
-          pageSizeOpts: [10, 20, 50, 100],
-          onPageChange: handlePageChange,
-          onPageSizeChange: handlePageSizeChange,
-        }}
-        size='small'
-        empty={
-          <Empty
-            image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
-            darkModeImage={
-              <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
-            }
-            description={t('暂无充值记录')}
-            style={{ padding: 30 }}
+    <>
+      <Modal
+        title={t('充值账单')}
+        visible={visible}
+        onCancel={onCancel}
+        footer={null}
+        size={isMobile ? 'full-width' : 'large'}
+      >
+        <div className='mb-3 flex gap-2'>
+          <Input
+            prefix={<IconSearch />}
+            placeholder={t('订单号')}
+            value={keyword}
+            onChange={handleKeywordChange}
+            showClear
+            style={{ flex: 1 }}
           />
-        }
-      />
-    </Modal>
+          {userIsRoot && (
+            <Button type='primary' onClick={openManualModal}>
+              {t('创建充值记录')}
+            </Button>
+          )}
+        </div>
+        <Table
+          columns={columns}
+          dataSource={topups}
+          loading={loading}
+          rowKey='id'
+          pagination={{
+            currentPage: page,
+            pageSize: pageSize,
+            total: total,
+            showSizeChanger: true,
+            pageSizeOpts: [10, 20, 50, 100],
+            onPageChange: handlePageChange,
+            onPageSizeChange: handlePageSizeChange,
+          }}
+          size='small'
+          empty={
+            <Empty
+              image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
+              darkModeImage={
+                <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
+              }
+              description={t('暂无充值记录')}
+              style={{ padding: 30 }}
+            />
+          }
+        />
+      </Modal>
+
+      {userIsRoot && (
+        <Modal
+          title={t('创建充值记录')}
+          visible={manualModalVisible}
+          onCancel={closeManualModal}
+          onOk={handleCreateManualTopup}
+          confirmLoading={manualCreating}
+          okText={t('创建')}
+          cancelText={t('取消')}
+          size={isMobile ? 'full-width' : 'medium'}
+        >
+          <div className='flex flex-col gap-4'>
+            <div>
+              <Text strong>{t('用户')}</Text>
+              <Input
+                className='mt-2'
+                prefix={<IconSearch />}
+                placeholder={t('搜索用户ID或用户名')}
+                value={manualUserKeyword}
+                onChange={setManualUserKeyword}
+                showClear
+              />
+              <Select
+                className='mt-2 w-full'
+                placeholder={manualUsersLoading ? t('加载中') : t('选择用户')}
+                value={manualForm.user_id}
+                onChange={(value) =>
+                  setManualForm({ ...manualForm, user_id: value })
+                }
+                loading={manualUsersLoading}
+                filter
+              >
+                {manualUsers.map((user) => (
+                  <Select.Option key={user.id} value={user.id}>
+                    {`ID ${user.id} · ${user.username}`}
+                  </Select.Option>
+                ))}
+              </Select>
+            </div>
+
+            <div>
+              <Text strong>{t('支付方式')}</Text>
+              <Input
+                className='mt-2'
+                value={manualForm.payment_method}
+                onChange={(value) =>
+                  setManualForm({ ...manualForm, payment_method: value })
+                }
+                placeholder='bank_transfer'
+              />
+            </div>
+
+            <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+              <div>
+                <Text strong>{t('充值额度')}</Text>
+                <Input
+                  className='mt-2'
+                  type='number'
+                  min={1}
+                  value={manualForm.amount}
+                  onChange={(value) =>
+                    setManualForm({ ...manualForm, amount: value })
+                  }
+                />
+              </div>
+              <div>
+                <Text strong>{t('支付金额')}</Text>
+                <Input
+                  className='mt-2'
+                  type='number'
+                  min={0}
+                  value={manualForm.money}
+                  onChange={(value) =>
+                    setManualForm({ ...manualForm, money: value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div>
+              <Text strong>{t('创建时间')}</Text>
+              <DatePicker
+                className='mt-2 w-full'
+                type='dateTime'
+                value={manualForm.create_time}
+                onChange={(value) =>
+                  setManualForm({
+                    ...manualForm,
+                    create_time: value || new Date(),
+                  })
+                }
+              />
+            </div>
+
+            <div className='flex items-center justify-between rounded border p-3'>
+              <div className='flex flex-col'>
+                <Text strong>{t('同步增加余额')}</Text>
+                <Text type='tertiary' size='small'>
+                  {t('开启后会立即为用户增加余额')}
+                </Text>
+              </div>
+              <Switch
+                checked={manualForm.credit_balance}
+                onChange={(checked) =>
+                  setManualForm({ ...manualForm, credit_balance: checked })
+                }
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 };
 

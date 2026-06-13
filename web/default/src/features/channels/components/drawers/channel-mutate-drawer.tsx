@@ -41,6 +41,7 @@ import {
   Link2,
   RefreshCw,
   Code,
+  Clock,
   Route,
   Settings,
   SlidersHorizontal,
@@ -214,6 +215,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.priority ||
     values.weight ||
     values.proxy?.trim() ||
+    Number(values.first_response_timeout_seconds || 0) > 0 ||
     values.system_prompt?.trim() ||
     values.force_format ||
     values.thinking_to_content ||
@@ -3240,6 +3242,45 @@ export function ChannelMutateDrawer({
                             <FormDescription>
                               {t(
                                 'Network proxy for this channel (supports socks5 protocol)'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='first_response_timeout_seconds'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className='flex items-center gap-2'>
+                              <Clock className='h-4 w-4' />
+                              {t('First Response Timeout')}
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type='number'
+                                min={0}
+                                step={1}
+                                inputMode='numeric'
+                                placeholder='30'
+                                value={field.value ?? 0}
+                                onChange={(event) =>
+                                  field.onChange(
+                                    event.target.value === ''
+                                      ? 0
+                                      : Math.max(
+                                          0,
+                                          event.currentTarget.valueAsNumber || 0
+                                        )
+                                  )
+                                }
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t(
+                                'Streaming requests only. Abort and retry if no upstream content is received before this many seconds. Set 0 to disable.'
                               )}
                             </FormDescription>
                             <FormMessage />

@@ -1771,7 +1771,7 @@
     "请求并计费模型": "Request and charge model",
     "请求参数无效": "Invalid request parameters",
     "请求超时，请刷新页面后重新发起 GitHub 登录": "Request timed out, please refresh and restart GitHub login",
-    "请求次数": "Number of Requests",
+    "请求次数": "Requests",
     "请求发生错误": "An error occurred with the request",
     "请求发生错误: ": "An error occurred with the request: ",
     "请求后端接口失败：": "Failed to request the backend interface: ",
@@ -3861,12 +3861,19 @@
     "今天": "Today",
     "全部时间": "All Time",
     "提示 Tokens": "Prompt Tokens",
-    "请求次数": "Requests",
     "昨天": "Yesterday",
     "暂无令牌用量": "No token usage",
     "暂无用量数据": "No usage data",
     "总 Tokens": "Total Tokens",
     "总用量": "Total Usage",
-    "用量": "Usage"
+    "用量": "Usage",
+    "请完整填写充值记录信息": "Please complete the recharge record information",
+    "支付方式不能超过 50 个字符": "Payment method cannot exceed 50 characters",
+    "创建充值记录成功": "Recharge record created successfully",
+    "创建充值记录失败": "Failed to create recharge record",
+    "创建充值记录": "Create recharge record",
+    "搜索用户ID或用户名": "Search by user ID or username",
+    "同步增加余额": "Sync increase balance",
+    "开启后会立即为用户增加余额": "When enabled, the user balance is credited immediately"
   }
 }

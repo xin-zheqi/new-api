@@ -32,6 +32,7 @@ import type {
   AffiliateTransferResponse,
   BillingHistoryResponse,
   CompleteOrderRequest,
+  ManualTopupRequest,
   CreemPaymentRequest,
   CreemPaymentResponse,
   WaffoPaymentRequest,
@@ -231,5 +232,15 @@ export async function completeOrder(
   request: CompleteOrderRequest
 ): Promise<ApiResponse> {
   const res = await api.post('/api/user/topup/complete', request)
+  return res.data
+}
+
+/**
+ * Create a completed topup record manually (root only)
+ */
+export async function createManualTopup(
+  request: ManualTopupRequest
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/topup/manual', request)
   return res.data
 }

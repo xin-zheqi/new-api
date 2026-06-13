@@ -453,8 +453,36 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 	return false
 }
 
+func applyAddChannelSettingDefaults(channel *model.Channel) error {
+	if channel == nil {
+		return nil
+	}
+	if channel.Setting == nil || strings.TrimSpace(*channel.Setting) == "" {
+		channel.SetSetting(dto.ChannelSettings{FirstResponseTimeoutSeconds: 30})
+		return nil
+	}
+	settings := make(map[string]any)
+	if err := common.Unmarshal([]byte(*channel.Setting), &settings); err != nil {
+		return err
+	}
+	if _, ok := settings["first_response_timeout_seconds"]; ok {
+		return nil
+	}
+	settings["first_response_timeout_seconds"] = 30
+	settingBytes, err := common.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	channel.Setting = common.GetPointer[string](string(settingBytes))
+	return nil
+}
+
 // validateChannel 通用的渠道校验函数
 func validateChannel(channel *model.Channel, isAdd bool) error {
+	if channel == nil {
+		return fmt.Errorf("channel cannot be empty")
+	}
+
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
@@ -462,7 +490,7 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {
-		if channel == nil || channel.Key == "" {
+		if channel.Key == "" {
 			return fmt.Errorf("channel cannot be empty")
 		}
 
@@ -589,6 +617,14 @@ func AddChannel(c *gin.Context) {
 	err := c.ShouldBindJSON(&addChannelRequest)
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+
+	if err := applyAddChannelSettingDefaults(addChannelRequest.Channel); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "渠道额外设置[channel setting] 格式错误：" + err.Error(),
+		})
 		return
 	}
 

@@ -260,7 +260,7 @@ export interface UserWalletData {
 /**
  * Topup record status
  */
-export type TopupStatus = 'success' | 'pending' | 'expired'
+export type TopupStatus = 'success' | 'pending' | 'failed' | 'expired'
 
 /**
  * Topup billing record
@@ -299,4 +299,16 @@ export interface BillingHistoryResponse {
  */
 export interface CompleteOrderRequest {
   trade_no: string
+}
+
+/**
+ * Manual topup request (root only)
+ */
+export interface ManualTopupRequest {
+  user_id: number
+  payment_method: string
+  amount: number
+  money: number
+  create_time: number
+  credit_balance: boolean
 }

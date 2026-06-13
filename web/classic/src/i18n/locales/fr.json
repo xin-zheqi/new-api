@@ -3056,7 +3056,7 @@
     "请求头覆盖": "Remplacement des en-têtes de demande",
     "请求并计费模型": "Modèle de demande et de facturation",
     "请求时长: ${time}s": "Durée de la requête : ${time}s",
-    "请求次数": "Nombre de demandes",
+    "请求次数": "Requêtes",
     "请求结束后多退少补": "Ajuster après la fin de la demande",
     "请求超时，请刷新页面后重新发起 GitHub 登录": "Délai dépassé, veuillez actualiser la page puis relancer la connexion GitHub",
     "请求路径": "Chemin de requête",
@@ -3711,12 +3711,19 @@
     "今天": "Aujourd'hui",
     "全部时间": "Tout le temps",
     "提示 Tokens": "Tokens de prompt",
-    "请求次数": "Requêtes",
     "昨天": "Hier",
     "暂无令牌用量": "Aucune utilisation de jeton",
     "暂无用量数据": "Aucune donnée d'utilisation",
     "总 Tokens": "Total des tokens",
     "总用量": "Utilisation totale",
-    "用量": "Utilisation"
+    "用量": "Utilisation",
+    "请完整填写充值记录信息": "Veuillez completer les informations de l'enregistrement de recharge",
+    "支付方式不能超过 50 个字符": "Le mode de paiement ne peut pas depasser 50 caracteres",
+    "创建充值记录成功": "Enregistrement de recharge cree avec succes",
+    "创建充值记录失败": "Echec de la creation de l'enregistrement de recharge",
+    "创建充值记录": "Creer un enregistrement de recharge",
+    "搜索用户ID或用户名": "Rechercher par ID utilisateur ou nom d'utilisateur",
+    "同步增加余额": "Augmenter le solde",
+    "开启后会立即为用户增加余额": "Lorsque cette option est activee, le solde de l'utilisateur est credite immediatement"
   }
 }

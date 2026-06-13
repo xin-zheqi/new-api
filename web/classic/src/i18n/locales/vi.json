@@ -3420,7 +3420,7 @@
     "请求时长: ${time}s": "Thời gian yêu cầu: ${time}s",
     "请求时间": "Thời gian yêu cầu",
     "请求模式": "Chế độ yêu cầu",
-    "请求次数": "Số lần yêu cầu",
+    "请求次数": "Số yêu cầu",
     "请求状态": "Trạng thái yêu cầu",
     "请求结束后多退少补": "Hoàn trả hoặc bổ sung sau khi yêu cầu kết thúc",
     "请求详情": "Chi tiết yêu cầu",
@@ -4245,12 +4245,19 @@
     "今天": "Hôm nay",
     "全部时间": "Toàn bộ thời gian",
     "提示 Tokens": "Tokens prompt",
-    "请求次数": "Số yêu cầu",
     "昨天": "Hôm qua",
     "暂无令牌用量": "Chưa có mức dùng token",
     "暂无用量数据": "Chưa có dữ liệu mức dùng",
     "总 Tokens": "Tổng Tokens",
     "总用量": "Tổng mức dùng",
-    "用量": "Mức dùng"
+    "用量": "Mức dùng",
+    "请完整填写充值记录信息": "Vui lòng điền đầy đủ thông tin bản ghi nạp tiền",
+    "支付方式不能超过 50 个字符": "Phương thức thanh toán không được vượt quá 50 ký tự",
+    "创建充值记录成功": "Đã tạo bản ghi nạp tiền thành công",
+    "创建充值记录失败": "Không thể tạo bản ghi nạp tiền",
+    "创建充值记录": "Tạo bản ghi nạp tiền",
+    "搜索用户ID或用户名": "Tìm theo ID người dùng hoặc tên đăng nhập",
+    "同步增加余额": "Đồng bộ tăng số dư",
+    "开启后会立即为用户增加余额": "Khi bật, số dư người dùng sẽ được cộng ngay lập tức"
   }
 }

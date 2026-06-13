@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,8 +13,10 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,6 +67,19 @@ type slowReader struct {
 func (s *slowReader) Read(p []byte) (int, error) {
 	time.Sleep(s.delay)
 	return s.r.Read(p)
+}
+
+type contextBlockingReadCloser struct {
+	ctx context.Context
+}
+
+func (r *contextBlockingReadCloser) Read(_ []byte) (int, error) {
+	<-r.ctx.Done()
+	return 0, r.ctx.Err()
+}
+
+func (r *contextBlockingReadCloser) Close() error {
+	return nil
 }
 
 // ---------- Basic correctness ----------
@@ -864,4 +880,39 @@ func TestStreamScannerHandler_DeferredHeaders_PingWaitsForFirstActualWrite(t *te
 		assert.Greater(t, pingIdx, firstDataIdx,
 			"ping must not appear before the first actual client-visible chunk")
 	}
+}
+
+func TestStreamScannerHandler_FirstResponseTimeoutBeforeAnyData(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelSetting: dto.ChannelSettings{
+				FirstResponseTimeoutSeconds: 1,
+			},
+		},
+	}
+	guard := info.StartFirstResponseTimeoutGuard()
+	require.NotNil(t, guard)
+	guardCtx, cancel := guard.WithCancel(context.Background())
+	defer cancel()
+
+	resp := &http.Response{Body: &contextBlockingReadCloser{ctx: guardCtx}}
+	err := StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+		t.Fatalf("handler must not be called before first upstream content, got %q", data)
+	})
+
+	require.NotNil(t, err)
+	assert.Equal(t, http.StatusBadGateway, err.StatusCode)
+	assert.Equal(t, types.ErrorCodeChannelFirstResponseTimeout, err.GetErrorCode())
+	assert.Equal(t, relaycommon.StreamEndReasonFirstResponseTimeout, info.StreamStatus.EndReason)
+	assert.Equal(t, 0, info.ReceivedResponseCount)
+	assert.Empty(t, rec.Body.String(), "no downstream bytes should be written before first upstream content")
+	assert.False(t, c.Writer.Written(), "SSE headers must remain unwritten so controller retry stays possible")
 }

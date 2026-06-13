@@ -197,6 +197,7 @@ const EditChannelModal = (props) => {
     force_format: false,
     thinking_to_content: false,
     proxy: '',
+    first_response_timeout_seconds: 30,
     pass_through_body_enabled: false,
     system_prompt: '',
     system_prompt_override: false,
@@ -520,6 +521,7 @@ const EditChannelModal = (props) => {
     force_format: false,
     thinking_to_content: false,
     proxy: '',
+    first_response_timeout_seconds: 30,
     pass_through_body_enabled: false,
     system_prompt: '',
   });
@@ -870,6 +872,10 @@ const EditChannelModal = (props) => {
           data.thinking_to_content =
             parsedSettings.thinking_to_content || false;
           data.proxy = parsedSettings.proxy || '';
+          data.first_response_timeout_seconds =
+            typeof parsedSettings.first_response_timeout_seconds === 'number'
+              ? Math.max(0, parsedSettings.first_response_timeout_seconds)
+              : 0;
           data.pass_through_body_enabled =
             parsedSettings.pass_through_body_enabled || false;
           data.system_prompt = parsedSettings.system_prompt || '';
@@ -880,6 +886,7 @@ const EditChannelModal = (props) => {
           data.force_format = false;
           data.thinking_to_content = false;
           data.proxy = '';
+          data.first_response_timeout_seconds = 0;
           data.pass_through_body_enabled = false;
           data.system_prompt = '';
           data.system_prompt_override = false;
@@ -888,6 +895,7 @@ const EditChannelModal = (props) => {
         data.force_format = false;
         data.thinking_to_content = false;
         data.proxy = '';
+        data.first_response_timeout_seconds = 0;
         data.pass_through_body_enabled = false;
         data.system_prompt = '';
         data.system_prompt_override = false;
@@ -997,6 +1005,7 @@ const EditChannelModal = (props) => {
         force_format: data.force_format,
         thinking_to_content: data.thinking_to_content,
         proxy: data.proxy,
+        first_response_timeout_seconds: data.first_response_timeout_seconds,
         pass_through_body_enabled: data.pass_through_body_enabled,
         system_prompt: data.system_prompt,
         system_prompt_override: data.system_prompt_override || false,
@@ -1038,6 +1047,8 @@ const EditChannelModal = (props) => {
         (data.priority && data.priority !== 0) ||
         (data.weight && data.weight !== 0) ||
         (data.proxy && data.proxy.trim()) ||
+        (data.first_response_timeout_seconds &&
+          data.first_response_timeout_seconds > 0) ||
         (data.system_prompt && data.system_prompt.trim()) ||
         data.thinking_to_content ||
         data.pass_through_body_enabled ||
@@ -1387,6 +1398,7 @@ const EditChannelModal = (props) => {
       force_format: false,
       thinking_to_content: false,
       proxy: '',
+      first_response_timeout_seconds: 30,
       pass_through_body_enabled: false,
       system_prompt: '',
       system_prompt_override: false,
@@ -1757,6 +1769,10 @@ const EditChannelModal = (props) => {
       force_format: localInputs.force_format || false,
       thinking_to_content: localInputs.thinking_to_content || false,
       proxy: localInputs.proxy || '',
+      first_response_timeout_seconds: Math.max(
+        0,
+        Number(localInputs.first_response_timeout_seconds) || 0,
+      ),
       pass_through_body_enabled: localInputs.pass_through_body_enabled || false,
       system_prompt: localInputs.system_prompt || '',
       system_prompt_override: localInputs.system_prompt_override || false,
@@ -1838,6 +1854,7 @@ const EditChannelModal = (props) => {
     delete localInputs.force_format;
     delete localInputs.thinking_to_content;
     delete localInputs.proxy;
+    delete localInputs.first_response_timeout_seconds;
     delete localInputs.pass_through_body_enabled;
     delete localInputs.system_prompt;
     delete localInputs.system_prompt_override;
@@ -2552,6 +2569,7 @@ const EditChannelModal = (props) => {
                   <Form.Switch field='pass_through_body_enabled' label={t('透传请求体')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('pass_through_body_enabled', value)} extraText={t('启用请求体透传功能')} />
 
                   <Form.Input field='proxy' label={t('代理地址')} placeholder={t('例如: socks5://user:pass@host:port')} onChange={(value) => handleChannelSettingsChange('proxy', value)} showClear extraText={t('用于配置网络代理，支持 socks5 协议')} />
+                  <Form.InputNumber field='first_response_timeout_seconds' label={t('首包超时时间（秒）')} placeholder='30' min={0} step={1} onNumberChange={(value) => handleChannelSettingsChange('first_response_timeout_seconds', Math.max(0, Number(value) || 0))} style={{ width: '100%' }} extraText={t('仅对流式请求生效；超过该秒数仍未收到上游首个有效内容时取消本次请求并按重试规则切换渠道，0 表示关闭')} />
 
                   <Form.TextArea field='system_prompt' label={t('系统提示词')} placeholder={t('输入系统提示词，用户的系统提示词将优先于此设置')} onChange={(value) => handleChannelSettingsChange('system_prompt', value)} autosize showClear extraText={t('用户优先：如果用户在请求中指定了系统提示词，将优先使用用户的设置')} />
                   <Form.Switch field='system_prompt_override' label={t('系统提示词拼接')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('system_prompt_override', value)} extraText={t('如果用户请求中包含系统提示词，则使用此设置拼接到用户的系统提示词前面')} />

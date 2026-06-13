@@ -2,11 +2,9 @@ package cohere
 
 import (
 	"bufio"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -82,6 +80,8 @@ func stopReasonCohere2OpenAI(reason string) string {
 }
 
 func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	defer service.CloseResponseBodyGracefully(resp)
+
 	responseId := helper.GetResponseID(c)
 	createdTime := common.GetTimestamp()
 	usage := &dto.Usage{}
@@ -99,30 +99,42 @@ func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		}
 		return 0, nil, nil
 	})
-	dataChan := make(chan string)
-	stopChan := make(chan bool)
+	dataChan := make(chan string, 10)
+	stopChan := make(chan bool, 1)
+	readerDone := make(chan struct{})
+	defer close(readerDone)
 	go func() {
 		for scanner.Scan() {
 			data := scanner.Text()
-			dataChan <- data
+			select {
+			case dataChan <- data:
+			case <-readerDone:
+				return
+			}
 		}
-		stopChan <- true
+		select {
+		case stopChan <- true:
+		case <-readerDone:
+		}
 	}()
-	helper.SetEventStreamHeaders(c)
 	isFirst := true
-	c.Stream(func(w io.Writer) bool {
+	for {
 		select {
 		case data := <-dataChan:
+			data = strings.TrimSpace(strings.TrimSuffix(data, "\r"))
+			if data == "" {
+				continue
+			}
 			if isFirst {
 				isFirst = false
-				info.FirstResponseTime = time.Now()
+				info.SetFirstResponseTime()
+				helper.SetEventStreamHeaders(c)
 			}
-			data = strings.TrimSuffix(data, "\r")
 			var cohereResp CohereResponse
-			err := json.Unmarshal([]byte(data), &cohereResp)
+			err := common.Unmarshal([]byte(data), &cohereResp)
 			if err != nil {
 				common.SysLog("error unmarshalling stream response: " + err.Error())
-				return true
+				continue
 			}
 			var openaiResp dto.ChatCompletionsStreamResponse
 			openaiResp.Id = responseId
@@ -154,22 +166,30 @@ func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 				}
 				responseText += cohereResp.Text
 			}
-			jsonStr, err := json.Marshal(openaiResp)
+			jsonStr, err := common.Marshal(openaiResp)
 			if err != nil {
 				common.SysLog("error marshalling stream response: " + err.Error())
-				return true
+				continue
 			}
-			c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonStr)})
-			return true
+			if err := helper.StringData(c, string(jsonStr)); err != nil {
+				common.SysLog("error rendering stream response: " + err.Error())
+			}
 		case <-stopChan:
-			c.Render(-1, common.CustomEvent{Data: "data: [DONE]"})
-			return false
+			if info.ShouldFailFirstResponseTimeout() {
+				info.CancelFirstResponseTimeoutGuard()
+				return nil, relaycommon.NewFirstResponseTimeoutError(info)
+			}
+			if !isFirst {
+				helper.Done(c)
+			}
+			if usage.PromptTokens == 0 {
+				usage = service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
+			}
+			return usage, nil
+		case <-c.Request.Context().Done():
+			return nil, types.NewError(c.Request.Context().Err(), types.ErrorCodeBadResponseBody)
 		}
-	})
-	if usage.PromptTokens == 0 {
-		usage = service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	}
-	return usage, nil
 }
 
 func cohereHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
@@ -180,7 +200,7 @@ func cohereHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	}
 	service.CloseResponseBodyGracefully(resp)
 	var cohereResp CohereResponseResult
-	err = json.Unmarshal(responseBody, &cohereResp)
+	err = common.Unmarshal(responseBody, &cohereResp)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
@@ -204,7 +224,7 @@ func cohereHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		},
 	}
 
-	jsonResponse, err := json.Marshal(openaiResp)
+	jsonResponse, err := common.Marshal(openaiResp)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
@@ -221,7 +241,7 @@ func cohereRerankHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	}
 	service.CloseResponseBodyGracefully(resp)
 	var cohereResp CohereRerankResponseResult
-	err = json.Unmarshal(responseBody, &cohereResp)
+	err = common.Unmarshal(responseBody, &cohereResp)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
@@ -240,7 +260,7 @@ func cohereRerankHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	rerankResp.Results = cohereResp.Results
 	rerankResp.Usage = usage
 
-	jsonResponse, err := json.Marshal(rerankResp)
+	jsonResponse, err := common.Marshal(rerankResp)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}

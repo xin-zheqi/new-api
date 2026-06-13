@@ -158,6 +158,51 @@ func TestCompleteSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T
 	assert.Nil(t, topUp)
 }
 
+func TestCreateManualTopUp_CreditBalanceOption(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 501, 100)
+
+	recordOnly, err := CreateManualTopUp(ManualTopUpParams{
+		UserId:        501,
+		Amount:        3,
+		Money:         12.34,
+		PaymentMethod: "bank_transfer",
+		CreateTime:    1710000000,
+		CallerIp:      "127.0.0.1",
+		CreditBalance: false,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, recordOnly)
+	assert.Equal(t, common.TopUpStatusSuccess, recordOnly.Status)
+	assert.EqualValues(t, 1710000000, recordOnly.CreateTime)
+	assert.EqualValues(t, 1710000000, recordOnly.CompleteTime)
+	assert.Equal(t, PaymentProviderManual, recordOnly.PaymentProvider)
+	assert.Equal(t, 100, getUserQuotaForPaymentGuardTest(t, 501))
+
+	credited, err := CreateManualTopUp(ManualTopUpParams{
+		UserId:        501,
+		Amount:        2,
+		Money:         8.88,
+		PaymentMethod: "corporate_transfer",
+		CreateTime:    1710000100,
+		CallerIp:      "127.0.0.1",
+		CreditBalance: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, credited)
+	assert.Equal(t, PaymentProviderManual, credited.PaymentProvider)
+	assert.Equal(t, 100+int(2*common.QuotaPerUnit), getUserQuotaForPaymentGuardTest(t, 501))
+
+	var manageCount int64
+	require.NoError(t, LOG_DB.Model(&Log{}).Where("user_id = ? AND type = ?", 501, LogTypeManage).Count(&manageCount).Error)
+	assert.EqualValues(t, 1, manageCount)
+
+	var topupCount int64
+	require.NoError(t, LOG_DB.Model(&Log{}).Where("user_id = ? AND type = ?", 501, LogTypeTopup).Count(&topupCount).Error)
+	assert.EqualValues(t, 1, topupCount)
+}
+
 func TestExpireSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T) {
 	truncateTables(t)
 

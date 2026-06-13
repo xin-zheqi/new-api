@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -491,6 +492,15 @@ type AdminCompleteTopupRequest struct {
 	TradeNo string `json:"trade_no"`
 }
 
+type AdminCreateManualTopUpRequest struct {
+	UserId        int     `json:"user_id"`
+	PaymentMethod string  `json:"payment_method"`
+	Amount        int64   `json:"amount"`
+	Money         float64 `json:"money"`
+	CreateTime    int64   `json:"create_time"`
+	CreditBalance bool    `json:"credit_balance"`
+}
+
 // AdminCompleteTopUp 管理员补单接口
 func AdminCompleteTopUp(c *gin.Context) {
 	var req AdminCompleteTopupRequest
@@ -508,4 +518,38 @@ func AdminCompleteTopUp(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+// AdminCreateManualTopUp 超级管理员手动创建成功充值记录
+func AdminCreateManualTopUp(c *gin.Context) {
+	var req AdminCreateManualTopUpRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	req.PaymentMethod = strings.TrimSpace(req.PaymentMethod)
+	if req.UserId <= 0 || req.PaymentMethod == "" || req.Amount <= 0 || req.Money < 0 || req.CreateTime <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if len(req.PaymentMethod) > 50 {
+		common.ApiErrorMsg(c, "支付方式不能超过 50 个字符")
+		return
+	}
+
+	topUp, err := model.CreateManualTopUp(model.ManualTopUpParams{
+		UserId:        req.UserId,
+		Amount:        req.Amount,
+		Money:         req.Money,
+		PaymentMethod: req.PaymentMethod,
+		CreateTime:    req.CreateTime,
+		CallerIp:      c.ClientIP(),
+		CreditBalance: req.CreditBalance,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, topUp)
 }

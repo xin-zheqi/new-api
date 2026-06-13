@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
-import { Search, Copy, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  Search,
+  Copy,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatCurrencyFromUSD } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
@@ -53,12 +60,14 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/status-badge'
+import { useIsRoot } from '@/hooks/use-admin'
 import { useBillingHistory } from '../../hooks/use-billing-history'
 import {
   getStatusConfig,
   getPaymentMethodName,
   formatTimestamp,
 } from '../../lib/billing'
+import { ManualTopupDialog } from './manual-topup-dialog'
 
 interface BillingHistoryDialogProps {
   open: boolean
@@ -83,10 +92,13 @@ export function BillingHistoryDialog({
     handlePageSizeChange,
     handleSearch,
     handleCompleteOrder,
+    refresh,
   } = useBillingHistory()
 
   const [confirmTradeNo, setConfirmTradeNo] = useState<string | null>(null)
+  const [manualTopupOpen, setManualTopupOpen] = useState(false)
   const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
+  const isRoot = useIsRoot()
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -111,6 +123,15 @@ export function BillingHistoryDialog({
           </DialogHeader>
 
           <div className='min-h-0 flex-1 space-y-3 sm:space-y-4'>
+            {isRoot && (
+              <div className='flex justify-end'>
+                <Button size='sm' onClick={() => setManualTopupOpen(true)}>
+                  <Plus data-icon='inline-start' />
+                  {t('Create recharge record')}
+                </Button>
+              </div>
+            )}
+
             {/* Search and Filter Bar */}
             <div className='flex items-center gap-2'>
               <div className='relative flex-1'>
@@ -346,6 +367,14 @@ export function BillingHistoryDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {isRoot && (
+        <ManualTopupDialog
+          open={manualTopupOpen}
+          onOpenChange={setManualTopupOpen}
+          onCreated={refresh}
+        />
+      )}
     </>
   )
 }

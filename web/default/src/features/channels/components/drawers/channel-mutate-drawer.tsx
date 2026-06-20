@@ -224,7 +224,8 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.claude_beta_query ||
     values.upstream_model_update_check_enabled ||
     values.upstream_model_update_auto_sync_enabled ||
-    values.upstream_model_update_ignored_models?.trim()
+    values.upstream_model_update_ignored_models?.trim() ||
+    values.auto_test_enabled === false
   )
 }
 
@@ -2587,6 +2588,31 @@ export function ChannelMutateDrawer({
                                   onCheckedChange={(checked) =>
                                     field.onChange(checked ? 1 : 0)
                                   }
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name='auto_test_enabled'
+                          render={({ field }) => (
+                            <FormItem className='flex items-center justify-between'>
+                              <div className='space-y-0.5'>
+                                <FormLabel>
+                                  {t('Include in scheduled tests')}
+                                </FormLabel>
+                                <FormDescription>
+                                  {t(
+                                    'When disabled, automatic all-channel tests skip this channel'
+                                  )}
+                                </FormDescription>
+                              </div>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value !== false}
+                                  onCheckedChange={field.onChange}
                                 />
                               </FormControl>
                             </FormItem>

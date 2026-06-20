@@ -1,4 +1,9 @@
 {
+  "定时测试时间范围": "Plage horaire des tests planifiés",
+  "定时测试时间范围格式不正确": "Format de plage horaire des tests planifiés incorrect",
+  "关闭后定时测试所有通道时会跳过该渠道": "Lorsque cette option est désactivée, les tests planifiés de tous les canaux ignorent ce canal",
+  "仅在服务器本地时间处于该范围内时执行定时测试": "Les tests planifiés ne s'exécutent que lorsque l'heure locale du serveur est dans cette plage",
+  "是否参与定时测试": "Inclure dans les tests planifiés",
   "translation": {
     "原始状态码": "Code de statut d'origine",
     "原始错误信息": "Message d'erreur d'origine",

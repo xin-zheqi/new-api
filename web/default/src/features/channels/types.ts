@@ -102,6 +102,7 @@ export interface ChannelOtherSettings {
   allow_inference_geo?: boolean
   allow_speed?: boolean
   claude_beta_query?: boolean
+  auto_test_enabled?: boolean
   upstream_model_update_check_enabled?: boolean
   upstream_model_update_auto_sync_enabled?: boolean
   upstream_model_update_ignored_models?: string[]

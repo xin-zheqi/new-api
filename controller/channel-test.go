@@ -926,6 +926,9 @@ func testAllChannels(notify bool) error {
 			if channel.Status == common.ChannelStatusManuallyDisabled {
 				continue
 			}
+			if !notify && !channel.GetOtherSettings().IsAutoTestEnabled() {
+				continue
+			}
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 			tik := time.Now()
 			result := testChannel(channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
@@ -996,14 +999,22 @@ func AutomaticallyTestChannels() {
 			}
 			for {
 				frequency := operation_setting.GetMonitorSetting().AutoTestChannelMinutes
+				if frequency < 1 {
+					frequency = 1
+				}
 				time.Sleep(time.Duration(int(math.Round(frequency))) * time.Minute)
+				monitorSetting := operation_setting.GetMonitorSetting()
+				if !monitorSetting.AutoTestChannelEnabled {
+					break
+				}
+				if !operation_setting.IsNowInAutoTestChannelTimeRange(time.Now(), monitorSetting.AutoTestChannelTimeRange) {
+					common.SysLog(fmt.Sprintf("skip automatic channel test outside configured time range %s", monitorSetting.AutoTestChannelTimeRange))
+					continue
+				}
 				common.SysLog(fmt.Sprintf("automatically test channels with interval %f minutes", frequency))
 				common.SysLog("automatically testing all channels")
 				_ = testAllChannels(false)
 				common.SysLog("automatically channel test finished")
-				if !operation_setting.GetMonitorSetting().AutoTestChannelEnabled {
-					break
-				}
 			}
 		}
 	})

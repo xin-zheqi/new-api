@@ -1,4 +1,9 @@
 {
+  "定时测试时间范围": "Scheduled test time range",
+  "定时测试时间范围格式不正确": "Invalid scheduled test time range format",
+  "关闭后定时测试所有通道时会跳过该渠道": "When disabled, scheduled all-channel tests will skip this channel",
+  "仅在服务器本地时间处于该范围内时执行定时测试": "Scheduled tests run only when server local time is within this range",
+  "是否参与定时测试": "Include in scheduled tests",
   "translation": {
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + Image generation call {{symbol}}{{price}} / 1 time * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + File search {{count}} time / 1K times * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",

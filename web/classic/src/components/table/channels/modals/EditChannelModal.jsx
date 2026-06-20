@@ -216,6 +216,7 @@ const EditChannelModal = (props) => {
     allow_inference_geo: false,
     allow_speed: false,
     claude_beta_query: false,
+    auto_test_enabled: true,
     upstream_model_update_check_enabled: false,
     upstream_model_update_auto_sync_enabled: false,
     upstream_model_update_last_check_time: 0,
@@ -924,6 +925,7 @@ const EditChannelModal = (props) => {
             parsedSettings.allow_inference_geo || false;
           data.allow_speed = parsedSettings.allow_speed || false;
           data.claude_beta_query = parsedSettings.claude_beta_query || false;
+          data.auto_test_enabled = parsedSettings.auto_test_enabled !== false;
           data.upstream_model_update_check_enabled =
             parsedSettings.upstream_model_update_check_enabled === true;
           data.upstream_model_update_auto_sync_enabled =
@@ -954,6 +956,7 @@ const EditChannelModal = (props) => {
           data.allow_inference_geo = false;
           data.allow_speed = false;
           data.claude_beta_query = false;
+          data.auto_test_enabled = true;
           data.upstream_model_update_check_enabled = false;
           data.upstream_model_update_auto_sync_enabled = false;
           data.upstream_model_update_last_check_time = 0;
@@ -972,6 +975,7 @@ const EditChannelModal = (props) => {
         data.allow_inference_geo = false;
         data.allow_speed = false;
         data.claude_beta_query = false;
+        data.auto_test_enabled = true;
         data.upstream_model_update_check_enabled = false;
         data.upstream_model_update_auto_sync_enabled = false;
         data.upstream_model_update_last_check_time = 0;
@@ -1825,6 +1829,8 @@ const EditChannelModal = (props) => {
       }
     }
 
+    settings.auto_test_enabled = localInputs.auto_test_enabled !== false;
+
     settings.upstream_model_update_check_enabled =
       localInputs.upstream_model_update_check_enabled === true;
     settings.upstream_model_update_auto_sync_enabled =
@@ -1871,6 +1877,7 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
     delete localInputs.claude_beta_query;
+    delete localInputs.auto_test_enabled;
     delete localInputs.upstream_model_update_check_enabled;
     delete localInputs.upstream_model_update_auto_sync_enabled;
     delete localInputs.upstream_model_update_last_check_time;
@@ -3693,6 +3700,23 @@ const EditChannelModal = (props) => {
                       '仅当自动禁用开启时有效，关闭后不会自动禁用该渠道',
                     )}
                     initValue={autoBan}
+                  />
+
+                  <Form.Switch
+                    field='auto_test_enabled'
+                    label={t('是否参与定时测试')}
+                    checkedText={t('开')}
+                    uncheckedText={t('关')}
+                    onChange={(value) =>
+                      handleChannelOtherSettingsChange(
+                        'auto_test_enabled',
+                        value,
+                      )
+                    }
+                    extraText={t(
+                      '关闭后定时测试所有通道时会跳过该渠道',
+                    )}
+                    initValue={inputs.auto_test_enabled !== false}
                   />
 
                   {/* Test Model - Core Config */}

@@ -1,4 +1,9 @@
 {
+  "定时测试时间范围": "Khoảng thời gian kiểm thử định kỳ",
+  "定时测试时间范围格式不正确": "Định dạng khoảng thời gian kiểm thử định kỳ không chính xác",
+  "关闭后定时测试所有通道时会跳过该渠道": "Khi tắt, kiểm thử định kỳ tất cả kênh sẽ bỏ qua kênh này",
+  "仅在服务器本地时间处于该范围内时执行定时测试": "Kiểm thử định kỳ chỉ chạy khi giờ cục bộ của máy chủ nằm trong khoảng này",
+  "是否参与定时测试": "Bao gồm trong kiểm thử định kỳ",
   "translation": {
     "原始状态码": "Ma trang thai goc",
     "原始错误信息": "Thong bao loi goc",

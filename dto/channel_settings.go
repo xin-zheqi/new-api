@@ -36,6 +36,7 @@ type ChannelOtherSettings struct {
 	DisableStore                          bool          `json:"disable_store,omitempty"`             // 是否禁用 store 透传（默认允许透传，禁用后可能导致 Codex 无法使用）
 	AllowIncludeObfuscation               bool          `json:"allow_include_obfuscation,omitempty"` // 是否允许 stream_options.include_obfuscation 透传（默认过滤以避免关闭流混淆保护）
 	AwsKeyType                            AwsKeyType    `json:"aws_key_type,omitempty"`
+	AutoTestEnabled                       *bool         `json:"auto_test_enabled,omitempty"` // 是否参与定时通道测试，nil 表示默认参与
 	UpstreamModelUpdateCheckEnabled       bool          `json:"upstream_model_update_check_enabled,omitempty"`        // 是否检测上游模型更新
 	UpstreamModelUpdateAutoSyncEnabled    bool          `json:"upstream_model_update_auto_sync_enabled,omitempty"`    // 是否自动同步上游模型更新
 	UpstreamModelUpdateLastCheckTime      int64         `json:"upstream_model_update_last_check_time,omitempty"`      // 上次检测时间
@@ -49,4 +50,11 @@ func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {
 		return false
 	}
 	return *s.OpenRouterEnterprise
+}
+
+func (s ChannelOtherSettings) IsAutoTestEnabled() bool {
+	if s.AutoTestEnabled == nil {
+		return true
+	}
+	return *s.AutoTestEnabled
 }

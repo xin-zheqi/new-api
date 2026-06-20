@@ -893,7 +893,22 @@ func TestChannel(c *gin.Context) {
 var testAllChannelsLock sync.Mutex
 var testAllChannelsRunning bool = false
 
+func shouldDisableChannelAfterTest(newAPIError *types.NewAPIError, notify bool) bool {
+	if newAPIError == nil {
+		return false
+	}
+	// notify is true for the admin-triggered "test all channels" action and
+	// false for scheduled automatic tests. Scheduled tests intentionally disable
+	// on any test error; manual tests keep the normal disable rules.
+	if notify {
+		return service.ShouldDisableChannel(newAPIError)
+	}
+	return true
+}
+
 func testAllChannels(notify bool) error {
+	// notify doubles as the caller mode: true means the admin manually triggered
+	// "test all channels"; false means the scheduled automatic test worker.
 	testUserID, err := resolveChannelTestUserID(nil)
 	if err != nil {
 		return err
@@ -908,6 +923,9 @@ func testAllChannels(notify bool) error {
 	testAllChannelsLock.Unlock()
 	channels, getChannelErr := model.GetAllChannels(0, 0, true, false)
 	if getChannelErr != nil {
+		testAllChannelsLock.Lock()
+		testAllChannelsRunning = false
+		testAllChannelsLock.Unlock()
 		return getChannelErr
 	}
 	var disableThreshold = int64(common.ChannelDisableThreshold * 1000)
@@ -922,13 +940,22 @@ func testAllChannels(notify bool) error {
 			testAllChannelsLock.Unlock()
 		}()
 
+		totalChannels := len(channels)
+		testedChannels := 0
+		skippedManualDisabled := 0
+		skippedAutoTestDisabled := 0
 		for _, channel := range channels {
 			if channel.Status == common.ChannelStatusManuallyDisabled {
+				skippedManualDisabled++
 				continue
 			}
+			// Channel-level opt-out applies only to scheduled automatic tests.
+			// Manual tests still include the channel so admins can diagnose it.
 			if !notify && !channel.GetOtherSettings().IsAutoTestEnabled() {
+				skippedAutoTestDisabled++
 				continue
 			}
+			testedChannels++
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 			tik := time.Now()
 			result := testChannel(channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
@@ -937,10 +964,7 @@ func testAllChannels(notify bool) error {
 
 			shouldBanChannel := false
 			newAPIError := result.newAPIError
-			// request error disables the channel
-			if newAPIError != nil {
-				shouldBanChannel = service.ShouldDisableChannel(result.newAPIError)
-			}
+			shouldBanChannel = shouldDisableChannelAfterTest(newAPIError, notify)
 
 			// 当错误检查通过，才检查响应时间
 			if common.AutomaticDisableChannelEnabled && !shouldBanChannel {
@@ -967,6 +991,8 @@ func testAllChannels(notify bool) error {
 
 		if notify {
 			service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
+		} else {
+			common.SysLog(fmt.Sprintf("automatic channel test completed: total=%d tested=%d skipped_manual_disabled=%d skipped_auto_test_disabled=%d", totalChannels, testedChannels, skippedManualDisabled, skippedAutoTestDisabled))
 		}
 	})
 	return nil
@@ -1007,14 +1033,18 @@ func AutomaticallyTestChannels() {
 				if !monitorSetting.AutoTestChannelEnabled {
 					break
 				}
-				if !operation_setting.IsNowInAutoTestChannelTimeRange(time.Now(), monitorSetting.AutoTestChannelTimeRange) {
-					common.SysLog(fmt.Sprintf("skip automatic channel test outside configured time range %s", monitorSetting.AutoTestChannelTimeRange))
+				now := time.Now()
+				if !operation_setting.IsNowInAutoTestChannelTimeRange(now, monitorSetting.AutoTestChannelTimeRange) {
+					common.SysLog(fmt.Sprintf("skip automatic channel test outside configured time range %s, current local time %s", monitorSetting.AutoTestChannelTimeRange, now.Format("15:04")))
 					continue
 				}
 				common.SysLog(fmt.Sprintf("automatically test channels with interval %f minutes", frequency))
 				common.SysLog("automatically testing all channels")
-				_ = testAllChannels(false)
-				common.SysLog("automatically channel test finished")
+				if err := testAllChannels(false); err != nil {
+					common.SysLog(fmt.Sprintf("automatically channel test failed to start: %v", err))
+					continue
+				}
+				common.SysLog("automatically channel test started")
 			}
 		}
 	})

@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -79,4 +81,27 @@ func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 2, userID)
+}
+
+func TestShouldDisableChannelAfterTestAutomaticDisablesAnyError(t *testing.T) {
+	err := types.NewOpenAIError(errors.New("temporary upstream failure"), "temporary_upstream_failure", http.StatusTooManyRequests)
+
+	require.True(t, shouldDisableChannelAfterTest(err, false))
+}
+
+func TestShouldDisableChannelAfterTestManualUsesDisableRules(t *testing.T) {
+	originalAutomaticDisable := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = false
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = originalAutomaticDisable
+	})
+
+	err := types.NewOpenAIError(errors.New("temporary upstream failure"), "temporary_upstream_failure", http.StatusTooManyRequests)
+
+	require.False(t, shouldDisableChannelAfterTest(err, true))
+}
+
+func TestShouldDisableChannelAfterTestIgnoresNilError(t *testing.T) {
+	require.False(t, shouldDisableChannelAfterTest(nil, false))
+	require.False(t, shouldDisableChannelAfterTest(nil, true))
 }

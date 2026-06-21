@@ -2,14 +2,24 @@ package controller
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -104,4 +114,128 @@ func TestShouldDisableChannelAfterTestManualUsesDisableRules(t *testing.T) {
 func TestShouldDisableChannelAfterTestIgnoresNilError(t *testing.T) {
 	require.False(t, shouldDisableChannelAfterTest(nil, false))
 	require.False(t, shouldDisableChannelAfterTest(nil, true))
+}
+
+func TestAutomaticTestAllChannelsDisablesErrorWithoutDisableRules(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	originalDB := model.DB
+	originalLOGDB := model.LOG_DB
+	originalSQLitePath := common.SQLitePath
+	originalUsingSQLite := common.UsingSQLite
+	originalUsingMySQL := common.UsingMySQL
+	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalRedisEnabled := common.RedisEnabled
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	originalIsMasterNode := common.IsMasterNode
+	originalAutomaticDisable := common.AutomaticDisableChannelEnabled
+	originalAutomaticEnable := common.AutomaticEnableChannelEnabled
+	originalRequestInterval := common.RequestInterval
+	originalDisableRanges := operation_setting.AutomaticDisableStatusCodeRanges
+	originalDisableKeywords := operation_setting.AutomaticDisableKeywords
+	originalModelRatio := ratio_setting.ModelRatio2JSONString()
+	originalSQLDSN, hadSQLDSN := os.LookupEnv("SQL_DSN")
+
+	t.Cleanup(func() {
+		testAllChannelsLock.Lock()
+		testAllChannelsRunning = false
+		testAllChannelsLock.Unlock()
+
+		if model.DB != nil && model.DB != originalDB {
+			if sqlDB, err := model.DB.DB(); err == nil {
+				_ = sqlDB.Close()
+			}
+		}
+		model.DB = originalDB
+		model.LOG_DB = originalLOGDB
+		common.SQLitePath = originalSQLitePath
+		common.UsingSQLite = originalUsingSQLite
+		common.UsingMySQL = originalUsingMySQL
+		common.UsingPostgreSQL = originalUsingPostgreSQL
+		common.RedisEnabled = originalRedisEnabled
+		common.MemoryCacheEnabled = originalMemoryCacheEnabled
+		common.IsMasterNode = originalIsMasterNode
+		common.AutomaticDisableChannelEnabled = originalAutomaticDisable
+		common.AutomaticEnableChannelEnabled = originalAutomaticEnable
+		common.RequestInterval = originalRequestInterval
+		operation_setting.AutomaticDisableStatusCodeRanges = originalDisableRanges
+		operation_setting.AutomaticDisableKeywords = originalDisableKeywords
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(originalModelRatio))
+		if hadSQLDSN {
+			require.NoError(t, os.Setenv("SQL_DSN", originalSQLDSN))
+		} else {
+			require.NoError(t, os.Unsetenv("SQL_DSN"))
+		}
+	})
+
+	testAllChannelsLock.Lock()
+	testAllChannelsRunning = false
+	testAllChannelsLock.Unlock()
+
+	common.SQLitePath = "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
+	common.UsingSQLite = false
+	common.UsingMySQL = false
+	common.UsingPostgreSQL = false
+	common.RedisEnabled = false
+	common.MemoryCacheEnabled = false
+	common.IsMasterNode = false
+	common.AutomaticDisableChannelEnabled = false
+	common.AutomaticEnableChannelEnabled = false
+	common.RequestInterval = 0
+	operation_setting.AutomaticDisableStatusCodeRanges = nil
+	operation_setting.AutomaticDisableKeywords = nil
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"gpt-4o-mini":1}`))
+	service.InitHttpClient()
+	require.NoError(t, os.Setenv("SQL_DSN", "local"))
+	require.NoError(t, model.InitDB())
+	model.LOG_DB = model.DB
+	require.NoError(t, model.DB.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Log{}))
+
+	var requestWasStream atomic.Bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		if err := common.Unmarshal(body, &payload); err == nil {
+			requestWasStream.Store(payload["stream"] == true)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"message":"temporary upstream failure","type":"server_error","code":"temporary"}}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	require.NoError(t, model.DB.Create(&model.User{
+		Id:       1,
+		Username: "root",
+		Password: "password",
+		Role:     common.RoleRootUser,
+		Status:   common.UserStatusEnabled,
+		Quota:    1000000,
+		Group:    "default",
+	}).Error)
+
+	autoBan := 1
+	baseURL := upstream.URL
+	channel := model.Channel{
+		Id:      1,
+		Type:    constant.ChannelTypeOpenAI,
+		Key:     "test-key",
+		Status:  common.ChannelStatusEnabled,
+		Name:    "auto-test-channel",
+		BaseURL: &baseURL,
+		Models:  "gpt-4o-mini",
+		Group:   "default",
+		AutoBan: &autoBan,
+	}
+	require.NoError(t, model.DB.Create(&channel).Error)
+
+	require.NoError(t, testAllChannels(false))
+
+	require.Eventually(t, func() bool {
+		var refreshed model.Channel
+		if err := model.DB.First(&refreshed, channel.Id).Error; err != nil {
+			return false
+		}
+		return refreshed.Status == common.ChannelStatusAutoDisabled && requestWasStream.Load()
+	}, 3*time.Second, 25*time.Millisecond)
 }

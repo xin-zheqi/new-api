@@ -663,8 +663,11 @@ func validateTestResponseBody(respBody []byte, isStream bool) error {
 	return nil
 }
 
-func shouldUseStreamForAutomaticChannelTest(channel *model.Channel) bool {
-	return channel != nil && channel.Type == constant.ChannelTypeCodex
+func shouldUseStreamForChannelTest(channel *model.Channel, isScheduledAutomaticTest bool) bool {
+	if channel == nil {
+		return false
+	}
+	return isScheduledAutomaticTest || channel.Type == constant.ChannelTypeCodex
 }
 
 func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
@@ -958,7 +961,7 @@ func testAllChannels(notify bool) error {
 			testedChannels++
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 			tik := time.Now()
-			result := testChannel(channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+			result := testChannel(channel, testUserID, "", "", shouldUseStreamForChannelTest(channel, !notify))
 			tok := time.Now()
 			milliseconds := tok.Sub(tik).Milliseconds()
 
@@ -977,7 +980,12 @@ func testAllChannels(notify bool) error {
 
 			// disable channel
 			if isChannelEnabled && shouldBanChannel && channel.GetAutoBan() {
-				processChannelError(result.context, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+				channelError := *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.GetAutoBan())
+				if notify {
+					processChannelError(result.context, channelError, newAPIError)
+				} else {
+					service.DisableChannel(channelError, newAPIError.ErrorWithStatusCode())
+				}
 			}
 
 			// enable channel

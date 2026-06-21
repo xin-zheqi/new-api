@@ -42,6 +42,7 @@ export default function SettingsMonitoring(props) {
     AutomaticDisableStatusCodes: '401',
     AutomaticRetryStatusCodes: '100-199,300-399,401-407,409-499,500-599',
     'monitor_setting.auto_test_channel_enabled': false,
+    'monitor_setting.auto_test_only_auto_disabled': false,
     'monitor_setting.auto_test_channel_minutes': 10,
     'monitor_setting.auto_test_channel_time_range': '00:00-23:59',
   });
@@ -183,6 +184,24 @@ export default function SettingsMonitoring(props) {
                     setInputs({
                       ...inputs,
                       'monitor_setting.auto_test_channel_time_range': value,
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'monitor_setting.auto_test_only_auto_disabled'}
+                  label={t('仅测试自动禁用渠道')}
+                  extraText={t(
+                    '开启后定时测试只检测已自动禁用且启用自动测试的渠道',
+                  )}
+                  size='default'
+                  checkedText='｜'
+                  uncheckedText='〇'
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      'monitor_setting.auto_test_only_auto_disabled': value,
                     })
                   }
                 />

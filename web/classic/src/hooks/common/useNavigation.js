@@ -26,12 +26,13 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
       home: true,
       console: true,
       pricing: true,
+      groupStatus: true,
       docs: true,
       about: true,
     };
 
-    // 使用传入的配置或默认配置
-    const modules = headerNavModules || defaultModules;
+    // 使用传入的配置并补齐新增模块默认值，兼容旧版 HeaderNavModules。
+    const modules = { ...defaultModules, ...(headerNavModules || {}) };
 
     const allLinks = [
       {
@@ -48,6 +49,11 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         text: t('模型广场'),
         itemKey: 'pricing',
         to: '/pricing',
+      },
+      {
+        text: t('分组状态'),
+        itemKey: 'groupStatus',
+        to: '/status/groups',
       },
       ...(docsLink
         ? [
@@ -76,6 +82,11 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         return typeof modules.pricing === 'object'
           ? modules.pricing.enabled
           : modules.pricing;
+      }
+      if (link.itemKey === 'groupStatus') {
+        return typeof modules.groupStatus === 'object'
+          ? modules.groupStatus.enabled
+          : modules.groupStatus === true;
       }
       return modules[link.itemKey] === true;
     });

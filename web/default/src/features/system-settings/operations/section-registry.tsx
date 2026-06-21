@@ -70,6 +70,8 @@ const OPERATIONS_SECTIONS = [
           AutomaticRetryStatusCodes: settings.AutomaticRetryStatusCodes,
           'monitor_setting.auto_test_channel_enabled':
             settings['monitor_setting.auto_test_channel_enabled'],
+          'monitor_setting.auto_test_only_auto_disabled':
+            settings['monitor_setting.auto_test_only_auto_disabled'],
           'monitor_setting.auto_test_channel_minutes':
             settings['monitor_setting.auto_test_channel_minutes'],
           'monitor_setting.auto_test_channel_time_range':

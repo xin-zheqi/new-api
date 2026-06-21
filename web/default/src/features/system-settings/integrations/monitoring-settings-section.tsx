@@ -71,6 +71,7 @@ const monitoringSchema = z
     AutomaticRetryStatusCodes: z.string(),
     monitor_setting: z.object({
       auto_test_channel_enabled: z.boolean(),
+      auto_test_only_auto_disabled: z.boolean(),
       auto_test_channel_minutes: z.coerce
         .number()
         .int()
@@ -119,6 +120,7 @@ type MonitoringSettingsSectionProps = {
     AutomaticDisableStatusCodes: string
     AutomaticRetryStatusCodes: string
     'monitor_setting.auto_test_channel_enabled': boolean
+    'monitor_setting.auto_test_only_auto_disabled': boolean
     'monitor_setting.auto_test_channel_minutes': number
     'monitor_setting.auto_test_channel_time_range': string
   }
@@ -137,6 +139,7 @@ type NormalizedMonitoringValues = {
   AutomaticDisableStatusCodes: string
   AutomaticRetryStatusCodes: string
   'monitor_setting.auto_test_channel_enabled': boolean
+  'monitor_setting.auto_test_only_auto_disabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.auto_test_channel_time_range': string
 }
@@ -156,6 +159,8 @@ const buildFormDefaults = (
   monitor_setting: {
     auto_test_channel_enabled:
       defaults['monitor_setting.auto_test_channel_enabled'],
+    auto_test_only_auto_disabled:
+      defaults['monitor_setting.auto_test_only_auto_disabled'] ?? false,
     auto_test_channel_minutes:
       defaults['monitor_setting.auto_test_channel_minutes'],
     auto_test_channel_time_range:
@@ -181,6 +186,8 @@ const normalizeDefaults = (
   ).normalized,
   'monitor_setting.auto_test_channel_enabled':
     defaults['monitor_setting.auto_test_channel_enabled'],
+  'monitor_setting.auto_test_only_auto_disabled':
+    defaults['monitor_setting.auto_test_only_auto_disabled'] ?? false,
   'monitor_setting.auto_test_channel_minutes':
     defaults['monitor_setting.auto_test_channel_minutes'],
   'monitor_setting.auto_test_channel_time_range': (
@@ -206,6 +213,8 @@ const normalizeFormValues = (
   ).normalized,
   'monitor_setting.auto_test_channel_enabled':
     values.monitor_setting.auto_test_channel_enabled,
+  'monitor_setting.auto_test_only_auto_disabled':
+    values.monitor_setting.auto_test_only_auto_disabled,
   'monitor_setting.auto_test_channel_minutes':
     values.monitor_setting.auto_test_channel_minutes,
   'monitor_setting.auto_test_channel_time_range':
@@ -285,6 +294,31 @@ export function MonitoringSettingsSection({
                     <FormLabel>{t('Scheduled channel tests')}</FormLabel>
                     <FormDescription>
                       {t('Automatically probe all channels in the background')}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='monitor_setting.auto_test_only_auto_disabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>
+                      {t('Only test auto-disabled channels')}
+                    </FormLabel>
+                    <FormDescription>
+                      {t(
+                        'Skip healthy channels during scheduled tests and only probe auto-disabled channels for recovery'
+                      )}
                     </FormDescription>
                   </SettingsSwitchContent>
                   <FormControl>

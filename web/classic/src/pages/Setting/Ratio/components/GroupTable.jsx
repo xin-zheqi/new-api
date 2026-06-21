@@ -25,13 +25,19 @@ function parseJSON(str, fallback) {
   }
 }
 
-function buildRows(groupRatioStr, userUsableGroupsStr) {
+function buildRows(
+  groupRatioStr,
+  userUsableGroupsStr,
+  groupStatusEnabledGroupsStr,
+) {
   const ratioMap = parseJSON(groupRatioStr, {});
   const usableMap = parseJSON(userUsableGroupsStr, {});
+  const statusEnabledMap = parseJSON(groupStatusEnabledGroupsStr, {});
 
   const allNames = new Set([
     ...Object.keys(ratioMap),
     ...Object.keys(usableMap),
+    ...Object.keys(statusEnabledMap),
   ]);
 
   return Array.from(allNames).map((name) => ({
@@ -40,12 +46,14 @@ function buildRows(groupRatioStr, userUsableGroupsStr) {
     ratio: ratioMap[name] ?? 1,
     selectable: name in usableMap,
     description: usableMap[name] ?? '',
+    statusVisible: statusEnabledMap[name] === true,
   }));
 }
 
 export function serializeGroupTable(rows) {
   const groupRatio = {};
   const userUsableGroups = {};
+  const groupStatusEnabledGroups = {};
 
   rows.forEach((row) => {
     if (!row.name) return;
@@ -53,19 +61,28 @@ export function serializeGroupTable(rows) {
     if (row.selectable) {
       userUsableGroups[row.name] = row.description;
     }
+    if (row.statusVisible) {
+      groupStatusEnabledGroups[row.name] = true;
+    }
   });
 
   return {
     GroupRatio: JSON.stringify(groupRatio, null, 2),
     UserUsableGroups: JSON.stringify(userUsableGroups, null, 2),
+    GroupStatusEnabledGroups: JSON.stringify(groupStatusEnabledGroups, null, 2),
   };
 }
 
-export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
+export default function GroupTable({
+  groupRatio,
+  userUsableGroups,
+  groupStatusEnabledGroups,
+  onChange,
+}) {
   const { t } = useTranslation();
 
   const [rows, setRows] = useState(() =>
-    buildRows(groupRatio, userUsableGroups),
+    buildRows(groupRatio, userUsableGroups, groupStatusEnabledGroups),
   );
 
   // Use functional setRows to keep updateRow/addRow/removeRow referentially
@@ -108,6 +125,7 @@ export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
           ratio: 1,
           selectable: true,
           description: '',
+          statusVisible: false,
         },
       ];
     });
@@ -180,6 +198,21 @@ export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
             checked={record.selectable}
             onChange={(e) =>
               updateRow(record._id, 'selectable', e.target.checked)
+            }
+          />
+        ),
+      },
+      {
+        title: t('展示状态'),
+        dataIndex: 'statusVisible',
+        key: 'statusVisible',
+        width: 90,
+        align: 'center',
+        render: (_, record) => (
+          <Checkbox
+            checked={record.statusVisible}
+            onChange={(e) =>
+              updateRow(record._id, 'statusVisible', e.target.checked)
             }
           />
         ),

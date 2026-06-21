@@ -454,6 +454,110 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
+type GroupStatusBucket struct {
+	StartTs     int64   `json:"start_ts"`
+	EndTs       int64   `json:"end_ts"`
+	Total       int64   `json:"total"`
+	Success     int64   `json:"success"`
+	SuccessRate float64 `json:"success_rate"`
+	NoRequests  bool    `json:"no_requests"`
+}
+
+type GroupStatusTimeline struct {
+	Group       string              `json:"group"`
+	CurrentRate float64             `json:"current_rate"`
+	Buckets     []GroupStatusBucket `json:"buckets"`
+}
+
+type groupStatusLogRow struct {
+	Group     string `gorm:"column:group_name"`
+	Type      int    `gorm:"column:type"`
+	CreatedAt int64  `gorm:"column:created_at"`
+}
+
+func GetGroupStatusTimelines(groups []string, startTs int64, endTs int64, bucketSeconds int64) ([]GroupStatusTimeline, error) {
+	if len(groups) == 0 {
+		return []GroupStatusTimeline{}, nil
+	}
+	if bucketSeconds <= 0 {
+		bucketSeconds = 300
+	}
+	if endTs <= startTs {
+		return []GroupStatusTimeline{}, nil
+	}
+
+	bucketCount := int((endTs - startTs) / bucketSeconds)
+	if (endTs-startTs)%bucketSeconds != 0 {
+		bucketCount++
+	}
+
+	results := make([]GroupStatusTimeline, 0, len(groups))
+	timelineByGroup := make(map[string]*GroupStatusTimeline, len(groups))
+	for _, group := range groups {
+		buckets := make([]GroupStatusBucket, 0, bucketCount)
+		for i := 0; i < bucketCount; i++ {
+			bucketStart := startTs + int64(i)*bucketSeconds
+			bucketEnd := bucketStart + bucketSeconds
+			if bucketEnd > endTs {
+				bucketEnd = endTs
+			}
+			buckets = append(buckets, GroupStatusBucket{
+				StartTs:     bucketStart,
+				EndTs:       bucketEnd,
+				SuccessRate: 100,
+				NoRequests:  true,
+			})
+		}
+		results = append(results, GroupStatusTimeline{
+			Group:       group,
+			CurrentRate: 100,
+			Buckets:     buckets,
+		})
+		timelineByGroup[group] = &results[len(results)-1]
+	}
+
+	var rows []groupStatusLogRow
+	err := LOG_DB.Table("logs").
+		Select(logGroupCol+" AS group_name, type, created_at").
+		Where(logGroupCol+" IN ? AND created_at >= ? AND created_at < ? AND type IN ?", groups, startTs, endTs, []int{LogTypeConsume, LogTypeError}).
+		Scan(&rows).Error
+	if err != nil {
+		common.SysError("failed to query group status timelines: " + err.Error())
+		return nil, errors.New("查询分组状态失败")
+	}
+
+	for _, row := range rows {
+		timeline := timelineByGroup[row.Group]
+		bucketIndex := int((row.CreatedAt - startTs) / bucketSeconds)
+		if timeline == nil || bucketIndex < 0 || bucketIndex >= len(timeline.Buckets) {
+			continue
+		}
+		bucket := &timeline.Buckets[bucketIndex]
+		bucket.Total++
+		if row.Type == LogTypeConsume {
+			bucket.Success++
+		}
+	}
+
+	for i := range results {
+		for j := range results[i].Buckets {
+			bucket := &results[i].Buckets[j]
+			if bucket.Total == 0 {
+				bucket.SuccessRate = 100
+				bucket.NoRequests = true
+				continue
+			}
+			bucket.NoRequests = false
+			bucket.SuccessRate = float64(bucket.Success) * 100 / float64(bucket.Total)
+		}
+		if len(results[i].Buckets) > 0 {
+			results[i].CurrentRate = results[i].Buckets[len(results[i].Buckets)-1].SuccessRate
+		}
+	}
+
+	return results, nil
+}
+
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 

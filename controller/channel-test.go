@@ -700,6 +700,7 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 }
 
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+	const testInput = "hi"
 	testResponsesInput := json.RawMessage(`[{"role":"user","content":"hi"}]`)
 
 	// 根据端点类型构建不同的测试请求
@@ -709,13 +710,13 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			// 返回 EmbeddingRequest
 			return &dto.EmbeddingRequest{
 				Model: model,
-				Input: []any{"hello world"},
+				Input: []any{testInput},
 			}
 		case constant.EndpointTypeImageGeneration:
 			// 返回 ImageRequest
 			return &dto.ImageRequest{
 				Model:  model,
-				Prompt: "a cute cat",
+				Prompt: testInput,
 				N:      lo.ToPtr(uint(1)),
 				Size:   "1024x1024",
 			}
@@ -723,9 +724,9 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			// 返回 RerankRequest
 			return &dto.RerankRequest{
 				Model:     model,
-				Query:     "What is Deep Learning?",
-				Documents: []any{"Deep Learning is a subset of machine learning.", "Machine learning is a field of artificial intelligence."},
-				TopN:      lo.ToPtr(2),
+				Query:     testInput,
+				Documents: []any{testInput},
+				TopN:      lo.ToPtr(1),
 			}
 		case constant.EndpointTypeOpenAIResponse:
 			// 返回 OpenAIResponsesRequest
@@ -752,7 +753,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				Messages: []dto.Message{
 					{
 						Role:    "user",
-						Content: "hi",
+						Content: testInput,
 					},
 				},
 				MaxTokens: lo.ToPtr(maxTokens),
@@ -768,9 +769,9 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	if strings.Contains(strings.ToLower(model), "rerank") {
 		return &dto.RerankRequest{
 			Model:     model,
-			Query:     "What is Deep Learning?",
-			Documents: []any{"Deep Learning is a subset of machine learning.", "Machine learning is a field of artificial intelligence."},
-			TopN:      lo.ToPtr(2),
+			Query:     testInput,
+			Documents: []any{testInput},
+			TopN:      lo.ToPtr(1),
 		}
 	}
 
@@ -781,7 +782,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		// 返回 EmbeddingRequest
 		return &dto.EmbeddingRequest{
 			Model: model,
-			Input: []any{"hello world"},
+			Input: []any{testInput},
 		}
 	}
 
@@ -809,7 +810,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		Messages: []dto.Message{
 			{
 				Role:    "user",
-				Content: "hi",
+				Content: testInput,
 			},
 		},
 	}
@@ -909,6 +910,19 @@ func shouldDisableChannelAfterTest(newAPIError *types.NewAPIError, notify bool) 
 	return true
 }
 
+func shouldSkipScheduledAutoTestChannel(channel *model.Channel, autoTestOnlyAutoDisabled bool) (bool, string) {
+	if channel == nil {
+		return true, "nil_channel"
+	}
+	if !channel.GetOtherSettings().IsAutoTestEnabled() {
+		return true, "auto_test_disabled"
+	}
+	if autoTestOnlyAutoDisabled && channel.Status != common.ChannelStatusAutoDisabled {
+		return true, "only_auto_disabled"
+	}
+	return false, ""
+}
+
 func testAllChannels(notify bool) error {
 	// notify doubles as the caller mode: true means the admin manually triggered
 	// "test all channels"; false means the scheduled automatic test worker.
@@ -947,6 +961,8 @@ func testAllChannels(notify bool) error {
 		testedChannels := 0
 		skippedManualDisabled := 0
 		skippedAutoTestDisabled := 0
+		skippedOnlyAutoDisabled := 0
+		autoTestOnlyAutoDisabled := !notify && operation_setting.GetMonitorSetting().AutoTestOnlyAutoDisabled
 		for _, channel := range channels {
 			if channel.Status == common.ChannelStatusManuallyDisabled {
 				skippedManualDisabled++
@@ -954,9 +970,15 @@ func testAllChannels(notify bool) error {
 			}
 			// Channel-level opt-out applies only to scheduled automatic tests.
 			// Manual tests still include the channel so admins can diagnose it.
-			if !notify && !channel.GetOtherSettings().IsAutoTestEnabled() {
-				skippedAutoTestDisabled++
-				continue
+			if !notify {
+				if skipped, reason := shouldSkipScheduledAutoTestChannel(channel, autoTestOnlyAutoDisabled); skipped {
+					if reason == "only_auto_disabled" {
+						skippedOnlyAutoDisabled++
+					} else {
+						skippedAutoTestDisabled++
+					}
+					continue
+				}
 			}
 			testedChannels++
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
@@ -1000,7 +1022,7 @@ func testAllChannels(notify bool) error {
 		if notify {
 			service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
 		} else {
-			common.SysLog(fmt.Sprintf("automatic channel test completed: total=%d tested=%d skipped_manual_disabled=%d skipped_auto_test_disabled=%d", totalChannels, testedChannels, skippedManualDisabled, skippedAutoTestDisabled))
+			common.SysLog(fmt.Sprintf("automatic channel test completed: total=%d tested=%d skipped_manual_disabled=%d skipped_auto_test_disabled=%d skipped_only_auto_disabled=%d", totalChannels, testedChannels, skippedManualDisabled, skippedAutoTestDisabled, skippedOnlyAutoDisabled))
 		}
 	})
 	return nil

@@ -41,6 +41,7 @@ import Chat from './pages/Chat';
 import Chat2Link from './pages/Chat2Link';
 import Midjourney from './pages/Midjourney';
 import Pricing from './pages/Pricing';
+import GroupStatus from './pages/GroupStatus';
 import Task from './pages/Task';
 import ModelPage from './pages/Model';
 import ModelDeploymentPage from './pages/ModelDeployment';
@@ -350,6 +351,14 @@ function App() {
                 <Pricing />
               </Suspense>
             )
+          }
+        />
+        <Route
+          path='/status/groups'
+          element={
+            <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <GroupStatus />
+            </Suspense>
           }
         />
         <Route

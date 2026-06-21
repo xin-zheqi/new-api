@@ -14,6 +14,7 @@ type MonitorSetting struct {
 	AutoTestChannelEnabled   bool    `json:"auto_test_channel_enabled"`
 	AutoTestChannelMinutes   float64 `json:"auto_test_channel_minutes"`
 	AutoTestChannelTimeRange string  `json:"auto_test_channel_time_range"`
+	AutoTestOnlyAutoDisabled bool    `json:"auto_test_only_auto_disabled"`
 }
 
 // 默认配置
@@ -21,6 +22,7 @@ var monitorSetting = MonitorSetting{
 	AutoTestChannelEnabled:   false,
 	AutoTestChannelMinutes:   10,
 	AutoTestChannelTimeRange: "00:00-23:59",
+	AutoTestOnlyAutoDisabled: false,
 }
 
 func init() {

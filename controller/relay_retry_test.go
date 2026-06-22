@@ -54,6 +54,19 @@ func TestShouldRetry_AllowsCrossGroupAfterLocalRetriesExhausted(t *testing.T) {
 	require.False(t, shouldRetry(c, err, 0))
 }
 
+func TestShouldRetry_RetriesFirstResponseTimeout(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	err := types.NewOpenAIError(
+		errors.New("upstream first response timeout after 30s"),
+		types.ErrorCodeChannelFirstResponseTimeout,
+		502,
+	)
+
+	require.True(t, shouldRetry(c, err, 1))
+}
+
 func TestShouldRetryTaskRelay_UsesConfiguredStatusCodes(t *testing.T) {
 	orig := operation_setting.AutomaticRetryStatusCodeRanges
 	t.Cleanup(func() { operation_setting.AutomaticRetryStatusCodeRanges = orig })

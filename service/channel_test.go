@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestShouldDisableChannelIgnoresFirstResponseTimeout(t *testing.T) {
+func TestShouldDisableChannelTreatsFirstResponseTimeoutAsChannelError(t *testing.T) {
 	originalAutomaticDisable := common.AutomaticDisableChannelEnabled
 	common.AutomaticDisableChannelEnabled = true
 	t.Cleanup(func() {
@@ -22,7 +22,7 @@ func TestShouldDisableChannelIgnoresFirstResponseTimeout(t *testing.T) {
 		types.ErrorCodeChannelFirstResponseTimeout,
 		http.StatusBadGateway,
 	)
-	require.False(t, ShouldDisableChannel(firstResponseTimeout))
+	require.True(t, ShouldDisableChannel(firstResponseTimeout))
 
 	invalidKey := types.NewOpenAIError(
 		errors.New("invalid key"),

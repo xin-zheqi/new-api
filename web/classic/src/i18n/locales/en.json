@@ -3900,6 +3900,8 @@
     "该时间段无请求，按 100% 计算": "No requests in this interval, counted as 100%",
     "暂无启用状态展示的分组": "No groups have status display enabled",
     "请在分组设置中为需要展示的分组开启状态展示": "Enable status display for the groups you want to show in group settings",
-    "状态数据加载失败": "Failed to load status data"
+    "状态数据加载失败": "Failed to load status data",
+    "首包超时自动禁用": "Auto-disable on first response timeout",
+    "开启后，首包超时才会参与自动禁用；关闭后行为与之前一致，不会自动禁用该渠道": "When enabled, first response timeout participates in automatic disabling; when disabled, behavior remains unchanged and this channel will not be auto-disabled"
   }
 }

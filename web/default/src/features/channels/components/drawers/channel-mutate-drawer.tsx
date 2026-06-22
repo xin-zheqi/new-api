@@ -216,6 +216,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.weight ||
     values.proxy?.trim() ||
     Number(values.first_response_timeout_seconds || 0) > 0 ||
+    values.first_response_timeout_auto_ban ||
     values.system_prompt?.trim() ||
     values.force_format ||
     values.thinking_to_content ||
@@ -3310,6 +3311,31 @@ export function ChannelMutateDrawer({
                               )}
                             </FormDescription>
                             <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='first_response_timeout_auto_ban'
+                        render={({ field }) => (
+                          <FormItem className={sideDrawerSwitchItemClassName()}>
+                            <div className='space-y-0.5'>
+                              <FormLabel>
+                                {t('Automatically disable on first response timeout')}
+                              </FormLabel>
+                              <FormDescription>
+                                {t(
+                                  'Only when enabled will first response timeout errors participate in automatic channel disabling'
+                                )}
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value === true}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
                           </FormItem>
                         )}
                       />

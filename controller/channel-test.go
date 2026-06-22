@@ -910,6 +910,16 @@ func shouldDisableChannelAfterTest(newAPIError *types.NewAPIError, notify bool) 
 	return true
 }
 
+func shouldDisableChannelAfterTestWithContext(c *gin.Context, newAPIError *types.NewAPIError, notify bool) bool {
+	if newAPIError == nil {
+		return false
+	}
+	if newAPIError.GetErrorCode() == types.ErrorCodeChannelFirstResponseTimeout {
+		return service.ShouldDisableFirstResponseTimeoutChannel(c)
+	}
+	return shouldDisableChannelAfterTest(newAPIError, notify)
+}
+
 func shouldSkipScheduledAutoTestChannel(channel *model.Channel, autoTestOnlyAutoDisabled bool) (bool, string) {
 	if channel == nil {
 		return true, "nil_channel"
@@ -989,7 +999,7 @@ func testAllChannels(notify bool) error {
 
 			shouldBanChannel := false
 			newAPIError := result.newAPIError
-			shouldBanChannel = shouldDisableChannelAfterTest(newAPIError, notify)
+			shouldBanChannel = shouldDisableChannelAfterTestWithContext(result.context, newAPIError, notify)
 
 			// 当错误检查通过，才检查响应时间
 			if common.AutomaticDisableChannelEnabled && !shouldBanChannel {

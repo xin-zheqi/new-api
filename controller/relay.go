@@ -390,11 +390,21 @@ func getActualLogGroup(c *gin.Context) string {
 	return common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 }
 
+func shouldDisableChannelForRelayError(c *gin.Context, err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	if err.GetErrorCode() == types.ErrorCodeChannelFirstResponseTimeout {
+		return service.ShouldDisableFirstResponseTimeoutChannel(c)
+	}
+	return service.ShouldDisableChannel(err)
+}
+
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
-	if service.ShouldDisableChannel(err) && channelError.AutoBan {
+	if shouldDisableChannelForRelayError(c, err) && channelError.AutoBan {
 		gopool.Go(func() {
 			service.DisableChannel(channelError, err.ErrorWithStatusCode())
 		})

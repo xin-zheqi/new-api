@@ -88,6 +88,7 @@ export interface ChannelSettings {
   system_prompt?: string
   system_prompt_override?: boolean
   first_response_timeout_seconds?: number
+  first_response_timeout_auto_ban?: boolean
 }
 
 export interface ChannelOtherSettings {

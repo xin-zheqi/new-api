@@ -187,6 +187,7 @@ export const channelFormSchema = z
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
     first_response_timeout_seconds: z.number().min(0).optional(),
+    first_response_timeout_auto_ban: z.boolean().optional(),
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
@@ -308,6 +309,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   system_prompt: '',
   system_prompt_override: false,
   first_response_timeout_seconds: 30,
+  first_response_timeout_auto_ban: false,
   // Type-specific settings
   is_enterprise_account: false,
   vertex_key_type: 'json',
@@ -346,6 +348,7 @@ export function transformChannelToFormDefaults(
     system_prompt: '',
     system_prompt_override: false,
     first_response_timeout_seconds: 0,
+    first_response_timeout_auto_ban: false,
   }
 
   if (channel.setting) {
@@ -362,6 +365,8 @@ export function transformChannelToFormDefaults(
           typeof parsed.first_response_timeout_seconds === 'number'
             ? Math.max(0, parsed.first_response_timeout_seconds)
             : 0,
+        first_response_timeout_auto_ban:
+          parsed.first_response_timeout_auto_ban === true,
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -479,6 +484,8 @@ function buildSettingJSON(formData: ChannelFormValues): string {
       0,
       formData.first_response_timeout_seconds || 0
     ),
+    first_response_timeout_auto_ban:
+      formData.first_response_timeout_auto_ban === true,
   }
   return JSON.stringify(settingObj)
 }

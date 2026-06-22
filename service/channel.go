@@ -5,10 +5,13 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
+
+	"github.com/gin-gonic/gin"
 )
 
 func formatNotifyType(channelId int, status int) string {
@@ -49,6 +52,9 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	if err == nil {
 		return false
 	}
+	if err.GetErrorCode() == types.ErrorCodeChannelFirstResponseTimeout {
+		return false
+	}
 	if types.IsChannelError(err) {
 		return true
 	}
@@ -62,6 +68,20 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	lowerMessage := strings.ToLower(err.Error())
 	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
 	return search
+}
+
+func ShouldDisableFirstResponseTimeoutChannel(c *gin.Context) bool {
+	if !common.AutomaticDisableChannelEnabled {
+		return false
+	}
+	if c == nil {
+		return false
+	}
+	channelSetting, ok := common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+	if !ok {
+		return false
+	}
+	return channelSetting.FirstResponseTimeoutAutoBan
 }
 
 func ShouldEnableChannel(newAPIError *types.NewAPIError, status int) bool {

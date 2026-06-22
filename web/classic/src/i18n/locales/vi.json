@@ -4284,6 +4284,8 @@
     "该时间段无请求，按 100% 计算": "Không có yêu cầu trong khoảng này, tính là 100%",
     "暂无启用状态展示的分组": "Chưa có nhóm nào bật hiển thị trạng thái",
     "请在分组设置中为需要展示的分组开启状态展示": "Bật hiển thị trạng thái cho các nhóm cần hiển thị trong cài đặt nhóm",
-    "状态数据加载失败": "Không thể tải dữ liệu trạng thái"
+    "状态数据加载失败": "Không thể tải dữ liệu trạng thái",
+    "首包超时自动禁用": "Tự động vô hiệu hóa khi timeout phản hồi đầu tiên",
+    "开启后，首包超时才会参与自动禁用；关闭后行为与之前一致，不会自动禁用该渠道": "Khi bật, timeout phản hồi đầu tiên sẽ tham gia vào tự động vô hiệu hóa; khi tắt, kênh sẽ không bị tự động vô hiệu hóa như trước"
   }
 }

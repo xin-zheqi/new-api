@@ -116,6 +116,91 @@ func TestShouldDisableChannelAfterTestIgnoresNilError(t *testing.T) {
 	require.False(t, shouldDisableChannelAfterTest(nil, true))
 }
 
+func TestShouldDisableChannelAfterTestWithContextRequiresFirstResponseTimeoutSwitch(t *testing.T) {
+	originalAutomaticDisable := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = originalAutomaticDisable
+	})
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	err := types.NewOpenAIError(
+		errors.New("upstream first response timeout after 30s"),
+		types.ErrorCodeChannelFirstResponseTimeout,
+		http.StatusBadGateway,
+	)
+
+	require.False(t, shouldDisableChannelAfterTestWithContext(ctx, err, false))
+	require.False(t, shouldDisableChannelAfterTestWithContext(ctx, err, true))
+
+	common.SetContextKey(ctx, constant.ContextKeyChannelSetting, dto.ChannelSettings{
+		FirstResponseTimeoutAutoBan: true,
+	})
+
+	require.True(t, shouldDisableChannelAfterTestWithContext(ctx, err, false))
+	require.True(t, shouldDisableChannelAfterTestWithContext(ctx, err, true))
+}
+
+func TestProcessChannelErrorSkipsFirstResponseTimeoutAutoDisableByDefault(t *testing.T) {
+	originalErrorLogEnabled := constant.ErrorLogEnabled
+	originalAutomaticDisable := common.AutomaticDisableChannelEnabled
+	constant.ErrorLogEnabled = false
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		constant.ErrorLogEnabled = originalErrorLogEnabled
+		common.AutomaticDisableChannelEnabled = originalAutomaticDisable
+	})
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Set("channel_name", "demo")
+	ctx.Set("channel_id", 1)
+	ctx.Set("channel_type", constant.ChannelTypeOpenAI)
+	ctx.Set("id", 1)
+	common.SetContextKey(ctx, constant.ContextKeyChannelSetting, dto.ChannelSettings{
+		FirstResponseTimeoutSeconds: 30,
+	})
+
+	err := types.NewOpenAIError(
+		errors.New("upstream first response timeout after 30s"),
+		types.ErrorCodeChannelFirstResponseTimeout,
+		http.StatusBadGateway,
+	)
+
+	require.False(t, shouldDisableChannelForRelayError(ctx, err))
+}
+
+func TestProcessChannelErrorDisablesFirstResponseTimeoutWhenEnabled(t *testing.T) {
+	originalErrorLogEnabled := constant.ErrorLogEnabled
+	originalAutomaticDisable := common.AutomaticDisableChannelEnabled
+	constant.ErrorLogEnabled = false
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		constant.ErrorLogEnabled = originalErrorLogEnabled
+		common.AutomaticDisableChannelEnabled = originalAutomaticDisable
+	})
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Set("channel_name", "demo")
+	ctx.Set("channel_id", 1)
+	ctx.Set("channel_type", constant.ChannelTypeOpenAI)
+	ctx.Set("id", 1)
+	common.SetContextKey(ctx, constant.ContextKeyChannelSetting, dto.ChannelSettings{
+		FirstResponseTimeoutSeconds: 30,
+		FirstResponseTimeoutAutoBan: true,
+	})
+
+	err := types.NewOpenAIError(
+		errors.New("upstream first response timeout after 30s"),
+		types.ErrorCodeChannelFirstResponseTimeout,
+		http.StatusBadGateway,
+	)
+
+	require.True(t, shouldDisableChannelForRelayError(ctx, err))
+}
+
 func TestShouldSkipScheduledAutoTestChannelOnlyAutoDisabled(t *testing.T) {
 	autoTestEnabled := true
 	autoTestDisabled := false

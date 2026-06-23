@@ -39,7 +39,7 @@ import Log from './pages/Log';
 import TokenUsage from './pages/TokenUsage';
 import Chat from './pages/Chat';
 import Chat2Link from './pages/Chat2Link';
-import Midjourney from './pages/Midjourney';
+import MjProxy from './pages/Midjourney';
 import Pricing from './pages/Pricing';
 import GroupStatus from './pages/GroupStatus';
 import Task from './pages/Task';
@@ -319,7 +319,7 @@ function App() {
           element={
             <PrivateRoute>
               <Suspense fallback={<Loading></Loading>} key={location.pathname}>
-                <Midjourney />
+                <MjProxy />
               </Suspense>
             </PrivateRoute>
           }

@@ -24,6 +24,14 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { parseHttpStatusCodeRules } from '@/lib/http-status-code-rules'
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Form,
   FormControl,
   FormDescription,
@@ -69,6 +77,12 @@ const monitoringSchema = z
     AutomaticDisableKeywords: z.string(),
     AutomaticDisableStatusCodes: z.string(),
     AutomaticRetryStatusCodes: z.string(),
+    perf_metrics_setting: z.object({
+      enabled: z.boolean(),
+      flush_interval: z.coerce.number().min(1),
+      bucket_time: z.enum(['minute', '5min', 'hour']),
+      retention_days: z.coerce.number().min(0),
+    }),
     monitor_setting: z.object({
       auto_test_channel_enabled: z.boolean(),
       auto_test_only_auto_disabled: z.boolean(),
@@ -119,6 +133,10 @@ type MonitoringSettingsSectionProps = {
     AutomaticDisableKeywords: string
     AutomaticDisableStatusCodes: string
     AutomaticRetryStatusCodes: string
+    'perf_metrics_setting.enabled': boolean
+    'perf_metrics_setting.flush_interval': number
+    'perf_metrics_setting.bucket_time': 'minute' | '5min' | 'hour'
+    'perf_metrics_setting.retention_days': number
     'monitor_setting.auto_test_channel_enabled': boolean
     'monitor_setting.auto_test_only_auto_disabled': boolean
     'monitor_setting.auto_test_channel_minutes': number
@@ -138,6 +156,10 @@ type NormalizedMonitoringValues = {
   AutomaticDisableKeywords: string
   AutomaticDisableStatusCodes: string
   AutomaticRetryStatusCodes: string
+  'perf_metrics_setting.enabled': boolean
+  'perf_metrics_setting.flush_interval': number
+  'perf_metrics_setting.bucket_time': 'minute' | '5min' | 'hour'
+  'perf_metrics_setting.retention_days': number
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_only_auto_disabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
@@ -156,6 +178,12 @@ const buildFormDefaults = (
   ),
   AutomaticDisableStatusCodes: defaults.AutomaticDisableStatusCodes ?? '',
   AutomaticRetryStatusCodes: defaults.AutomaticRetryStatusCodes ?? '',
+  perf_metrics_setting: {
+    enabled: defaults['perf_metrics_setting.enabled'],
+    flush_interval: defaults['perf_metrics_setting.flush_interval'],
+    bucket_time: defaults['perf_metrics_setting.bucket_time'],
+    retention_days: defaults['perf_metrics_setting.retention_days'],
+  },
   monitor_setting: {
     auto_test_channel_enabled:
       defaults['monitor_setting.auto_test_channel_enabled'],
@@ -184,6 +212,12 @@ const normalizeDefaults = (
   AutomaticRetryStatusCodes: parseHttpStatusCodeRules(
     defaults.AutomaticRetryStatusCodes ?? ''
   ).normalized,
+  'perf_metrics_setting.enabled': defaults['perf_metrics_setting.enabled'],
+  'perf_metrics_setting.flush_interval':
+    defaults['perf_metrics_setting.flush_interval'],
+  'perf_metrics_setting.bucket_time': defaults['perf_metrics_setting.bucket_time'],
+  'perf_metrics_setting.retention_days':
+    defaults['perf_metrics_setting.retention_days'],
   'monitor_setting.auto_test_channel_enabled':
     defaults['monitor_setting.auto_test_channel_enabled'],
   'monitor_setting.auto_test_only_auto_disabled':
@@ -211,6 +245,12 @@ const normalizeFormValues = (
   AutomaticRetryStatusCodes: parseHttpStatusCodeRules(
     values.AutomaticRetryStatusCodes
   ).normalized,
+  'perf_metrics_setting.enabled': values.perf_metrics_setting.enabled,
+  'perf_metrics_setting.flush_interval':
+    values.perf_metrics_setting.flush_interval,
+  'perf_metrics_setting.bucket_time': values.perf_metrics_setting.bucket_time,
+  'perf_metrics_setting.retention_days':
+    values.perf_metrics_setting.retention_days,
   'monitor_setting.auto_test_channel_enabled':
     values.monitor_setting.auto_test_channel_enabled,
   'monitor_setting.auto_test_only_auto_disabled':
@@ -252,6 +292,7 @@ export function MonitoringSettingsSection({
     () => parseHttpStatusCodeRules(autoRetryStatusCodes),
     [autoRetryStatusCodes]
   )
+  const perfMetricsEnabled = form.watch('perf_metrics_setting.enabled')
 
   const onSubmit = async (values: MonitoringFormValues) => {
     const normalized = normalizeFormValues(values)
@@ -546,6 +587,111 @@ export function MonitoringSettingsSection({
                           {t('Normalized:')} {autoRetryParsed.normalized}
                         </span>
                       )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div>
+            <h4 className='font-medium'>{t('Model performance metrics')}</h4>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              {t(
+                'Collect relay latency and success-rate metrics for the model square.'
+              )}
+            </p>
+          </div>
+
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-4'>
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.enabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>
+                      {t('Enable model performance metrics')}
+                    </FormLabel>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.flush_interval'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Flush interval (minutes)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                      disabled={!perfMetricsEnabled}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.bucket_time'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Aggregation bucket')}</FormLabel>
+                  <Select
+                    items={[
+                      { value: 'minute', label: t('1 minute') },
+                      { value: '5min', label: t('5 minutes') },
+                      { value: 'hour', label: t('1 hour') },
+                    ]}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    disabled={!perfMetricsEnabled}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value='minute'>{t('1 minute')}</SelectItem>
+                        <SelectItem value='5min'>{t('5 minutes')}</SelectItem>
+                        <SelectItem value='hour'>{t('1 hour')}</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.retention_days'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Retention days')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                      disabled={!perfMetricsEnabled}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('0 means data is kept permanently')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

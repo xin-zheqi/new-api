@@ -15,6 +15,7 @@ type RetryParam struct {
 	Ctx          *gin.Context
 	TokenGroup   string
 	ModelName    string
+	RequestPath  string
 	Retry        *int
 	resetNextTry bool
 }
@@ -82,7 +83,7 @@ func getChannelFromOrderedGroups(param *RetryParam, routeGroups []string) (*mode
 		}
 		logger.LogDebug(param.Ctx, "Selecting group: %s, priorityRetry: %d", group, priorityRetry)
 
-		channel, err = model.GetRandomSatisfiedChannel(group, param.ModelName, priorityRetry)
+		channel, err = model.GetRandomSatisfiedChannel(group, param.ModelName, priorityRetry, param.RequestPath)
 		if err != nil {
 			return nil, group, err
 		}
@@ -114,7 +115,7 @@ func getChannelFromOrderedGroups(param *RetryParam, routeGroups []string) (*mode
 
 		if shouldAdvance {
 			common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
-			common.SetContextKey(param.Ctx, constant.ContextKeyCrossGroupExhausted, !hasLaterCandidate(routeGroups, i+1, param.ModelName))
+			common.SetContextKey(param.Ctx, constant.ContextKeyCrossGroupExhausted, !hasLaterCandidate(routeGroups, i+1, param.ModelName, param.RequestPath))
 			param.SetRetry(0)
 			param.ResetRetryNextTry()
 		} else {
@@ -127,12 +128,12 @@ func getChannelFromOrderedGroups(param *RetryParam, routeGroups []string) (*mode
 	return nil, selectGroup, nil
 }
 
-func hasLaterCandidate(routeGroups []string, startIndex int, modelName string) bool {
+func hasLaterCandidate(routeGroups []string, startIndex int, modelName string, requestPath string) bool {
 	if startIndex >= len(routeGroups) {
 		return false
 	}
 	for i := startIndex; i < len(routeGroups); i++ {
-		channel, err := model.GetRandomSatisfiedChannel(routeGroups[i], modelName, 0)
+		channel, err := model.GetRandomSatisfiedChannel(routeGroups[i], modelName, 0, requestPath)
 		if err == nil && channel != nil {
 			return true
 		}
@@ -165,7 +166,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			return nil, selectGroup, err
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry())
+		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry(), param.RequestPath)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

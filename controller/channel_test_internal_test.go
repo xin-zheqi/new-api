@@ -241,9 +241,8 @@ func TestAutomaticTestAllChannelsDisablesErrorWithoutDisableRules(t *testing.T) 
 	originalDB := model.DB
 	originalLOGDB := model.LOG_DB
 	originalSQLitePath := common.SQLitePath
-	originalUsingSQLite := common.UsingSQLite
-	originalUsingMySQL := common.UsingMySQL
-	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalMainDatabaseType := common.MainDatabaseType()
+	originalLogDatabaseType := common.LogDatabaseType()
 	originalRedisEnabled := common.RedisEnabled
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	originalIsMasterNode := common.IsMasterNode
@@ -268,9 +267,7 @@ func TestAutomaticTestAllChannelsDisablesErrorWithoutDisableRules(t *testing.T) 
 		model.DB = originalDB
 		model.LOG_DB = originalLOGDB
 		common.SQLitePath = originalSQLitePath
-		common.UsingSQLite = originalUsingSQLite
-		common.UsingMySQL = originalUsingMySQL
-		common.UsingPostgreSQL = originalUsingPostgreSQL
+		common.SetDatabaseTypes(originalMainDatabaseType, originalLogDatabaseType)
 		common.RedisEnabled = originalRedisEnabled
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 		common.IsMasterNode = originalIsMasterNode
@@ -292,9 +289,7 @@ func TestAutomaticTestAllChannelsDisablesErrorWithoutDisableRules(t *testing.T) 
 	testAllChannelsLock.Unlock()
 
 	common.SQLitePath = "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
-	common.UsingSQLite = false
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.MemoryCacheEnabled = false
 	common.IsMasterNode = false
@@ -365,9 +360,8 @@ func TestAutomaticTestAllChannelsTestsAutoDisabledChannelsByDefault(t *testing.T
 	originalDB := model.DB
 	originalLOGDB := model.LOG_DB
 	originalSQLitePath := common.SQLitePath
-	originalUsingSQLite := common.UsingSQLite
-	originalUsingMySQL := common.UsingMySQL
-	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalMainDatabaseType := common.MainDatabaseType()
+	originalLogDatabaseType := common.LogDatabaseType()
 	originalRedisEnabled := common.RedisEnabled
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	originalIsMasterNode := common.IsMasterNode
@@ -391,9 +385,7 @@ func TestAutomaticTestAllChannelsTestsAutoDisabledChannelsByDefault(t *testing.T
 		model.DB = originalDB
 		model.LOG_DB = originalLOGDB
 		common.SQLitePath = originalSQLitePath
-		common.UsingSQLite = originalUsingSQLite
-		common.UsingMySQL = originalUsingMySQL
-		common.UsingPostgreSQL = originalUsingPostgreSQL
+		common.SetDatabaseTypes(originalMainDatabaseType, originalLogDatabaseType)
 		common.RedisEnabled = originalRedisEnabled
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 		common.IsMasterNode = originalIsMasterNode
@@ -414,9 +406,7 @@ func TestAutomaticTestAllChannelsTestsAutoDisabledChannelsByDefault(t *testing.T
 	testAllChannelsLock.Unlock()
 
 	common.SQLitePath = "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
-	common.UsingSQLite = false
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.MemoryCacheEnabled = false
 	common.IsMasterNode = false
@@ -484,9 +474,8 @@ func TestAutomaticTestAllChannelsOnlyAutoDisabledSkipsEnabledAndReenablesRecover
 	originalDB := model.DB
 	originalLOGDB := model.LOG_DB
 	originalSQLitePath := common.SQLitePath
-	originalUsingSQLite := common.UsingSQLite
-	originalUsingMySQL := common.UsingMySQL
-	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalMainDatabaseType := common.MainDatabaseType()
+	originalLogDatabaseType := common.LogDatabaseType()
 	originalRedisEnabled := common.RedisEnabled
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	originalIsMasterNode := common.IsMasterNode
@@ -510,9 +499,7 @@ func TestAutomaticTestAllChannelsOnlyAutoDisabledSkipsEnabledAndReenablesRecover
 		model.DB = originalDB
 		model.LOG_DB = originalLOGDB
 		common.SQLitePath = originalSQLitePath
-		common.UsingSQLite = originalUsingSQLite
-		common.UsingMySQL = originalUsingMySQL
-		common.UsingPostgreSQL = originalUsingPostgreSQL
+		common.SetDatabaseTypes(originalMainDatabaseType, originalLogDatabaseType)
 		common.RedisEnabled = originalRedisEnabled
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 		common.IsMasterNode = originalIsMasterNode
@@ -533,9 +520,7 @@ func TestAutomaticTestAllChannelsOnlyAutoDisabledSkipsEnabledAndReenablesRecover
 	testAllChannelsLock.Unlock()
 
 	common.SQLitePath = "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
-	common.UsingSQLite = false
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.MemoryCacheEnabled = false
 	common.IsMasterNode = false
@@ -638,9 +623,8 @@ func TestManualTestAllChannelsIncludesAutoDisabledChannels(t *testing.T) {
 	originalDB := model.DB
 	originalLOGDB := model.LOG_DB
 	originalSQLitePath := common.SQLitePath
-	originalUsingSQLite := common.UsingSQLite
-	originalUsingMySQL := common.UsingMySQL
-	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalMainDatabaseType := common.MainDatabaseType()
+	originalLogDatabaseType := common.LogDatabaseType()
 	originalRedisEnabled := common.RedisEnabled
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	originalIsMasterNode := common.IsMasterNode
@@ -664,9 +648,7 @@ func TestManualTestAllChannelsIncludesAutoDisabledChannels(t *testing.T) {
 		model.DB = originalDB
 		model.LOG_DB = originalLOGDB
 		common.SQLitePath = originalSQLitePath
-		common.UsingSQLite = originalUsingSQLite
-		common.UsingMySQL = originalUsingMySQL
-		common.UsingPostgreSQL = originalUsingPostgreSQL
+		common.SetDatabaseTypes(originalMainDatabaseType, originalLogDatabaseType)
 		common.RedisEnabled = originalRedisEnabled
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 		common.IsMasterNode = originalIsMasterNode
@@ -687,9 +669,7 @@ func TestManualTestAllChannelsIncludesAutoDisabledChannels(t *testing.T) {
 	testAllChannelsLock.Unlock()
 
 	common.SQLitePath = "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
-	common.UsingSQLite = false
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.MemoryCacheEnabled = false
 	common.IsMasterNode = false
@@ -747,4 +727,31 @@ func TestManualTestAllChannelsIncludesAutoDisabledChannels(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return requestCount.Load() == 1
 	}, 3*time.Second, 25*time.Millisecond)
+}
+
+func TestSelectChannelsForAutomaticTestPassiveRecoveryOnlyUsesAutoDisabled(t *testing.T) {
+	channels := []*model.Channel{
+		{Id: 1, Status: common.ChannelStatusEnabled},
+		{Id: 2, Status: common.ChannelStatusAutoDisabled},
+		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
+	}
+
+	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModePassiveRecovery)
+
+	require.Len(t, selected, 1)
+	require.Equal(t, 2, selected[0].Id)
+}
+
+func TestSelectChannelsForAutomaticTestScheduledSkipsManualDisabled(t *testing.T) {
+	channels := []*model.Channel{
+		{Id: 1, Status: common.ChannelStatusEnabled},
+		{Id: 2, Status: common.ChannelStatusAutoDisabled},
+		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
+	}
+
+	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModeScheduledAll)
+
+	require.Len(t, selected, 2)
+	require.Equal(t, 1, selected[0].Id)
+	require.Equal(t, 2, selected[1].Id)
 }

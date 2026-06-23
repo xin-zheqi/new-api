@@ -19,16 +19,13 @@ func setupChannelSelectTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	oldDB := model.DB
-	oldUsingSQLite := common.UsingSQLite
-	oldUsingMySQL := common.UsingMySQL
-	oldUsingPostgreSQL := common.UsingPostgreSQL
+	oldMainDatabaseType := common.MainDatabaseType()
+	oldLogDatabaseType := common.LogDatabaseType()
 	oldRedisEnabled := common.RedisEnabled
 	oldMemoryCacheEnabled := common.MemoryCacheEnabled
 
 	gin.SetMode(gin.TestMode)
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.MemoryCacheEnabled = true
 
@@ -40,9 +37,7 @@ func setupChannelSelectTestDB(t *testing.T) *gorm.DB {
 
 	t.Cleanup(func() {
 		model.DB = oldDB
-		common.UsingSQLite = oldUsingSQLite
-		common.UsingMySQL = oldUsingMySQL
-		common.UsingPostgreSQL = oldUsingPostgreSQL
+		common.SetDatabaseTypes(oldMainDatabaseType, oldLogDatabaseType)
 		common.RedisEnabled = oldRedisEnabled
 		common.MemoryCacheEnabled = oldMemoryCacheEnabled
 		sqlDB, err := db.DB()

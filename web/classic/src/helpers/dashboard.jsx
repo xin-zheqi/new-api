@@ -101,7 +101,15 @@ export const updateChartSpec = (
 
 export const getTrendSpec = (data, color) => ({
   type: 'line',
-  data: [{ id: 'trend', values: data.map((val, idx) => ({ x: idx, y: val })) }],
+  data: [
+    {
+      id: 'trend',
+      values: (Array.isArray(data) ? data : []).map((val, idx) => ({
+        x: idx,
+        y: val,
+      })),
+    },
+  ],
   xField: 'x',
   yField: 'y',
   height: 40,
@@ -249,6 +257,7 @@ export const processRawData = (
   initializeMaps,
   updateMapValue,
 ) => {
+  const safeData = Array.isArray(data) ? data : [];
   const result = {
     totalQuota: 0,
     totalTimes: 0,
@@ -261,9 +270,9 @@ export const processRawData = (
   };
 
   // 检查数据是否跨年
-  const showYear = isDataCrossYear(data.map((item) => item.created_at));
+  const showYear = isDataCrossYear(safeData.map((item) => item.created_at));
 
-  data.forEach((item) => {
+  safeData.forEach((item) => {
     result.uniqueModels.add(item.model_name);
     result.totalTokens += item.token_used;
     result.totalQuota += item.quota;
@@ -329,12 +338,13 @@ export const calculateTrendData = (
 };
 
 export const aggregateDataByTimeAndModel = (data, dataExportDefaultTime) => {
+  const safeData = Array.isArray(data) ? data : [];
   const aggregatedData = new Map();
 
   // 检查数据是否跨年
-  const showYear = isDataCrossYear(data.map((item) => item.created_at));
+  const showYear = isDataCrossYear(safeData.map((item) => item.created_at));
 
-  data.forEach((item) => {
+  safeData.forEach((item) => {
     const timeKey = timestamp2string1(
       item.created_at,
       dataExportDefaultTime,
@@ -365,12 +375,13 @@ export const generateChartTimePoints = (
   data,
   dataExportDefaultTime,
 ) => {
+  const safeData = Array.isArray(data) ? data : [];
   let chartTimePoints = Array.from(
     new Set([...aggregatedData.values()].map((d) => d.time)),
   );
 
   if (chartTimePoints.length < DEFAULTS.MAX_TREND_POINTS) {
-    const lastTime = Math.max(...data.map((item) => item.created_at));
+    const lastTime = Math.max(...safeData.map((item) => item.created_at));
     const interval = getTimeInterval(dataExportDefaultTime, true);
 
     // 生成时间点数组，用于检查是否跨年
@@ -390,8 +401,9 @@ export const generateChartTimePoints = (
 
 // ========== 用户维度数据处理 ==========
 export const processUserData = (data, dataExportDefaultTime, limit = 10) => {
+  const safeData = Array.isArray(data) ? data : [];
   const userQuotaTotal = new Map();
-  data.forEach((item) => {
+  safeData.forEach((item) => {
     const prev = userQuotaTotal.get(item.username) || 0;
     userQuotaTotal.set(item.username, prev + item.quota);
   });
@@ -407,12 +419,12 @@ export const processUserData = (data, dataExportDefaultTime, limit = 10) => {
     Quota: quota,
   }));
 
-  const showYear = isDataCrossYear(data.map((item) => item.created_at));
+  const showYear = isDataCrossYear(safeData.map((item) => item.created_at));
 
   const timeUserMap = new Map();
   const allTimePoints = new Set();
 
-  data.forEach((item) => {
+  safeData.forEach((item) => {
     const timeKey = timestamp2string1(
       item.created_at,
       dataExportDefaultTime,

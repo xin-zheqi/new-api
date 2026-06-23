@@ -8,8 +8,8 @@ type Setup struct {
 
 func GetSetup() *Setup {
 	var setup Setup
-	err := DB.First(&setup).Error
-	if err != nil {
+	result := DB.Limit(1).Find(&setup)
+	if result.Error != nil || result.RowsAffected == 0 {
 		return nil
 	}
 	return &setup

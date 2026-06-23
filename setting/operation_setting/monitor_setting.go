@@ -14,8 +14,8 @@ type MonitorSetting struct {
 	AutoTestChannelEnabled   bool    `json:"auto_test_channel_enabled"`
 	AutoTestChannelMinutes   float64 `json:"auto_test_channel_minutes"`
 	AutoTestChannelTimeRange string  `json:"auto_test_channel_time_range"`
-	AutoTestOnlyAutoDisabled  bool    `json:"auto_test_only_auto_disabled"`
-	ChannelTestMode           string  `json:"channel_test_mode"`
+	AutoTestOnlyAutoDisabled bool    `json:"auto_test_only_auto_disabled"`
+	ChannelTestMode          string  `json:"channel_test_mode"`
 }
 
 const (

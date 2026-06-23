@@ -7,7 +7,10 @@ import { pluginReact } from '@rsbuild/plugin-react'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
 const semiUiDir = path.dirname(require.resolve('@douyinfe/semi-ui/package.json'))
-const semiDateFnsDir = path.resolve(semiUiDir, 'node_modules/date-fns')
+const semiDateFnsDir = path.dirname(
+  require.resolve('date-fns/package.json', { paths: [semiUiDir] }),
+)
+const visactorRoot = path.dirname(require.resolve('@visactor/vchart/package.json'))
 
 export default defineConfig(({ envMode }) => {
   const env = loadEnv({ mode: envMode, prefixes: ['VITE_'] })
@@ -41,6 +44,13 @@ export default defineConfig(({ envMode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        '@visactor/react-vchart': path.dirname(
+          require.resolve('@visactor/react-vchart/package.json'),
+        ),
+        '@visactor/vchart': visactorRoot,
+        '@visactor/vchart-semi-theme': path.dirname(
+          require.resolve('@visactor/vchart-semi-theme/package.json'),
+        ),
         '@douyinfe/semi-ui/dist/css/semi.css': path.resolve(
           semiUiDir,
           'dist/css/semi.css',

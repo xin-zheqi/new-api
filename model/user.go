@@ -1075,8 +1075,8 @@ func (user *User) FillUserByLinuxDOId() error {
 
 func RootUserExists() bool {
 	var user User
-	err := DB.Where("role = ?", common.RoleRootUser).First(&user).Error
-	if err != nil {
+	result := DB.Where("role = ?", common.RoleRootUser).Limit(1).Find(&user)
+	if result.Error != nil || result.RowsAffected == 0 {
 		return false
 	}
 	return true

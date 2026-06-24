@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,8 +75,18 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 	return rootUser.Id, nil
 }
 
-func testChannel(channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
+func testChannel(channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool, isScheduledAutomaticTest bool) testResult {
 	tik := time.Now()
+	var scheduledAutoTestCtx context.Context
+	var scheduledAutoTestCancel context.CancelFunc
+	var scheduledAutoTestTimeout time.Duration
+	if isScheduledAutomaticTest && common.ChannelDisableThreshold > 0 {
+		scheduledAutoTestTimeout = time.Duration(common.ChannelDisableThreshold * float64(time.Second))
+		if scheduledAutoTestTimeout > 0 {
+			scheduledAutoTestCtx, scheduledAutoTestCancel = context.WithTimeout(context.Background(), scheduledAutoTestTimeout)
+			defer scheduledAutoTestCancel()
+		}
+	}
 	var unsupportedTestChannelTypes = []int{
 		constant.ChannelTypeMidjourney,
 		constant.ChannelTypeMidjourneyPlus,
@@ -158,6 +169,9 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 		URL:    &url.URL{Path: requestPath}, // 使用动态路径
 		Body:   nil,
 		Header: make(http.Header),
+	}
+	if scheduledAutoTestCtx != nil {
+		c.Request = c.Request.WithContext(scheduledAutoTestCtx)
 	}
 
 	cache, err := model.GetUserCache(testUserID)
@@ -434,6 +448,18 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
+		if isScheduledAutomaticTest && (errors.Is(err, context.DeadlineExceeded) || strings.Contains(strings.ToLower(err.Error()), "context deadline exceeded") || (scheduledAutoTestTimeout > 0 && time.Since(tik) >= scheduledAutoTestTimeout)) {
+			timeoutSeconds := common.ChannelDisableThreshold
+			if timeoutSeconds <= 0 {
+				timeoutSeconds = time.Since(tik).Seconds()
+			}
+			timeoutErr := fmt.Errorf("response time %.2fs exceeded threshold %.2fs", time.Since(tik).Seconds(), timeoutSeconds)
+			return testResult{
+				context:     c,
+				localErr:    timeoutErr,
+				newAPIError: types.NewOpenAIError(timeoutErr, types.ErrorCodeChannelResponseTimeExceeded, http.StatusRequestTimeout),
+			}
+		}
 		return testResult{
 			context:     c,
 			localErr:    err,
@@ -464,6 +490,18 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 	}
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
 	if respErr != nil {
+		if isScheduledAutomaticTest && (errors.Is(respErr, context.DeadlineExceeded) || strings.Contains(strings.ToLower(respErr.Error()), "context deadline exceeded") || (scheduledAutoTestTimeout > 0 && time.Since(tik) >= scheduledAutoTestTimeout)) {
+			timeoutSeconds := common.ChannelDisableThreshold
+			if timeoutSeconds <= 0 {
+				timeoutSeconds = time.Since(tik).Seconds()
+			}
+			timeoutErr := fmt.Errorf("response time %.2fs exceeded threshold %.2fs", time.Since(tik).Seconds(), timeoutSeconds)
+			return testResult{
+				context:     c,
+				localErr:    timeoutErr,
+				newAPIError: types.NewOpenAIError(timeoutErr, types.ErrorCodeChannelResponseTimeExceeded, http.StatusRequestTimeout),
+			}
+		}
 		return testResult{
 			context:     c,
 			localErr:    respErr,
@@ -861,7 +899,7 @@ func TestChannel(c *gin.Context) {
 		return
 	}
 	tik := time.Now()
-	result := testChannel(channel, testUserID, testModel, endpointType, isStream)
+	result := testChannel(channel, testUserID, testModel, endpointType, isStream, false)
 	if result.localErr != nil {
 		resp := gin.H{
 			"success": false,
@@ -980,7 +1018,7 @@ func testChannels(channels []*model.Channel, testUserID int, notify bool) error 
 			testedChannels++
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 			tik := time.Now()
-			result := testChannel(channel, testUserID, "", "", shouldUseStreamForChannelTest(channel, !notify))
+			result := testChannel(channel, testUserID, "", "", shouldUseStreamForChannelTest(channel, !notify), !notify)
 			tok := time.Now()
 			milliseconds := tok.Sub(tik).Milliseconds()
 

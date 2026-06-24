@@ -485,6 +485,7 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 }
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	var client *http.Client
+	var cancelTransportRequest func() bool
 	var err error
 	if info.ChannelSetting.Proxy != "" {
 		client, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
@@ -493,6 +494,41 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	} else {
 		client = service.GetHttpClient()
+	}
+
+	if c != nil && c.Request != nil {
+		req = req.WithContext(c.Request.Context())
+	}
+	if info != nil && info.IsChannelTest && c != nil && c.Request != nil {
+		if _, hasDeadline := c.Request.Context().Deadline(); hasDeadline {
+			req.Close = true
+			req.Header.Set("Connection", "close")
+			if transport, ok := client.Transport.(*http.Transport); ok && transport != nil {
+				clonedTransport := transport.Clone()
+				clonedTransport.DisableKeepAlives = true
+				if deadline, ok := req.Context().Deadline(); ok {
+					timeout := time.Until(deadline)
+					if timeout > 0 {
+						client = &http.Client{
+							Transport:     clonedTransport,
+							CheckRedirect: client.CheckRedirect,
+							Timeout:       timeout,
+						}
+					} else {
+						client = &http.Client{
+							Transport:     clonedTransport,
+							CheckRedirect: client.CheckRedirect,
+						}
+					}
+				}
+				cancelTransportRequest = context.AfterFunc(req.Context(), func() {
+					clonedTransport.CancelRequest(req)
+				})
+			}
+		}
+	}
+	if cancelTransportRequest != nil {
+		defer cancelTransportRequest()
 	}
 
 	if info.IsStream {

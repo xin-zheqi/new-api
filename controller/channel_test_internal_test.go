@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,6 +26,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type contextBlockingReadCloser struct {
+	ctx context.Context
+}
+
+func (r *contextBlockingReadCloser) Read(_ []byte) (int, error) {
+	<-r.ctx.Done()
+	return 0, r.ctx.Err()
+}
+
+func (r *contextBlockingReadCloser) Close() error {
+	return nil
+}
 
 func TestSettleTestQuotaUsesTieredBilling(t *testing.T) {
 	info := &relaycommon.RelayInfo{
@@ -352,6 +367,136 @@ func TestAutomaticTestAllChannelsDisablesErrorWithoutDisableRules(t *testing.T) 
 		}
 		return refreshed.Status == common.ChannelStatusAutoDisabled && requestWasStream.Load()
 	}, 3*time.Second, 25*time.Millisecond)
+}
+
+func TestScheduledAutomaticChannelTestCancelsUpstreamOnThreshold(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	originalDB := model.DB
+	originalLOGDB := model.LOG_DB
+	originalSQLitePath := common.SQLitePath
+	originalMainDatabaseType := common.MainDatabaseType()
+	originalLogDatabaseType := common.LogDatabaseType()
+	originalRedisEnabled := common.RedisEnabled
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	originalIsMasterNode := common.IsMasterNode
+	originalAutomaticDisable := common.AutomaticDisableChannelEnabled
+	originalAutomaticEnable := common.AutomaticEnableChannelEnabled
+	originalRequestInterval := common.RequestInterval
+	originalMonitorSetting := *operation_setting.GetMonitorSetting()
+	originalChannelDisableThreshold := common.ChannelDisableThreshold
+	originalModelRatio := ratio_setting.ModelRatio2JSONString()
+	originalSQLDSN, hadSQLDSN := os.LookupEnv("SQL_DSN")
+
+	t.Cleanup(func() {
+		testAllChannelsLock.Lock()
+		testAllChannelsRunning = false
+		testAllChannelsLock.Unlock()
+
+		if model.DB != nil && model.DB != originalDB {
+			if sqlDB, err := model.DB.DB(); err == nil {
+				_ = sqlDB.Close()
+			}
+		}
+		model.DB = originalDB
+		model.LOG_DB = originalLOGDB
+		common.SQLitePath = originalSQLitePath
+		common.SetDatabaseTypes(originalMainDatabaseType, originalLogDatabaseType)
+		common.RedisEnabled = originalRedisEnabled
+		common.MemoryCacheEnabled = originalMemoryCacheEnabled
+		common.IsMasterNode = originalIsMasterNode
+		common.AutomaticDisableChannelEnabled = originalAutomaticDisable
+		common.AutomaticEnableChannelEnabled = originalAutomaticEnable
+		common.RequestInterval = originalRequestInterval
+		common.ChannelDisableThreshold = originalChannelDisableThreshold
+		*operation_setting.GetMonitorSetting() = originalMonitorSetting
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(originalModelRatio))
+		if hadSQLDSN {
+			require.NoError(t, os.Setenv("SQL_DSN", originalSQLDSN))
+		} else {
+			require.NoError(t, os.Unsetenv("SQL_DSN"))
+		}
+	})
+
+	testAllChannelsLock.Lock()
+	testAllChannelsRunning = false
+	testAllChannelsLock.Unlock()
+
+	common.SQLitePath = "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.RedisEnabled = false
+	common.MemoryCacheEnabled = false
+	common.IsMasterNode = false
+	common.AutomaticDisableChannelEnabled = false
+	common.AutomaticEnableChannelEnabled = false
+	common.RequestInterval = 0
+	common.ChannelDisableThreshold = 0.05
+	operation_setting.GetMonitorSetting().AutoTestOnlyAutoDisabled = false
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"gpt-4o-mini":1}`))
+	service.InitHttpClient()
+	require.NoError(t, os.Setenv("SQL_DSN", "local"))
+	require.NoError(t, model.InitDB())
+	model.LOG_DB = model.DB
+	require.NoError(t, model.DB.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Log{}))
+
+	cancelObserved := make(chan struct{}, 1)
+	connectionClosed := make(chan struct{}, 1)
+	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		<-r.Context().Done()
+		select {
+		case cancelObserved <- struct{}{}:
+		default:
+		}
+	}))
+	upstream.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			select {
+			case connectionClosed <- struct{}{}:
+			default:
+			}
+		}
+	}
+	upstream.Start()
+	t.Cleanup(upstream.Close)
+
+	require.NoError(t, model.DB.Create(&model.User{
+		Id:       1,
+		Username: "root",
+		Password: "password",
+		Role:     common.RoleRootUser,
+		Status:   common.UserStatusEnabled,
+		Quota:    1000000,
+		Group:    "default",
+	}).Error)
+
+	autoBan := 1
+	autoTestEnabled := true
+	baseURL := upstream.URL
+	channel := model.Channel{
+		Id:      1,
+		Type:    constant.ChannelTypeOpenAI,
+		Key:     "test-key",
+		Status:  common.ChannelStatusEnabled,
+		Name:    "timed-auto-test-channel",
+		BaseURL: &baseURL,
+		Models:  "gpt-4o-mini",
+		Group:   "default",
+		AutoBan: &autoBan,
+	}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{AutoTestEnabled: &autoTestEnabled})
+	require.NoError(t, model.DB.Create(&channel).Error)
+
+	result := testChannel(&channel, 1, "", "", true, true)
+
+	require.NotNil(t, result.newAPIError)
+	require.Equal(t, types.ErrorCodeChannelResponseTimeExceeded, result.newAPIError.GetErrorCode())
+	select {
+	case <-cancelObserved:
+	case <-connectionClosed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("upstream did not observe automatic test cancellation")
+	}
 }
 
 func TestAutomaticTestAllChannelsTestsAutoDisabledChannelsByDefault(t *testing.T) {

@@ -22,6 +22,27 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+func parseTopUpQueryFilter(c *gin.Context) model.TopUpQueryFilter {
+	parseTime := func(keys ...string) int64 {
+		for _, key := range keys {
+			value := strings.TrimSpace(c.Query(key))
+			if value == "" {
+				continue
+			}
+			parsed, err := strconv.ParseInt(value, 10, 64)
+			if err == nil && parsed > 0 {
+				return parsed
+			}
+		}
+		return 0
+	}
+
+	return model.TopUpQueryFilter{
+		StartTime: parseTime("start_time", "start_timestamp"),
+		EndTime:   parseTime("end_time", "end_timestamp"),
+	}
+}
+
 func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 
@@ -442,6 +463,7 @@ func GetUserTopUps(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
+	filter := parseTopUpQueryFilter(c)
 
 	var (
 		topups []*model.TopUp
@@ -449,9 +471,9 @@ func GetUserTopUps(c *gin.Context) {
 		err    error
 	)
 	if keyword != "" {
-		topups, total, err = model.SearchUserTopUps(userId, keyword, pageInfo)
+		topups, total, err = model.SearchUserTopUps(userId, keyword, pageInfo, filter)
 	} else {
-		topups, total, err = model.GetUserTopUps(userId, pageInfo)
+		topups, total, err = model.GetUserTopUps(userId, pageInfo, filter)
 	}
 	if err != nil {
 		common.ApiError(c, err)
@@ -467,6 +489,7 @@ func GetUserTopUps(c *gin.Context) {
 func GetAllTopUps(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := c.Query("keyword")
+	filter := parseTopUpQueryFilter(c)
 
 	var (
 		topups []*model.TopUp
@@ -474,9 +497,9 @@ func GetAllTopUps(c *gin.Context) {
 		err    error
 	)
 	if keyword != "" {
-		topups, total, err = model.SearchAllTopUps(keyword, pageInfo)
+		topups, total, err = model.SearchAllTopUps(keyword, pageInfo, filter)
 	} else {
-		topups, total, err = model.GetAllTopUps(pageInfo)
+		topups, total, err = model.GetAllTopUps(pageInfo, filter)
 	}
 	if err != nil {
 		common.ApiError(c, err)

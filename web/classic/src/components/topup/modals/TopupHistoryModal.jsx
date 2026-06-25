@@ -59,6 +59,14 @@ const PAYMENT_METHOD_MAP = {
   wxpay: '微信',
 };
 
+const toUnixSeconds = (value) => {
+  if (!value) return 0;
+  const date = value instanceof Date ? value : new Date(value);
+  const timestamp = date.getTime();
+  if (!Number.isFinite(timestamp)) return 0;
+  return Math.floor(timestamp / 1000);
+};
+
 const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const [loading, setLoading] = useState(false);
   const [topups, setTopups] = useState([]);
@@ -66,6 +74,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
+  const [dateRange, setDateRange] = useState([]);
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [manualCreating, setManualCreating] = useState(false);
   const [manualUsersLoading, setManualUsersLoading] = useState(false);
@@ -85,9 +94,13 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     setLoading(true);
     try {
       const base = isAdmin() ? '/api/user/topup' : '/api/user/topup/self';
+      const startTime = toUnixSeconds(dateRange?.[0]);
+      const endTime = toUnixSeconds(dateRange?.[1]);
       const qs =
         `p=${currentPage}&page_size=${currentPageSize}` +
-        (keyword ? `&keyword=${encodeURIComponent(keyword)}` : '');
+        (keyword ? `&keyword=${encodeURIComponent(keyword)}` : '') +
+        (startTime ? `&start_time=${startTime}` : '') +
+        (endTime ? `&end_time=${endTime}` : '');
       const endpoint = `${base}?${qs}`;
       const res = await API.get(endpoint);
       const { success, message, data } = res.data;
@@ -108,7 +121,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     if (visible) {
       loadTopups(page, pageSize);
     }
-  }, [visible, page, pageSize, keyword]);
+  }, [visible, page, pageSize, keyword, dateRange]);
 
   const handlePageChange = (currentPage) => {
     setPage(currentPage);
@@ -121,6 +134,11 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   const handleKeywordChange = (value) => {
     setKeyword(value);
+    setPage(1);
+  };
+
+  const handleDateRangeChange = (value) => {
+    setDateRange(value || []);
     setPage(1);
   };
 
@@ -372,7 +390,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         footer={null}
         size={isMobile ? 'full-width' : 'large'}
       >
-        <div className='mb-3 flex gap-2'>
+        <div className='mb-3 flex flex-col gap-2 md:flex-row'>
           <Input
             prefix={<IconSearch />}
             placeholder={t('订单号')}
@@ -380,6 +398,14 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
             onChange={handleKeywordChange}
             showClear
             style={{ flex: 1 }}
+          />
+          <DatePicker
+            type='dateTimeRange'
+            value={dateRange}
+            onChange={handleDateRangeChange}
+            showClear
+            placeholder={[t('开始时间'), t('结束时间')]}
+            style={{ width: isMobile ? '100%' : 320 }}
           />
           {userIsRoot && (
             <Button type='primary' onClick={openManualModal}>

@@ -75,6 +75,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
   const [dateRange, setDateRange] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('all');
   const [manualModalVisible, setManualModalVisible] = useState(false);
   const [manualCreating, setManualCreating] = useState(false);
   const [manualUsersLoading, setManualUsersLoading] = useState(false);
@@ -100,7 +101,8 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         `p=${currentPage}&page_size=${currentPageSize}` +
         (keyword ? `&keyword=${encodeURIComponent(keyword)}` : '') +
         (startTime ? `&start_time=${startTime}` : '') +
-        (endTime ? `&end_time=${endTime}` : '');
+        (endTime ? `&end_time=${endTime}` : '') +
+        (statusFilter !== 'all' ? `&status=${statusFilter}` : '');
       const endpoint = `${base}?${qs}`;
       const res = await API.get(endpoint);
       const { success, message, data } = res.data;
@@ -121,7 +123,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     if (visible) {
       loadTopups(page, pageSize);
     }
-  }, [visible, page, pageSize, keyword, dateRange]);
+  }, [visible, page, pageSize, keyword, dateRange, statusFilter]);
 
   const handlePageChange = (currentPage) => {
     setPage(currentPage);
@@ -139,6 +141,11 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   const handleDateRangeChange = (value) => {
     setDateRange(value || []);
+    setPage(1);
+  };
+
+  const handleStatusFilterChange = (value) => {
+    setStatusFilter(value || 'all');
     setPage(1);
   };
 
@@ -407,6 +414,17 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
             placeholder={[t('开始时间'), t('结束时间')]}
             style={{ width: isMobile ? '100%' : 320 }}
           />
+          <Select
+            value={statusFilter}
+            onChange={handleStatusFilterChange}
+            style={{ width: isMobile ? '100%' : 140 }}
+          >
+            <Select.Option value='all'>{t('全部状态')}</Select.Option>
+            <Select.Option value='success'>{t('成功')}</Select.Option>
+            <Select.Option value='pending'>{t('待支付')}</Select.Option>
+            <Select.Option value='failed'>{t('失败')}</Select.Option>
+            <Select.Option value='expired'>{t('已过期')}</Select.Option>
+          </Select>
           {userIsRoot && (
             <Button type='primary' onClick={openManualModal}>
               {t('创建充值记录')}

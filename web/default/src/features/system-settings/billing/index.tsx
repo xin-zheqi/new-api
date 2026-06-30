@@ -105,6 +105,14 @@ const defaultBillingSettings: BillingSettings = {
   'checkin_setting.enabled': false,
   'checkin_setting.min_quota': 1000,
   'checkin_setting.max_quota': 10000,
+  LotteryEnabled: false,
+  LotteryRequireRecharge: false,
+  LotteryMinRechargeAmount: 0,
+  LotteryRechargeWindowDays: 0,
+  LotteryCountRedemptionAsRecharge: false,
+  LotteryMinAccountAgeDays: 0,
+  LotteryMinRequestCount: 0,
+  LotteryRequireEmailVerified: false,
 }
 
 export function BillingSettings() {

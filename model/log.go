@@ -158,6 +158,27 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 	}
 }
 
+func RecordLotteryWinLog(userId int, content string, title string, prizeName string) {
+	username, _ := GetUsernameById(userId, false)
+	other := map[string]interface{}{
+		"op": buildOpField("lottery.win", map[string]interface{}{
+			"title":      title,
+			"prize_name": prizeName,
+		}),
+	}
+	log := &Log{
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      LogTypeSystem,
+		Content:   content,
+		Other:     common.MapToJsonStr(other),
+	}
+	if err := createLog(log); err != nil {
+		common.SysLog("failed to record log: " + err.Error())
+	}
+}
+
 // buildOpField 构建语言无关的操作描述（写入 Other.op）。
 // 前端依据 action(稳定操作标识) + params(结构化参数) 在渲染期用 i18n 本地化展示，
 // 因此不在数据库中存储自然语言句子。

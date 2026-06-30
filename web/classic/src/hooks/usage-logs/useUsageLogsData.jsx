@@ -43,6 +43,20 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 
+function renderStructuredLogContent(other, fallback, t) {
+  const op = other?.op;
+  if (!op?.action) {
+    return fallback;
+  }
+  if (op.action === 'lottery.win') {
+    return t('抽奖中奖：{{title}}，奖品：{{prize_name}}', {
+      title: op.params?.title || '',
+      prize_name: op.params?.prize_name || '',
+    });
+  }
+  return fallback;
+}
+
 export const useLogsData = () => {
   const { t } = useTranslation();
 
@@ -381,6 +395,11 @@ export const useLogsData = () => {
       logs[i].timestamp2string = timestamp2string(logs[i].created_at);
       logs[i].key = logs[i].id;
       let other = getLogOther(logs[i].other);
+      logs[i].displayContent = renderStructuredLogContent(
+        other,
+        logs[i].content,
+        t,
+      );
       let expandDataLocal = [];
 
       if (isAdminUser && (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)) {
@@ -434,10 +453,10 @@ export const useLogsData = () => {
               : renderLogContent({ ...other, displayMode: billingDisplayMode }),
           });
         }
-        if (logs[i]?.content) {
+        if (logs[i]?.displayContent) {
           expandDataLocal.push({
             key: t('其他详情'),
-            value: logs[i].content,
+            value: logs[i].displayContent,
           });
         }
         if (isAdminUser && other?.reject_reason) {

@@ -383,6 +383,7 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'subscription.plan_create': 'Created a subscription plan',
   'subscription.plan_update': 'Updated a subscription plan',
   'subscription.bind': 'Bound a subscription',
+  'lottery.win': 'Won the draw "{{title}}" and received "{{prize_name}}"',
   // Logs
   'log.clear': 'Cleared historical logs',
   // Generic middleware fallback

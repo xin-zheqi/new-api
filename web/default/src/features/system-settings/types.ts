@@ -267,6 +267,14 @@ export type BillingSettings = {
   'checkin_setting.enabled': boolean
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number
+  LotteryEnabled: boolean
+  LotteryRequireRecharge: boolean
+  LotteryMinRechargeAmount: number
+  LotteryRechargeWindowDays: number
+  LotteryCountRedemptionAsRecharge: boolean
+  LotteryMinAccountAgeDays: number
+  LotteryMinRequestCount: number
+  LotteryRequireEmailVerified: boolean
 }
 
 export type OperationsSettings = {

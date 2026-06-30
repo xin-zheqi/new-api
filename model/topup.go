@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -175,6 +176,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 type TopUpQueryFilter struct {
 	StartTime int64
 	EndTime   int64
+	Status    string
 }
 
 func applyTopUpQueryFilter(query *gorm.DB, filter TopUpQueryFilter) *gorm.DB {
@@ -183,6 +185,9 @@ func applyTopUpQueryFilter(query *gorm.DB, filter TopUpQueryFilter) *gorm.DB {
 	}
 	if filter.EndTime > 0 {
 		query = query.Where("create_time <= ?", filter.EndTime)
+	}
+	if strings.TrimSpace(filter.Status) != "" {
+		query = query.Where("status = ?", strings.TrimSpace(filter.Status))
 	}
 	return query
 }
@@ -208,7 +213,7 @@ func GetUserTopUps(userId int, pageInfo *common.PageInfo, filter TopUpQueryFilte
 	}
 
 	// Get paginated topups within same transaction
-	err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error
+	err = query.Order("create_time desc, id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -240,7 +245,7 @@ func GetAllTopUps(pageInfo *common.PageInfo, filter TopUpQueryFilter) (topups []
 		return nil, 0, err
 	}
 
-	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
+	if err = query.Order("create_time desc, id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
@@ -284,7 +289,7 @@ func SearchUserTopUps(userId int, keyword string, pageInfo *common.PageInfo, fil
 		return nil, 0, errors.New("搜索充值记录失败")
 	}
 
-	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
+	if err = query.Order("create_time desc, id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
 		tx.Rollback()
 		common.SysError("failed to search topups: " + err.Error())
 		return nil, 0, errors.New("搜索充值记录失败")
@@ -324,7 +329,7 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo, filter TopUpQuer
 		return nil, 0, errors.New("搜索充值记录失败")
 	}
 
-	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
+	if err = query.Order("create_time desc, id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topups).Error; err != nil {
 		tx.Rollback()
 		common.SysError("failed to search topups: " + err.Error())
 		return nil, 0, errors.New("搜索充值记录失败")

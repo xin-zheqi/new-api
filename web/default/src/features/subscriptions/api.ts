@@ -98,9 +98,12 @@ function normalizeSubscriptionPlan(value: unknown): SubscriptionPlan | null {
     ),
     enabled: toBoolean(candidate.enabled, true),
     sort_order: toNumber(candidate.sort_order, 0),
+    allow_balance_pay: toBoolean(candidate.allow_balance_pay, true),
+    allow_wallet_overflow: toBoolean(candidate.allow_wallet_overflow, true),
     max_purchase_per_user: toNumber(candidate.max_purchase_per_user, 0),
     total_amount: toNumber(candidate.total_amount, 0),
     upgrade_group: toStringValue(candidate.upgrade_group),
+    downgrade_group: toStringValue(candidate.downgrade_group),
     stripe_price_id: toStringValue(candidate.stripe_price_id),
     creem_product_id: toStringValue(candidate.creem_product_id),
     waffo_pancake_product_id: toStringValue(

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { parseCurrencyDisplayType } from '@/lib/currency'
+import { LotterySettingsSection } from '@/features/lottery/settings-section'
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
 import { PricingSection } from '../general/pricing-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
@@ -195,6 +196,24 @@ const BILLING_SECTIONS = [
           enabled: settings['checkin_setting.enabled'],
           minQuota: settings['checkin_setting.min_quota'],
           maxQuota: settings['checkin_setting.max_quota'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'lottery',
+    titleKey: 'Lucky Draw Settings',
+    build: (settings: BillingSettings) => (
+      <LotterySettingsSection
+        defaultValues={{
+          enabled: settings.LotteryEnabled,
+          requireRecharge: settings.LotteryRequireRecharge,
+          minRechargeAmount: settings.LotteryMinRechargeAmount,
+          rechargeWindowDays: settings.LotteryRechargeWindowDays,
+          countRedemptionAsRecharge: settings.LotteryCountRedemptionAsRecharge,
+          minAccountAgeDays: settings.LotteryMinAccountAgeDays,
+          minRequestCount: settings.LotteryMinRequestCount,
+          requireEmailVerified: settings.LotteryRequireEmailVerified,
         }}
       />
     ),

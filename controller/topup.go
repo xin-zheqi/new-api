@@ -40,6 +40,7 @@ func parseTopUpQueryFilter(c *gin.Context) model.TopUpQueryFilter {
 	return model.TopUpQueryFilter{
 		StartTime: parseTime("start_time", "start_timestamp"),
 		EndTime:   parseTime("end_time", "end_timestamp"),
+		Status:    strings.TrimSpace(c.Query("status")),
 	}
 }
 

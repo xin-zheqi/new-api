@@ -124,6 +124,10 @@ export function SidebarModulesSection({
         title: t('Profile'),
         description: t('Personal settings and profile management.'),
       },
+      lottery: {
+        title: t('Lucky Draw'),
+        description: t('Join lucky draw activities and view won prizes.'),
+      },
     },
     admin: {
       channel: {

@@ -122,6 +122,9 @@ func main() {
 	// Persistent system maintenance task runner
 	service.StartSystemTaskRunner()
 
+	// Lottery scheduled round creation and due draw task
+	model.StartLotteryDrawTask()
+
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {
 		a := relay.GetTaskAdaptor(platform)

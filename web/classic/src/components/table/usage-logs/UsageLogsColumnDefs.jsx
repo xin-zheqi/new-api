@@ -426,6 +426,13 @@ function renderCompactDetailSummary(summarySegments) {
 
 function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
   const other = getLogOther(record.other);
+  const displayText =
+    other?.op?.action === 'lottery.win'
+      ? t('抽奖中奖：{{title}}，奖品：{{prize_name}}', {
+          title: other?.op?.params?.title || '',
+          prize_name: other?.op?.params?.prize_name || '',
+        })
+      : text;
 
   if (record.type === 6) {
     return {
@@ -456,7 +463,9 @@ function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
           text: `${t('扣费')}：${renderQuota(feeQuota, 6)}`,
           tone: 'secondary',
         },
-        text ? { text: `${t('详情')}：${text}`, tone: 'secondary' } : null,
+        displayText
+          ? { text: `${t('详情')}：${displayText}`, tone: 'secondary' }
+          : null,
       ].filter(Boolean),
     };
   }
@@ -905,9 +914,17 @@ export const getLogsColumns = ({
       fixed: 'right',
       width: 200,
       render: (text, record, index) => {
+        const other = getLogOther(record.other);
+        const displayText =
+          other?.op?.action === 'lottery.win'
+            ? t('抽奖中奖：{{title}}，奖品：{{prize_name}}', {
+                title: other?.op?.params?.title || '',
+                prize_name: other?.op?.params?.prize_name || '',
+              })
+            : text;
         const detailSummary = getUsageLogDetailSummary(
           record,
-          text,
+          displayText,
           billingDisplayMode,
           t,
         );
@@ -924,7 +941,7 @@ export const getLogsColumns = ({
               }}
               style={{ maxWidth: 200, marginBottom: 0 }}
             >
-              {text}
+              {displayText}
             </Typography.Paragraph>
           );
         }

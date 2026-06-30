@@ -30,6 +30,7 @@ import {
   Radio,
   Settings,
   Ticket,
+  Trophy,
   User,
   Users,
   Wallet,
@@ -37,6 +38,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { type SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
+import { useStatus } from './use-status'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -46,6 +48,8 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const { status } = useStatus()
+  const lotteryEnabled = status?.lottery_enabled !== false
 
   return {
     navGroups: [
@@ -117,6 +121,15 @@ export function useSidebarData(): SidebarData {
             url: '/profile',
             icon: User,
           },
+          ...(lotteryEnabled
+            ? [
+                {
+                  title: t('Lucky Draw'),
+                  url: '/lottery',
+                  icon: Trophy,
+                },
+              ]
+            : []),
         ],
       },
       {

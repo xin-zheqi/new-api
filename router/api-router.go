@@ -183,6 +183,26 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", anonymousRequestBodyLimit, controller.SubscriptionEpayReturn)
+		lotteryAdminRoute := apiRouter.Group("/lottery/admin")
+		lotteryAdminRoute.Use(middleware.AdminAuth())
+		{
+			lotteryAdminRoute.GET("/", controller.AdminListLotteries)
+			lotteryAdminRoute.POST("/", controller.AdminCreateLottery)
+			lotteryAdminRoute.GET("/:id", controller.AdminGetLottery)
+			lotteryAdminRoute.PUT("/:id", controller.AdminUpdateLottery)
+			lotteryAdminRoute.DELETE("/:id", controller.AdminDeleteLottery)
+			lotteryAdminRoute.PATCH("/:id/status", controller.AdminUpdateLotteryStatus)
+			lotteryAdminRoute.POST("/rounds/:round_id/draw", controller.AdminDrawLottery)
+		}
+		lotteryRoute := apiRouter.Group("/lottery")
+		lotteryRoute.Use(middleware.UserAuth())
+		{
+			lotteryRoute.GET("/settings", controller.GetLotterySettings)
+			lotteryRoute.GET("/", controller.GetLotteries)
+			lotteryRoute.GET("/my-prizes", controller.GetMyLotteryPrizes)
+			lotteryRoute.GET("/:id", controller.GetLottery)
+			lotteryRoute.POST("/:id/join", middleware.CriticalRateLimit(), controller.JoinLottery)
+		}
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{

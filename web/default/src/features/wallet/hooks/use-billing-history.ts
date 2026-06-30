@@ -26,7 +26,7 @@ import {
   completeOrder,
   isApiSuccess,
 } from '../api'
-import type { TopupRecord } from '../types'
+import type { TopupRecord, TopupStatus } from '../types'
 
 // ============================================================================
 // Billing History Hook
@@ -48,6 +48,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   const [page, setPage] = useState(initialPage)
   const [pageSize, setPageSize] = useState(initialPageSize)
   const [keyword, setKeyword] = useState('')
+  const [status, setStatus] = useState<TopupStatus | 'all'>('all')
   const [loading, setLoading] = useState(false)
   const [completing, setCompleting] = useState(false)
 
@@ -58,8 +59,8 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     setLoading(true)
     try {
       const response = isAdmin
-        ? await getAllBillingHistory(page, pageSize, keyword)
-        : await getUserBillingHistory(page, pageSize, keyword)
+        ? await getAllBillingHistory(page, pageSize, keyword, status)
+        : await getUserBillingHistory(page, pageSize, keyword, status)
 
       if (isApiSuccess(response) && response.data) {
         setRecords(response.data.items || [])
@@ -80,7 +81,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     } finally {
       setLoading(false)
     }
-  }, [isAdmin, page, pageSize, keyword])
+  }, [isAdmin, page, pageSize, keyword, status])
 
   /**
    * Complete a pending order (admin only)
@@ -139,6 +140,14 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     setPage(1) // Reset to first page when searching
   }, [])
 
+  /**
+   * Filter by payment status
+   */
+  const handleStatusChange = useCallback((newStatus: TopupStatus | 'all') => {
+    setStatus(newStatus)
+    setPage(1)
+  }, [])
+
   // Fetch data when dependencies change
   useEffect(() => {
     fetchBillingHistory()
@@ -150,12 +159,14 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     page,
     pageSize,
     keyword,
+    status,
     loading,
     completing,
     isAdmin,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
+    handleStatusChange,
     handleCompleteOrder,
     refresh: fetchBillingHistory,
   }

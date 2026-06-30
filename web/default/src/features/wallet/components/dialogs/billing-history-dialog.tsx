@@ -85,12 +85,14 @@ export function BillingHistoryDialog({
     page,
     pageSize,
     keyword,
+    status,
     loading,
     completing,
     isAdmin,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
+    handleStatusChange,
     handleCompleteOrder,
     refresh,
   } = useBillingHistory()
@@ -133,7 +135,7 @@ export function BillingHistoryDialog({
             )}
 
             {/* Search and Filter Bar */}
-            <div className='flex items-center gap-2'>
+            <div className='flex flex-col gap-2 sm:flex-row sm:items-center'>
               <div className='relative flex-1'>
                 <Search className='text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2' />
                 <Input
@@ -143,6 +145,29 @@ export function BillingHistoryDialog({
                   className='h-9 pl-10'
                 />
               </div>
+              <Select
+                value={status}
+                onValueChange={(value) => {
+                  if (value !== null) {
+                    handleStatusChange(
+                      value as 'all' | 'success' | 'pending' | 'failed' | 'expired'
+                    )
+                  }
+                }}
+              >
+                <SelectTrigger className='h-9 w-full sm:w-32'>
+                  <SelectValue placeholder={t('Status')} />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    <SelectItem value='all'>{t('All Status')}</SelectItem>
+                    <SelectItem value='success'>{t('Success')}</SelectItem>
+                    <SelectItem value='pending'>{t('Pending')}</SelectItem>
+                    <SelectItem value='failed'>{t('Failed')}</SelectItem>
+                    <SelectItem value='expired'>{t('Expired')}</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
               <Select
                 items={[
                   { value: '10', label: t('10 / page') },
@@ -155,7 +180,7 @@ export function BillingHistoryDialog({
                   value !== null && handlePageSizeChange(parseInt(value))
                 }
               >
-                <SelectTrigger className='h-9 w-[92px] sm:w-32'>
+                <SelectTrigger className='h-9 w-full sm:w-32'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
@@ -196,7 +221,7 @@ export function BillingHistoryDialog({
                     {t('No billing records found')}
                   </p>
                   <p className='mt-1 text-xs'>
-                    {keyword
+                    {keyword || status !== 'all'
                       ? t('Try adjusting your search')
                       : t('Your transaction history will appear here')}
                   </p>
@@ -243,7 +268,7 @@ export function BillingHistoryDialog({
                             </div>
                           </div>
                           <StatusBadge
-                            label={statusConfig.label}
+                            label={t(statusConfig.label)}
                             variant={statusConfig.variant}
                             showDot
                             copyable={false}

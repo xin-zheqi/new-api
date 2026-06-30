@@ -191,6 +191,9 @@ export function isSidebarModuleEnabled(
 ): boolean {
   const status = getCachedStatus()
   if (!status) return true
+  if (section === 'personal' && module === 'lottery' && status.lottery_enabled === false) {
+    return false
+  }
 
   const raw = status.SidebarModulesAdmin
   if (!raw || String(raw).trim() === '') return true

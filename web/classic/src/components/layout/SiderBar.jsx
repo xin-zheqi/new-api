@@ -35,6 +35,7 @@ const routerMap = {
   channel: '/console/channel',
   token: '/console/token',
   redemption: '/console/redemption',
+  lottery: '/console/lottery',
   topup: '/console/topup',
   user: '/console/user',
   subscription: '/console/subscription',
@@ -69,6 +70,14 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   const [openedKeys, setOpenedKeys] = useState([]);
   const location = useLocation();
   const [routerMapState, setRouterMapState] = useState(routerMap);
+  const lotteryEnabled = useMemo(() => {
+    try {
+      const status = JSON.parse(localStorage.getItem('status') || '{}');
+      return status.lottery_enabled !== false;
+    } catch {
+      return true;
+    }
+  }, []);
 
   const workspaceItems = useMemo(() => {
     const items = [
@@ -141,6 +150,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/topup',
       },
       {
+        text: t('抽奖活动'),
+        itemKey: 'lottery',
+        to: '/lottery',
+        className: lotteryEnabled ? '' : 'tableHiddle',
+      },
+      {
         text: t('个人设置'),
         itemKey: 'personal',
         to: '/personal',
@@ -154,7 +169,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     });
 
     return filteredItems;
-  }, [t, isModuleVisible]);
+  }, [t, isModuleVisible, lotteryEnabled]);
 
   const adminItems = useMemo(() => {
     const items = [

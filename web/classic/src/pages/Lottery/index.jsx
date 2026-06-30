@@ -553,7 +553,7 @@ export default function Lottery() {
   const openCreateModal = () => {
     setEditingLottery(null);
     setDetailOnly(false);
-    setForm(defaultForm);
+    setForm({ ...defaultForm });
     setCreateVisible(true);
   };
 
@@ -582,6 +582,24 @@ export default function Lottery() {
 
   const handleSave = async () => {
     const codes = parsePrizeCodes(form.prize_codes);
+    if (form.mode === 'once') {
+      const registrationStart = toUnixSeconds(form.registration_start);
+      const registrationEnd = toUnixSeconds(form.registration_end);
+      const drawTime = toUnixSeconds(form.draw_time);
+      const now = Math.floor(Date.now() / 1000);
+      if (!registrationStart) {
+        Toast.error({ content: t('请填写报名开始时间') });
+        return;
+      }
+      if (registrationEnd <= registrationStart || registrationEnd <= now) {
+        Toast.error({ content: t('报名结束时间必须晚于当前时间和报名开始时间') });
+        return;
+      }
+      if (drawTime < registrationEnd) {
+        Toast.error({ content: t('开奖时间必须晚于或等于报名结束时间') });
+        return;
+      }
+    }
     const payload = {
       title: String(form.title || '').trim(),
       description: String(form.description || '').trim(),
@@ -617,7 +635,7 @@ export default function Lottery() {
         Toast.success({ content: editingLottery ? t('保存成功') : t('创建成功') });
         setCreateVisible(false);
         setEditingLottery(null);
-        setForm(defaultForm);
+        setForm({ ...defaultForm });
         await Promise.all([loadAdminData(), loadPublicData()]);
       } else {
         Toast.error({ content: res.data.message || t('保存失败') });
@@ -967,7 +985,7 @@ export default function Lottery() {
         <Form
           key={editingLottery?.id || 'create'}
           labelPosition='top'
-          onValueChange={(values) => setForm({ ...form, ...values })}
+          onValueChange={(values) => setForm((current) => ({ ...current, ...values }))}
           initValues={form}
         >
           <Form.Input field='title' label={t('活动标题')} disabled={detailOnly} />
@@ -1001,7 +1019,7 @@ export default function Lottery() {
                   value={form.registration_start}
                   disabled={detailOnly}
                   onChange={(value) =>
-                    setForm({ ...form, registration_start: value })
+                    setForm((current) => ({ ...current, registration_start: value }))
                   }
                   style={{ width: '100%' }}
                 />
@@ -1012,7 +1030,7 @@ export default function Lottery() {
                   value={form.registration_end}
                   disabled={detailOnly}
                   onChange={(value) =>
-                    setForm({ ...form, registration_end: value })
+                    setForm((current) => ({ ...current, registration_end: value }))
                   }
                   style={{ width: '100%' }}
                 />
@@ -1022,7 +1040,9 @@ export default function Lottery() {
                   type='dateTime'
                   value={form.draw_time}
                   disabled={detailOnly}
-                  onChange={(value) => setForm({ ...form, draw_time: value })}
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, draw_time: value }))
+                  }
                   style={{ width: '100%' }}
                 />
               </Form.Slot>

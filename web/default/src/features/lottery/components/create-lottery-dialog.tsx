@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -55,6 +55,7 @@ export function CreateLotteryDialog(props: {
   const [form, setForm] = useState(defaultLotteryForm)
   const editing = Boolean(props.lottery)
   const readOnly = Boolean(props.readOnly)
+  const initializedLotteryIdRef = useRef<number | null>(null)
   const prizeCodes = useMemo(
     () => parsePrizeCodes(form.prizeCodes),
     [form.prizeCodes]
@@ -62,9 +63,17 @@ export function CreateLotteryDialog(props: {
   const requiredCodes = form.winnerCount * form.prizePerWinner
 
   useEffect(() => {
-    if (!props.open) return
+    if (!props.open) {
+      initializedLotteryIdRef.current = null
+      return
+    }
+    const lotteryId = props.lottery?.id ?? 0
+    if (initializedLotteryIdRef.current === lotteryId) {
+      return
+    }
     if (!props.lottery) {
-      setForm(defaultLotteryForm)
+      setForm({ ...defaultLotteryForm })
+      initializedLotteryIdRef.current = lotteryId
       return
     }
     const lottery = props.lottery
@@ -84,7 +93,8 @@ export function CreateLotteryDialog(props: {
       scheduleDrawTime: lottery.schedule_draw_time || '20:00',
       prizeCodes: (lottery.prize_codes ?? []).join('\n'),
     })
-  }, [props.open, props.lottery])
+    initializedLotteryIdRef.current = lotteryId
+  }, [props.open, props.lottery?.id])
 
   const createMutation = useMutation({
     mutationFn: createLottery,
@@ -92,7 +102,7 @@ export function CreateLotteryDialog(props: {
       if (res.success) {
         toast.success(t('Draw created'))
         props.onOpenChange(false)
-        setForm(defaultLotteryForm)
+        setForm({ ...defaultLotteryForm })
         await queryClient.invalidateQueries({ queryKey: ['admin-lotteries'] })
         await queryClient.invalidateQueries({ queryKey: ['lotteries'] })
       }
@@ -117,6 +127,28 @@ export function CreateLotteryDialog(props: {
   ) => setForm((current) => ({ ...current, [key]: value }))
 
   const submit = () => {
+    if (form.mode === 'once') {
+      const registrationStart = toUnixSeconds(form.registrationStart)
+      const registrationEnd = toUnixSeconds(form.registrationEnd)
+      const drawTime = toUnixSeconds(form.drawTime)
+      const now = Math.floor(Date.now() / 1000)
+      if (!registrationStart) {
+        toast.error(t('Registration start time is required'))
+        return
+      }
+      if (registrationEnd <= registrationStart || registrationEnd <= now) {
+        toast.error(
+          t('Registration end must be later than the current time and registration start')
+        )
+        return
+      }
+      if (drawTime < registrationEnd) {
+        toast.error(
+          t('Draw time must be later than or equal to registration end')
+        )
+        return
+      }
+    }
     const payload: CreateLotteryPayload = {
       title: form.title,
       description: form.description,

@@ -319,8 +319,15 @@ func normalizeLotteryCreateRequest(req LotteryCreateRequest) (LotteryCreateReque
 	}
 	req.PrizeCodes = codes
 	if req.Mode == LotteryModeOnce {
-		if req.RegistrationStart <= 0 || req.RegistrationEnd <= req.RegistrationStart || req.DrawTime <= req.RegistrationEnd {
-			return req, errors.New("报名时间或开奖时间无效")
+		now := common.GetTimestamp()
+		if req.RegistrationStart <= 0 {
+			return req, errors.New("报名开始时间无效")
+		}
+		if req.RegistrationEnd <= req.RegistrationStart || req.RegistrationEnd <= now {
+			return req, errors.New("报名结束时间必须晚于当前时间和报名开始时间")
+		}
+		if req.DrawTime < req.RegistrationEnd {
+			return req, errors.New("开奖时间必须晚于或等于报名结束时间")
 		}
 		return req, nil
 	}

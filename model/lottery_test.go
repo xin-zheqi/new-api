@@ -141,6 +141,46 @@ func TestCreateLotteryDeduplicatesImportedPrizeCodes(t *testing.T) {
 	assert.Equal(t, []string{"A", "B", "C"}, codes)
 }
 
+func TestCreateLotteryRequiresRegistrationEndAfterNow(t *testing.T) {
+	truncateTables(t)
+	enableLotteryForTest(t)
+
+	now := common.GetTimestamp()
+	_, err := CreateLottery(LotteryCreateRequest{
+		Title:             "Past registration end",
+		PrizeName:         "Gift",
+		Mode:              LotteryModeOnce,
+		WinnerCount:       1,
+		RegistrationStart: now - 360,
+		RegistrationEnd:   now - 60,
+		DrawTime:          now + 120,
+		PrizeCodes:        []string{"A"},
+	}, 1)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "报名结束时间必须晚于当前时间和报名开始时间")
+}
+
+func TestCreateLotteryAllowsDrawTimeEqualRegistrationEnd(t *testing.T) {
+	truncateTables(t)
+	enableLotteryForTest(t)
+
+	now := common.GetTimestamp()
+	lottery, err := CreateLottery(LotteryCreateRequest{
+		Title:             "Equal draw time",
+		PrizeName:         "Gift",
+		Mode:              LotteryModeOnce,
+		WinnerCount:       1,
+		RegistrationStart: now - 60,
+		RegistrationEnd:   now + 120,
+		DrawTime:          now + 120,
+		PrizeCodes:        []string{"A"},
+	}, 1)
+
+	require.NoError(t, err)
+	require.NotNil(t, lottery)
+}
+
 func TestJoinLotteryRequiresRechargeWhenConfigured(t *testing.T) {
 	truncateTables(t)
 	enableLotteryForTest(t)

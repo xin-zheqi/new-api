@@ -61,6 +61,9 @@ const _systemInfoSchema = z.object({
   Footer: z.string().optional(),
   About: z.string().optional(),
   HomePageContent: z.string().optional(),
+  general_setting: z.object({
+    promo_popup_content: z.string().optional(),
+  }),
   legal: z.object({
     user_agreement: z.string().optional(),
     privacy_policy: z.string().optional(),
@@ -93,6 +96,11 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     Footer: normalizeValue(defaultValues.Footer),
     About: normalizeValue(defaultValues.About),
     HomePageContent: normalizeValue(defaultValues.HomePageContent),
+    general_setting: {
+      promo_popup_content: normalizeValue(
+        defaultValues.general_setting?.promo_popup_content
+      ),
+    },
     legal: {
       user_agreement: normalizeValue(defaultValues.legal?.user_agreement),
       privacy_policy: normalizeValue(defaultValues.legal?.privacy_policy),
@@ -111,6 +119,9 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     Footer: z.string().optional(),
     About: z.string().optional(),
     HomePageContent: z.string().optional(),
+    general_setting: z.object({
+      promo_popup_content: z.string().optional(),
+    }),
     legal: z.object({
       user_agreement: z.string().optional(),
       privacy_policy: z.string().optional(),
@@ -321,6 +332,33 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                       <FormDescription>
                         {t(
                           'Content displayed on the home page (supports Markdown)'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </SettingsFormGridItem>
+
+              <SettingsFormGridItem span='full'>
+                <FormField
+                  control={form.control}
+                  name='general_setting.promo_popup_content'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Promotional popup content')}</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder={t(
+                            'Markdown or HTML content displayed in the bottom-right promotional popup'
+                          )}
+                          rows={6}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Leave empty to disable the promotional popup. Users who closed it will see it again only after this content changes.'
                         )}
                       </FormDescription>
                       <FormMessage />

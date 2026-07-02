@@ -32,6 +32,7 @@ const defaultSiteSettings: SiteSettings = {
   Footer: '',
   About: '',
   HomePageContent: '',
+  'general_setting.promo_popup_content': '',
   ServerAddress: '',
   'legal.user_agreement': '',
   'legal.privacy_policy': '',

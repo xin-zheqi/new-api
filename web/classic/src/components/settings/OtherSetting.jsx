@@ -28,7 +28,13 @@ import {
   Space,
   Card,
 } from '@douyinfe/semi-ui';
-import { API, showError, showSuccess, timestamp2string } from '../../helpers';
+import {
+  API,
+  showError,
+  showSuccess,
+  timestamp2string,
+  setStatusData,
+} from '../../helpers';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../context/Status';
@@ -36,6 +42,7 @@ import Text from '@douyinfe/semi-ui/lib/es/typography/text';
 
 const LEGAL_USER_AGREEMENT_KEY = 'legal.user_agreement';
 const LEGAL_PRIVACY_POLICY_KEY = 'legal.privacy_policy';
+const PROMO_POPUP_CONTENT_KEY = 'general_setting.promo_popup_content';
 
 const OtherSetting = () => {
   const { t } = useTranslation();
@@ -43,6 +50,7 @@ const OtherSetting = () => {
     Notice: '',
     [LEGAL_USER_AGREEMENT_KEY]: '',
     [LEGAL_PRIVACY_POLICY_KEY]: '',
+    [PROMO_POPUP_CONTENT_KEY]: '',
     SystemName: '',
     Logo: '',
     Footer: '',
@@ -59,23 +67,26 @@ const OtherSetting = () => {
 
   const updateOption = async (key, value) => {
     setLoading(true);
-    const res = await API.put('/api/option/', {
-      key,
-      value,
-    });
-    const { success, message } = res.data;
-    if (success) {
+    try {
+      const res = await API.put('/api/option/', {
+        key,
+        value,
+      });
+      const { success, message } = res.data;
+      if (!success) {
+        throw new Error(message || t('更新失败'));
+      }
       setInputs((inputs) => ({ ...inputs, [key]: value }));
-    } else {
-      showError(message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const [loadingInput, setLoadingInput] = useState({
     Notice: false,
     [LEGAL_USER_AGREEMENT_KEY]: false,
     [LEGAL_PRIVACY_POLICY_KEY]: false,
+    [PROMO_POPUP_CONTENT_KEY]: false,
     SystemName: false,
     Logo: false,
     HomePageContent: false,
@@ -87,6 +98,36 @@ const OtherSetting = () => {
   const handleInputChange = async (value, e) => {
     const name = e.target.id;
     setInputs((inputs) => ({ ...inputs, [name]: value }));
+  };
+
+  // 通用设置 - PromoPopup
+  const submitPromoPopup = async () => {
+    const value = inputs[PROMO_POPUP_CONTENT_KEY] || '';
+    try {
+      setLoadingInput((loadingInput) => ({
+        ...loadingInput,
+        [PROMO_POPUP_CONTENT_KEY]: true,
+      }));
+      await updateOption(PROMO_POPUP_CONTENT_KEY, value);
+      setInputs((inputs) => ({ ...inputs, [PROMO_POPUP_CONTENT_KEY]: value }));
+      if (statusState?.status) {
+        const nextStatus = {
+          ...statusState.status,
+          promo_popup_content: value,
+        };
+        statusDispatch({ type: 'set', payload: nextStatus });
+        setStatusData(nextStatus);
+      }
+      showSuccess(t('通知已更新'));
+    } catch (error) {
+      console.error(t('通知更新失败'), error);
+      showError(t('通知更新失败'));
+    } finally {
+      setLoadingInput((loadingInput) => ({
+        ...loadingInput,
+        [PROMO_POPUP_CONTENT_KEY]: false,
+      }));
+    }
   };
 
   // 通用设置
@@ -420,6 +461,22 @@ const OtherSetting = () => {
               />
               <Button onClick={submitNotice} loading={loadingInput['Notice']}>
                 {t('设置公告')}
+              </Button>
+              <Form.TextArea
+                label={t('通知')}
+                placeholder={t(
+                  '在此输入右下角通知内容，支持 Markdown & HTML 代码，留空则不显示。用户关闭后不会再次显示，直到你更新内容。',
+                )}
+                field={PROMO_POPUP_CONTENT_KEY}
+                onChange={handleInputChange}
+                style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+                autosize={{ minRows: 6, maxRows: 12 }}
+              />
+              <Button
+                onClick={submitPromoPopup}
+                loading={loadingInput[PROMO_POPUP_CONTENT_KEY]}
+              >
+                {t('设置通知')}
               </Button>
               <Form.TextArea
                 label={t('用户协议')}

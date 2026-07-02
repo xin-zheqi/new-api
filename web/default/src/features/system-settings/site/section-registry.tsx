@@ -44,6 +44,10 @@ const SITE_SECTIONS = [
           Footer: settings.Footer,
           About: settings.About,
           HomePageContent: settings.HomePageContent,
+          general_setting: {
+            promo_popup_content:
+              settings['general_setting.promo_popup_content'],
+          },
           ServerAddress: settings.ServerAddress,
           legal: {
             user_agreement: settings['legal.user_agreement'],

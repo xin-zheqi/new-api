@@ -268,7 +268,7 @@ func migrateDB() error {
 		return err
 	}
 
-	err := DB.AutoMigrate(
+	autoMigrateModels := []interface{}{
 		&Channel{},
 		&Token{},
 		&User{},
@@ -295,15 +295,21 @@ func migrateDB() error {
 		&UserOAuthBinding{},
 		&PerfMetric{},
 		&SystemTask{},
-		&Lottery{},
 		&LotteryRound{},
 		&LotteryPrize{},
 		&LotteryEntry{},
-	)
+	}
+	if !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		autoMigrateModels = append(autoMigrateModels, &Lottery{})
+	}
+	err := DB.AutoMigrate(autoMigrateModels...)
 	if err != nil {
 		return err
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		if err := ensureLotteryTableSQLite(); err != nil {
+			return err
+		}
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
 		}
@@ -352,10 +358,15 @@ func migrateDBFast() error {
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&PerfMetric{}, "PerfMetric"},
 		{&SystemTask{}, "SystemTask"},
-		{&Lottery{}, "Lottery"},
 		{&LotteryRound{}, "LotteryRound"},
 		{&LotteryPrize{}, "LotteryPrize"},
 		{&LotteryEntry{}, "LotteryEntry"},
+	}
+	if !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		migrations = append(migrations, struct {
+			model interface{}
+			name  string
+		}{&Lottery{}, "Lottery"})
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
@@ -381,6 +392,9 @@ func migrateDBFast() error {
 		}
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		if err := ensureLotteryTableSQLite(); err != nil {
+			return err
+		}
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
 		}
@@ -492,6 +506,110 @@ func clickHouseCreateTableHasTTL(createTableSQL string) bool {
 type sqliteColumnDef struct {
 	Name string
 	DDL  string
+}
+
+func ensureLotteryTableSQLite() error {
+	if !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		return nil
+	}
+	tableName := "lotteries"
+	if !DB.Migrator().HasTable(tableName) {
+		createSQL := `CREATE TABLE ` + "`" + tableName + "`" + ` (
+` + "`id`" + ` integer,
+` + "`title`" + ` varchar(128) NOT NULL,
+` + "`description`" + ` text,
+` + "`prize_name`" + ` varchar(128) NOT NULL,
+` + "`mode`" + ` varchar(16) NOT NULL DEFAULT 'once',
+` + "`status`" + ` integer NOT NULL DEFAULT 1,
+` + "`winner_count`" + ` integer NOT NULL DEFAULT 1,
+` + "`prize_per_winner`" + ` integer NOT NULL DEFAULT 1,
+` + "`require_recharge`" + ` numeric DEFAULT false,
+` + "`min_recharge_amount`" + ` decimal(10,6) NOT NULL DEFAULT 0,
+` + "`recharge_window_days`" + ` integer NOT NULL DEFAULT 0,
+` + "`count_redemption_as_recharge`" + ` numeric DEFAULT false,
+` + "`min_account_age_days`" + ` integer NOT NULL DEFAULT 0,
+` + "`min_request_count`" + ` integer NOT NULL DEFAULT 0,
+` + "`require_email_verified`" + ` numeric DEFAULT false,
+` + "`registration_start`" + ` integer,
+` + "`registration_end`" + ` integer,
+` + "`draw_time`" + ` integer,
+` + "`schedule_weekdays`" + ` varchar(32) DEFAULT '',
+` + "`schedule_start_time`" + ` varchar(5) DEFAULT '',
+` + "`schedule_end_time`" + ` varchar(5) DEFAULT '',
+` + "`schedule_draw_time`" + ` varchar(5) DEFAULT '',
+` + "`created_by`" + ` integer,
+` + "`created_at`" + ` integer,
+` + "`updated_at`" + ` integer,
+` + "`deleted_at`" + ` datetime,
+PRIMARY KEY (` + "`id`" + `)
+)`
+		if err := DB.Exec(createSQL).Error; err != nil {
+			return err
+		}
+	} else {
+		var cols []struct {
+			Name string `gorm:"column:name"`
+		}
+		if err := DB.Raw("PRAGMA table_info(`" + tableName + "`)").Scan(&cols).Error; err != nil {
+			return err
+		}
+		existing := make(map[string]struct{}, len(cols))
+		for _, c := range cols {
+			existing[c.Name] = struct{}{}
+		}
+		required := []sqliteColumnDef{
+			{Name: "title", DDL: "`title` varchar(128) DEFAULT ''"},
+			{Name: "description", DDL: "`description` text"},
+			{Name: "prize_name", DDL: "`prize_name` varchar(128) DEFAULT ''"},
+			{Name: "mode", DDL: "`mode` varchar(16) NOT NULL DEFAULT 'once'"},
+			{Name: "status", DDL: "`status` integer NOT NULL DEFAULT 1"},
+			{Name: "winner_count", DDL: "`winner_count` integer NOT NULL DEFAULT 1"},
+			{Name: "prize_per_winner", DDL: "`prize_per_winner` integer NOT NULL DEFAULT 1"},
+			{Name: "require_recharge", DDL: "`require_recharge` numeric DEFAULT false"},
+			{Name: "min_recharge_amount", DDL: "`min_recharge_amount` decimal(10,6) NOT NULL DEFAULT 0"},
+			{Name: "recharge_window_days", DDL: "`recharge_window_days` integer NOT NULL DEFAULT 0"},
+			{Name: "count_redemption_as_recharge", DDL: "`count_redemption_as_recharge` numeric DEFAULT false"},
+			{Name: "min_account_age_days", DDL: "`min_account_age_days` integer NOT NULL DEFAULT 0"},
+			{Name: "min_request_count", DDL: "`min_request_count` integer NOT NULL DEFAULT 0"},
+			{Name: "require_email_verified", DDL: "`require_email_verified` numeric DEFAULT false"},
+			{Name: "registration_start", DDL: "`registration_start` integer"},
+			{Name: "registration_end", DDL: "`registration_end` integer"},
+			{Name: "draw_time", DDL: "`draw_time` integer"},
+			{Name: "schedule_weekdays", DDL: "`schedule_weekdays` varchar(32) DEFAULT ''"},
+			{Name: "schedule_start_time", DDL: "`schedule_start_time` varchar(5) DEFAULT ''"},
+			{Name: "schedule_end_time", DDL: "`schedule_end_time` varchar(5) DEFAULT ''"},
+			{Name: "schedule_draw_time", DDL: "`schedule_draw_time` varchar(5) DEFAULT ''"},
+			{Name: "created_by", DDL: "`created_by` integer"},
+			{Name: "created_at", DDL: "`created_at` integer"},
+			{Name: "updated_at", DDL: "`updated_at` integer"},
+			{Name: "deleted_at", DDL: "`deleted_at` datetime"},
+		}
+		for _, col := range required {
+			if _, ok := existing[col.Name]; ok {
+				continue
+			}
+			if err := DB.Exec("ALTER TABLE `" + tableName + "` ADD COLUMN " + col.DDL).Error; err != nil {
+				return err
+			}
+		}
+	}
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS `idx_lotteries_title` ON `lotteries`(`title`)",
+		"CREATE INDEX IF NOT EXISTS `idx_lotteries_mode` ON `lotteries`(`mode`)",
+		"CREATE INDEX IF NOT EXISTS `idx_lotteries_status` ON `lotteries`(`status`)",
+		"CREATE INDEX IF NOT EXISTS `idx_lotteries_registration_start` ON `lotteries`(`registration_start`)",
+		"CREATE INDEX IF NOT EXISTS `idx_lotteries_registration_end` ON `lotteries`(`registration_end`)",
+		"CREATE INDEX IF NOT EXISTS `idx_lotteries_draw_time` ON `lotteries`(`draw_time`)",
+		"CREATE INDEX IF NOT EXISTS `idx_lotteries_created_by` ON `lotteries`(`created_by`)",
+		"CREATE INDEX IF NOT EXISTS `idx_lotteries_created_at` ON `lotteries`(`created_at`)",
+		"CREATE INDEX IF NOT EXISTS `idx_lotteries_deleted_at` ON `lotteries`(`deleted_at`)",
+	}
+	for _, indexSQL := range indexes {
+		if err := DB.Exec(indexSQL).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ensureSubscriptionPlanTableSQLite() error {

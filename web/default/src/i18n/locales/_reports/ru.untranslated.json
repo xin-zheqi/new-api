@@ -38,5 +38,6 @@
   "Waffo Pancake settings saved": "Waffo Pancake settings saved",
   "Webhook URL (Production):": "Webhook URL (Production):",
   "Webhook URL (Test):": "Webhook URL (Test):",
-  "Why only one store + product?": "Why only one store + product?"
+  "Why only one store + product?": "Why only one store + product?",
+  "Won the draw \"{{title}}\" and received \"{{prize_name}}\"": "Won the draw \"{{title}}\" and received \"{{prize_name}}\""
 }

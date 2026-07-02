@@ -68,6 +68,19 @@ type tokenModelUsageTotalAggregate struct {
 	Requests         int64
 }
 
+type tokenModelUsageTokenRow struct {
+	Id             int
+	Name           string
+	Key            string
+	Status         int
+	CreatedTime    int64
+	AccessedTime   int64
+	ExpiredTime    int64
+	RemainQuota    int
+	UsedQuota      int
+	UnlimitedQuota bool
+}
+
 func tokenUsageNameLikePattern(keyword string) string {
 	keyword = strings.TrimSpace(keyword)
 	keyword = strings.ReplaceAll(keyword, "!", "!!")
@@ -117,8 +130,11 @@ func GetUserTokenModelUsage(userId int, keyword string, startTimestamp int64, en
 		return nil, 0, TokenModelUsageSummary{}, errors.New("查询令牌用量失败")
 	}
 
-	var tokens []*Token
-	if err := tokenQuery.Order("id desc").Find(&tokens).Error; err != nil {
+	var tokens []tokenModelUsageTokenRow
+	if err := tokenQuery.
+		Select("id", "name", "key", "status", "created_time", "accessed_time", "expired_time", "remain_quota", "used_quota", "unlimited_quota").
+		Order("id desc").
+		Find(&tokens).Error; err != nil {
 		common.SysError("failed to query token model usage tokens: " + err.Error())
 		return nil, 0, TokenModelUsageSummary{}, errors.New("查询令牌用量失败")
 	}
@@ -126,11 +142,12 @@ func GetUserTokenModelUsage(userId int, keyword string, startTimestamp int64, en
 	items := make([]*TokenModelUsageItem, 0, len(tokens))
 	tokenIds := make([]int, 0, len(tokens))
 	itemByTokenId := make(map[int]*TokenModelUsageItem, len(tokens))
-	for _, token := range tokens {
+	for i := range tokens {
+		token := tokens[i]
 		item := &TokenModelUsageItem{
 			TokenId:        token.Id,
 			TokenName:      token.Name,
-			Key:            token.GetMaskedKey(),
+			Key:            MaskTokenKey(token.Key),
 			Status:         token.Status,
 			CreatedTime:    token.CreatedTime,
 			AccessedTime:   token.AccessedTime,
@@ -175,7 +192,7 @@ func GetUserTokenModelUsage(userId int, keyword string, startTimestamp int64, en
 		return items[i].TokenId > items[j].TokenId
 	})
 
-	summary, err := GetUserTokenModelUsageSummary(userId, keyword, startTimestamp, endTimestamp)
+	summary, err := getUserTokenModelUsageSummaryByTokenIds(userId, total, tokenIds, startTimestamp, endTimestamp)
 	if err != nil {
 		return nil, 0, TokenModelUsageSummary{}, err
 	}
@@ -251,6 +268,14 @@ func GetUserTokenModelUsageSummary(userId int, keyword string, startTimestamp in
 		return summary, nil
 	}
 
+	return getUserTokenModelUsageSummaryByTokenIds(userId, summary.TotalKeyCount, tokenIds, startTimestamp, endTimestamp)
+}
+
+func getUserTokenModelUsageSummaryByTokenIds(userId int, totalKeyCount int64, tokenIds []int, startTimestamp int64, endTimestamp int64) (TokenModelUsageSummary, error) {
+	summary := TokenModelUsageSummary{TotalKeyCount: totalKeyCount}
+	if totalKeyCount == 0 || len(tokenIds) == 0 {
+		return summary, nil
+	}
 	base := getTokenUsageLogBase(userId, tokenIds, startTimestamp, endTimestamp)
 	if err := base.
 		Select("COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens, COALESCE(SUM(prompt_tokens), 0) + COALESCE(SUM(completion_tokens), 0) AS total_tokens, COUNT(*) AS requests").

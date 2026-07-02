@@ -16,7 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Award, CalendarDays, Gift, Sparkles, Trophy, Users } from 'lucide-react'
+import type { ReactNode } from 'react'
+import {
+  Award,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Gift,
+  Sparkles,
+  Trophy,
+  UserRound,
+  Users,
+  WalletCards,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,13 +42,47 @@ import {
 import type { LotteryActivity } from '../types'
 import {
   formatTime,
-  getRoundStatusDotClass,
   getRoundStatusLabel,
   isRoundDrawn,
   weekdayLabel,
 } from '../utils'
 import { EligibilityStatus } from './eligibility-status'
 import { Metric } from './metric'
+
+function formatLotteryAmount(value: number) {
+  const amount = Number(value || 0)
+  if (!Number.isFinite(amount)) return '$0'
+  return `$${amount.toLocaleString(undefined, {
+    minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`
+}
+
+function ConditionStat(props: {
+  label: string
+  value: string
+  icon?: ReactNode
+  tone?: 'default' | 'primary'
+}) {
+  const toneClass =
+    props.tone === 'primary'
+      ? 'border-primary/20 bg-primary/5'
+      : 'border-border/60 bg-background'
+
+  return (
+    <div className={`flex min-w-0 items-start gap-3 rounded-lg border p-3 ${toneClass}`}>
+      {props.icon && (
+        <div className='text-muted-foreground mt-0.5 shrink-0 [&_svg]:size-4'>
+          {props.icon}
+        </div>
+      )}
+      <div className='min-w-0 flex-1'>
+        <div className='text-muted-foreground text-xs'>{props.label}</div>
+        <div className='truncate text-sm font-medium'>{props.value}</div>
+      </div>
+    </div>
+  )
+}
 
 export function LotteryCard(props: {
   lottery: LotteryActivity
@@ -57,7 +103,19 @@ export function LotteryCard(props: {
   } else if (props.lottery.joined) {
     actionLabel = t('Joined')
   }
-  const roundDotClass = getRoundStatusDotClass(round?.status)
+  const hasConditions =
+    props.lottery.require_recharge ||
+    props.lottery.min_recharge_amount > 0 ||
+    props.lottery.recharge_window_days > 0 ||
+    props.lottery.count_redemption_as_recharge ||
+    props.lottery.min_account_age_days > 0 ||
+    props.lottery.min_request_count > 0 ||
+    props.lottery.require_email_verified
+  const winnerPreview = props.lottery.winners?.slice(0, 5) ?? []
+  const winnerOverflow = Math.max(
+    (props.lottery.winners?.length ?? 0) - winnerPreview.length,
+    0
+  )
 
   return (
     <Card className={props.lottery.won ? 'border-primary/50' : undefined}>
@@ -78,7 +136,9 @@ export function LotteryCard(props: {
             </CardDescription>
           </div>
           <div className='flex items-center gap-2'>
-            <Badge variant={props.lottery.mode === 'scheduled' ? 'secondary' : 'outline'}>
+            <Badge
+              variant={props.lottery.mode === 'scheduled' ? 'secondary' : 'outline'}
+            >
               {props.lottery.mode === 'scheduled' ? t('Scheduled') : t('One-time')}
             </Badge>
           </div>
@@ -86,10 +146,14 @@ export function LotteryCard(props: {
       </CardHeader>
       <CardContent className='flex flex-col gap-4'>
         <div className='grid gap-3 sm:grid-cols-3'>
-          <Metric icon={<Gift />} label={t('Prize')} value={props.lottery.prize_name} />
+          <Metric
+            icon={<Gift />}
+            label={t('Prize')}
+            value={props.lottery.prize_name}
+          />
           <Metric
             icon={<Trophy />}
-            label={t('Winners')}
+            label={t('Winner count')}
             value={String(props.lottery.winner_count)}
           />
           <Metric
@@ -98,6 +162,102 @@ export function LotteryCard(props: {
             value={String(props.lottery.participant_count)}
           />
         </div>
+
+        {hasConditions && (
+          <div className='border-border/60 bg-muted/20 flex flex-col gap-4 rounded-lg border p-4'>
+            <div className='flex items-center gap-2'>
+              <CheckCircle2 className='text-primary size-4 shrink-0' />
+              <span className='text-sm font-medium'>
+                {t('Participation conditions')}
+              </span>
+            </div>
+
+            {(props.lottery.require_recharge ||
+              props.lottery.min_recharge_amount > 0 ||
+              props.lottery.recharge_window_days > 0 ||
+              props.lottery.count_redemption_as_recharge) && (
+              <div className='border-border/70 bg-background/70 flex flex-col gap-3 rounded-xl border p-4'>
+                <div className='flex flex-wrap items-start justify-between gap-2'>
+                  <div className='flex min-w-0 items-center gap-2'>
+                    <WalletCards className='text-primary size-4 shrink-0' />
+                    <div className='min-w-0'>
+                      <div className='text-sm font-medium'>
+                        {t('Recharge requirement')}
+                      </div>
+                      <div className='text-muted-foreground text-xs'>
+                        {props.lottery.recharge_window_days > 0
+                          ? t('Valid recharge within the last {{days}} days', {
+                              days: props.lottery.recharge_window_days,
+                            })
+                          : t('Valid recharge from any time')}
+                      </div>
+                    </div>
+                  </div>
+                  {props.lottery.count_redemption_as_recharge && (
+                    <Badge variant='secondary'>{t('Redemption codes count')}</Badge>
+                  )}
+                </div>
+
+                <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-3'>
+                  <ConditionStat
+                    icon={<Gift />}
+                    label={t('Required amount')}
+                    value={
+                      props.lottery.min_recharge_amount > 0
+                        ? formatLotteryAmount(props.lottery.min_recharge_amount)
+                        : t('Any successful recharge')
+                    }
+                    tone='primary'
+                  />
+                  <ConditionStat
+                    icon={<Clock3 />}
+                    label={t('Recharge validity window')}
+                    value={
+                      props.lottery.recharge_window_days > 0
+                        ? t('{{count}} days', {
+                            count: props.lottery.recharge_window_days,
+                          })
+                        : t('Valid recharge from any time')
+                    }
+                  />
+                  <ConditionStat
+                    icon={<Users />}
+                    label={t('Recharge rule')}
+                    value={t('Applied to this draw only')}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-3'>
+              {props.lottery.require_email_verified && (
+                <ConditionStat
+                  icon={<UserRound />}
+                  label={t('Email condition')}
+                  value={t('Email binding required')}
+                />
+              )}
+              {props.lottery.min_account_age_days > 0 && (
+                <ConditionStat
+                  icon={<CalendarDays />}
+                  label={t('Account age')}
+                  value={t('{{count}} days', {
+                    count: props.lottery.min_account_age_days,
+                  })}
+                />
+              )}
+              {props.lottery.min_request_count > 0 && (
+                <ConditionStat
+                  icon={<Users />}
+                  label={t('Request count')}
+                  value={t('{{count}} requests', {
+                    count: props.lottery.min_request_count,
+                  })}
+                />
+              )}
+            </div>
+          </div>
+        )}
 
         {round && (
           <div className='bg-muted/40 grid gap-2 rounded-lg p-3 text-sm md:grid-cols-3'>
@@ -113,7 +273,7 @@ export function LotteryCard(props: {
             <div>
               <div className='text-muted-foreground'>{t('Status')}</div>
               <Badge variant='outline' className='gap-1.5'>
-                <span className={`size-2 rounded-full ${roundDotClass}`} />
+                <span className='bg-muted-foreground/55 size-2 rounded-full' />
                 {getRoundStatusLabel(round.status, t)}
               </Badge>
             </div>
@@ -159,9 +319,12 @@ export function LotteryCard(props: {
           <div className='bg-muted/40 flex flex-col gap-2 rounded-lg p-3'>
             <div className='flex items-center justify-between gap-2'>
               <span className='text-sm font-medium'>{t('Winners')}</span>
+              <span className='text-muted-foreground text-xs'>
+                {t('{{count}} total', { count: props.lottery.winners.length })}
+              </span>
             </div>
             <div className='flex flex-wrap gap-2'>
-              {props.lottery.winners.map((winner, index) => (
+              {winnerPreview.map((winner, index) => (
                 <Badge
                   key={`${winner.masked_name}-${winner.won_at}-${index}`}
                   variant='outline'
@@ -169,6 +332,11 @@ export function LotteryCard(props: {
                   {winner.masked_name}
                 </Badge>
               ))}
+              {winnerOverflow > 0 && (
+                <Badge variant='secondary'>
+                  {t('+{{count}} more', { count: winnerOverflow })}
+                </Badge>
+              )}
             </div>
           </div>
         )}
@@ -179,11 +347,15 @@ export function LotteryCard(props: {
           </div>
         )}
 
-        {props.lottery.eligibility && !props.lottery.eligibility.eligible && !drawn && (
+        {props.lottery.eligibility && hasConditions && !drawn && (
           <EligibilityStatus status={props.lottery.eligibility} compact />
         )}
 
-        <Button disabled={!canJoin || props.joining || drawn} onClick={props.onJoin} className='w-full sm:w-fit'>
+        <Button
+          disabled={!canJoin || props.joining || drawn}
+          onClick={props.onJoin}
+          className='w-full sm:w-fit'
+        >
           <Sparkles data-icon='inline-start' />
           {actionLabel}
         </Button>

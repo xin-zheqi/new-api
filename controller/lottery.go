@@ -123,6 +123,26 @@ func AdminGetLottery(c *gin.Context) {
 	common.ApiSuccess(c, lottery)
 }
 
+func AdminListLotteryRounds(c *gin.Context) {
+	lotteryId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo := common.GetPageQuery(c)
+	rounds, total, err := model.ListAdminLotteryRounds(lotteryId, pageInfo, model.LotteryRoundListFilter{
+		Status: strings.TrimSpace(c.Query("status")),
+		Query:  strings.TrimSpace(c.Query("keyword")),
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(rounds)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func AdminCreateLottery(c *gin.Context) {
 	var req model.LotteryCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -29,7 +29,6 @@ import {
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { getLotteries, getLotterySettings, joinLottery } from '../api'
 import type { LotteryDrawStatusFilter } from '../types'
-import { EligibilityStatus } from './eligibility-status'
 import { LotteryCard } from './lottery-card'
 
 export function LotteryActivities() {
@@ -70,14 +69,9 @@ export function LotteryActivities() {
   }
 
   const lotteries = lotteriesQuery.data?.data ?? []
-  const eligibility = settingsQuery.data?.data?.eligibility
 
   return (
     <div className='flex flex-col gap-4'>
-      {eligibility && (
-        <EligibilityStatus status={eligibility} />
-      )}
-
       <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
         <div>
           <h2 className='text-base font-medium'>{t('Draw activities')}</h2>

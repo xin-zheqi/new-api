@@ -31,13 +31,6 @@ import {
 
 const defaultInputs = {
   LotteryEnabled: false,
-  LotteryRequireRecharge: false,
-  LotteryMinRechargeAmount: 0,
-  LotteryRechargeWindowDays: 0,
-  LotteryCountRedemptionAsRecharge: false,
-  LotteryMinAccountAgeDays: 0,
-  LotteryMinRequestCount: 0,
-  LotteryRequireEmailVerified: false,
 };
 
 export default function SettingsLottery(props) {
@@ -111,7 +104,7 @@ export default function SettingsLottery(props) {
       >
         <Form.Section
           text={t('抽奖设置')}
-          extraText={t('配置抽奖功能是否启用，以及用户参与抽奖所需满足的通用条件')}
+          extraText={t('配置抽奖功能是否启用。参与条件在每个抽奖活动中单独设置')}
         >
           <Form.Switch
             field='LotteryEnabled'
@@ -119,59 +112,6 @@ export default function SettingsLottery(props) {
             checkedText='｜'
             uncheckedText='〇'
             onChange={handleFieldChange('LotteryEnabled')}
-          />
-          <Form.Switch
-            field='LotteryRequireRecharge'
-            label={t('参与前必须完成充值')}
-            checkedText='｜'
-            uncheckedText='〇'
-            onChange={handleFieldChange('LotteryRequireRecharge')}
-          />
-          <Form.InputNumber
-            field='LotteryMinRechargeAmount'
-            label={t('最低充值金额')}
-            min={0}
-            step={1}
-            extraText={t('大于 0 时，用户需要至少有一笔不低于该金额的成功充值记录')}
-            onChange={handleFieldChange('LotteryMinRechargeAmount')}
-          />
-          <Form.InputNumber
-            field='LotteryRechargeWindowDays'
-            label={t('充值有效期天数')}
-            min={0}
-            step={1}
-            extraText={t('大于 0 时，只有在最近指定天数内完成的充值或兑换才会参与资格判断；0 表示不限制时间')}
-            onChange={handleFieldChange('LotteryRechargeWindowDays')}
-          />
-          <Form.InputNumber
-            field='LotteryMinAccountAgeDays'
-            label={t('账号最小天数')}
-            min={0}
-            step={1}
-            extraText={t('大于 0 时，新注册未满指定天数的用户不能参与')}
-            onChange={handleFieldChange('LotteryMinAccountAgeDays')}
-          />
-          <Form.InputNumber
-            field='LotteryMinRequestCount'
-            label={t('最小请求次数')}
-            min={0}
-            step={1}
-            extraText={t('大于 0 时，用户请求次数需要达到该阈值')}
-            onChange={handleFieldChange('LotteryMinRequestCount')}
-          />
-          <Form.Switch
-            field='LotteryCountRedemptionAsRecharge'
-            label={t('兑换码兑换计入充值条件')}
-            checkedText='｜'
-            uncheckedText='〇'
-            onChange={handleFieldChange('LotteryCountRedemptionAsRecharge')}
-          />
-          <Form.Switch
-            field='LotteryRequireEmailVerified'
-            label={t('参与前必须绑定邮箱')}
-            checkedText='｜'
-            uncheckedText='〇'
-            onChange={handleFieldChange('LotteryRequireEmailVerified')}
           />
           <Button type='primary' onClick={submitLotterySettings}>
             {t('保存抽奖设置')}

@@ -49,25 +49,32 @@ var (
 )
 
 type Lottery struct {
-	Id                int            `json:"id"`
-	Title             string         `json:"title" gorm:"type:varchar(128);not null;index"`
-	Description       string         `json:"description" gorm:"type:text"`
-	PrizeName         string         `json:"prize_name" gorm:"type:varchar(128);not null"`
-	Mode              string         `json:"mode" gorm:"type:varchar(16);not null;default:'once';index"`
-	Status            int            `json:"status" gorm:"type:int;not null;default:1;index"`
-	WinnerCount       int            `json:"winner_count" gorm:"type:int;not null;default:1"`
-	PrizePerWinner    int            `json:"prize_per_winner" gorm:"type:int;not null;default:1"`
-	RegistrationStart int64          `json:"registration_start" gorm:"index"`
-	RegistrationEnd   int64          `json:"registration_end" gorm:"index"`
-	DrawTime          int64          `json:"draw_time" gorm:"index"`
-	ScheduleWeekdays  string         `json:"schedule_weekdays" gorm:"type:varchar(32);default:''"`
-	ScheduleStartTime string         `json:"schedule_start_time" gorm:"type:varchar(5);default:''"`
-	ScheduleEndTime   string         `json:"schedule_end_time" gorm:"type:varchar(5);default:''"`
-	ScheduleDrawTime  string         `json:"schedule_draw_time" gorm:"type:varchar(5);default:''"`
-	CreatedBy         int            `json:"created_by" gorm:"index"`
-	CreatedAt         int64          `json:"created_at" gorm:"autoCreateTime;index"`
-	UpdatedAt         int64          `json:"updated_at" gorm:"autoUpdateTime"`
-	DeletedAt         gorm.DeletedAt `json:"-" gorm:"index"`
+	Id                        int            `json:"id"`
+	Title                     string         `json:"title" gorm:"type:varchar(128);not null;index"`
+	Description               string         `json:"description" gorm:"type:text"`
+	PrizeName                 string         `json:"prize_name" gorm:"type:varchar(128);not null"`
+	Mode                      string         `json:"mode" gorm:"type:varchar(16);not null;default:'once';index"`
+	Status                    int            `json:"status" gorm:"type:int;not null;default:1;index"`
+	WinnerCount               int            `json:"winner_count" gorm:"type:int;not null;default:1"`
+	PrizePerWinner            int            `json:"prize_per_winner" gorm:"type:int;not null;default:1"`
+	RequireRecharge           bool           `json:"require_recharge" gorm:"default:false"`
+	MinRechargeAmount         float64        `json:"min_recharge_amount" gorm:"type:decimal(10,6);not null;default:0"`
+	RechargeWindowDays        int            `json:"recharge_window_days" gorm:"type:int;not null;default:0"`
+	CountRedemptionAsRecharge bool           `json:"count_redemption_as_recharge" gorm:"default:false"`
+	MinAccountAgeDays         int            `json:"min_account_age_days" gorm:"type:int;not null;default:0"`
+	MinRequestCount           int            `json:"min_request_count" gorm:"type:int;not null;default:0"`
+	RequireEmailVerified      bool           `json:"require_email_verified" gorm:"default:false"`
+	RegistrationStart         int64          `json:"registration_start" gorm:"index"`
+	RegistrationEnd           int64          `json:"registration_end" gorm:"index"`
+	DrawTime                  int64          `json:"draw_time" gorm:"index"`
+	ScheduleWeekdays          string         `json:"schedule_weekdays" gorm:"type:varchar(32);default:''"`
+	ScheduleStartTime         string         `json:"schedule_start_time" gorm:"type:varchar(5);default:''"`
+	ScheduleEndTime           string         `json:"schedule_end_time" gorm:"type:varchar(5);default:''"`
+	ScheduleDrawTime          string         `json:"schedule_draw_time" gorm:"type:varchar(5);default:''"`
+	CreatedBy                 int            `json:"created_by" gorm:"index"`
+	CreatedAt                 int64          `json:"created_at" gorm:"autoCreateTime;index"`
+	UpdatedAt                 int64          `json:"updated_at" gorm:"autoUpdateTime"`
+	DeletedAt                 gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 type LotteryRound struct {
@@ -109,15 +116,17 @@ type LotteryEntry struct {
 }
 
 type LotterySettings struct {
-	Enabled                   bool                      `json:"enabled"`
-	RequireRecharge           bool                      `json:"require_recharge"`
-	MinRechargeAmount         float64                   `json:"min_recharge_amount"`
-	RechargeWindowDays        int                       `json:"recharge_window_days"`
-	CountRedemptionAsRecharge bool                      `json:"count_redemption_as_recharge"`
-	MinAccountAgeDays         int                       `json:"min_account_age_days"`
-	MinRequestCount           int                       `json:"min_request_count"`
-	RequireEmailVerified      bool                      `json:"require_email_verified"`
-	Eligibility               *LotteryEligibilityStatus `json:"eligibility,omitempty"`
+	Enabled bool `json:"enabled"`
+}
+
+type LotteryEligibilityRules struct {
+	RequireRecharge           bool    `json:"require_recharge"`
+	MinRechargeAmount         float64 `json:"min_recharge_amount"`
+	RechargeWindowDays        int     `json:"recharge_window_days"`
+	CountRedemptionAsRecharge bool    `json:"count_redemption_as_recharge"`
+	MinAccountAgeDays         int     `json:"min_account_age_days"`
+	MinRequestCount           int     `json:"min_request_count"`
+	RequireEmailVerified      bool    `json:"require_email_verified"`
 }
 
 type LotteryEligibilityIssue struct {
@@ -136,20 +145,27 @@ type LotteryEligibilityStatus struct {
 }
 
 type LotteryCreateRequest struct {
-	Title             string   `json:"title"`
-	Description       string   `json:"description"`
-	PrizeName         string   `json:"prize_name"`
-	Mode              string   `json:"mode"`
-	WinnerCount       int      `json:"winner_count"`
-	PrizePerWinner    int      `json:"prize_per_winner"`
-	RegistrationStart int64    `json:"registration_start"`
-	RegistrationEnd   int64    `json:"registration_end"`
-	DrawTime          int64    `json:"draw_time"`
-	ScheduleWeekdays  []int    `json:"schedule_weekdays"`
-	ScheduleStartTime string   `json:"schedule_start_time"`
-	ScheduleEndTime   string   `json:"schedule_end_time"`
-	ScheduleDrawTime  string   `json:"schedule_draw_time"`
-	PrizeCodes        []string `json:"prize_codes"`
+	Title                     string   `json:"title"`
+	Description               string   `json:"description"`
+	PrizeName                 string   `json:"prize_name"`
+	Mode                      string   `json:"mode"`
+	WinnerCount               int      `json:"winner_count"`
+	PrizePerWinner            int      `json:"prize_per_winner"`
+	RequireRecharge           bool     `json:"require_recharge"`
+	MinRechargeAmount         float64  `json:"min_recharge_amount"`
+	RechargeWindowDays        int      `json:"recharge_window_days"`
+	CountRedemptionAsRecharge bool     `json:"count_redemption_as_recharge"`
+	MinAccountAgeDays         int      `json:"min_account_age_days"`
+	MinRequestCount           int      `json:"min_request_count"`
+	RequireEmailVerified      bool     `json:"require_email_verified"`
+	RegistrationStart         int64    `json:"registration_start"`
+	RegistrationEnd           int64    `json:"registration_end"`
+	DrawTime                  int64    `json:"draw_time"`
+	ScheduleWeekdays          []int    `json:"schedule_weekdays"`
+	ScheduleStartTime         string   `json:"schedule_start_time"`
+	ScheduleEndTime           string   `json:"schedule_end_time"`
+	ScheduleDrawTime          string   `json:"schedule_draw_time"`
+	PrizeCodes                []string `json:"prize_codes"`
 }
 
 type LotteryListFilter struct {
@@ -157,6 +173,11 @@ type LotteryListFilter struct {
 	Mode       string
 	Query      string
 	DrawStatus string
+}
+
+type LotteryRoundListFilter struct {
+	Status string
+	Query  string
 }
 
 type LotteryParticipantView struct {
@@ -181,31 +202,39 @@ type LotteryRoundDetailView struct {
 }
 
 type LotteryPublicView struct {
-	Id                  int                       `json:"id"`
-	Title               string                    `json:"title"`
-	Description         string                    `json:"description"`
-	PrizeName           string                    `json:"prize_name"`
-	Mode                string                    `json:"mode"`
-	Status              int                       `json:"status"`
-	WinnerCount         int                       `json:"winner_count"`
-	PrizePerWinner      int                       `json:"prize_per_winner"`
-	ScheduleWeekdays    []int                     `json:"schedule_weekdays,omitempty"`
-	ScheduleStartTime   string                    `json:"schedule_start_time,omitempty"`
-	ScheduleEndTime     string                    `json:"schedule_end_time,omitempty"`
-	ScheduleDrawTime    string                    `json:"schedule_draw_time,omitempty"`
-	Round               *LotteryRound             `json:"round,omitempty"`
-	ParticipantCount    int64                     `json:"participant_count"`
-	Participants        []LotteryParticipantView  `json:"participants"`
-	Joined              bool                      `json:"joined"`
-	Won                 bool                      `json:"won"`
-	Eligibility         *LotteryEligibilityStatus `json:"eligibility,omitempty"`
-	CanEdit             bool                      `json:"can_edit,omitempty"`
-	Winners             []LotteryWinnerView       `json:"winners,omitempty"`
-	Rounds              []LotteryRoundDetailView  `json:"rounds,omitempty"`
-	AvailablePrizeCount int64                     `json:"available_prize_count,omitempty"`
-	PrizeCodes          []string                  `json:"prize_codes,omitempty"`
-	CreatedAt           int64                     `json:"created_at"`
-	Deleted             bool                      `json:"deleted,omitempty"`
+	Id                        int                       `json:"id"`
+	Title                     string                    `json:"title"`
+	Description               string                    `json:"description"`
+	PrizeName                 string                    `json:"prize_name"`
+	Mode                      string                    `json:"mode"`
+	Status                    int                       `json:"status"`
+	WinnerCount               int                       `json:"winner_count"`
+	PrizePerWinner            int                       `json:"prize_per_winner"`
+	RequireRecharge           bool                      `json:"require_recharge"`
+	MinRechargeAmount         float64                   `json:"min_recharge_amount"`
+	RechargeWindowDays        int                       `json:"recharge_window_days"`
+	CountRedemptionAsRecharge bool                      `json:"count_redemption_as_recharge"`
+	MinAccountAgeDays         int                       `json:"min_account_age_days"`
+	MinRequestCount           int                       `json:"min_request_count"`
+	RequireEmailVerified      bool                      `json:"require_email_verified"`
+	ScheduleWeekdays          []int                     `json:"schedule_weekdays,omitempty"`
+	ScheduleStartTime         string                    `json:"schedule_start_time,omitempty"`
+	ScheduleEndTime           string                    `json:"schedule_end_time,omitempty"`
+	ScheduleDrawTime          string                    `json:"schedule_draw_time,omitempty"`
+	Round                     *LotteryRound             `json:"round,omitempty"`
+	ParticipantCount          int64                     `json:"participant_count"`
+	Participants              []LotteryParticipantView  `json:"participants"`
+	Joined                    bool                      `json:"joined"`
+	Won                       bool                      `json:"won"`
+	Eligibility               *LotteryEligibilityStatus `json:"eligibility,omitempty"`
+	CanEdit                   bool                      `json:"can_edit,omitempty"`
+	Winners                   []LotteryWinnerView       `json:"winners,omitempty"`
+	Rounds                    []LotteryRoundDetailView  `json:"rounds,omitempty"`
+	AssignedPrizeCount        int64                     `json:"assigned_prize_count,omitempty"`
+	AvailablePrizeCount       int64                     `json:"available_prize_count,omitempty"`
+	PrizeCodes                []string                  `json:"prize_codes,omitempty"`
+	CreatedAt                 int64                     `json:"created_at"`
+	Deleted                   bool                      `json:"deleted,omitempty"`
 }
 
 type LotteryPrizeView struct {
@@ -229,35 +258,21 @@ type lotteryRechargeEligibility struct {
 	CountRedemptionAsRecharge bool
 }
 
+type lotteryRoundParticipantCountRow struct {
+	RoundId          int   `gorm:"column:round_id"`
+	ParticipantCount int64 `gorm:"column:participant_count"`
+}
+
 func LotterySettingsFromOptions() LotterySettings {
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 	return LotterySettings{
-		Enabled:                   common.OptionMap["LotteryEnabled"] == "true",
-		RequireRecharge:           common.OptionMap["LotteryRequireRecharge"] == "true",
-		MinRechargeAmount:         parseLotteryFloatOption(common.OptionMap["LotteryMinRechargeAmount"]),
-		RechargeWindowDays:        parseLotteryIntOption(common.OptionMap["LotteryRechargeWindowDays"]),
-		CountRedemptionAsRecharge: common.OptionMap["LotteryCountRedemptionAsRecharge"] == "true",
-		MinAccountAgeDays:         parseLotteryIntOption(common.OptionMap["LotteryMinAccountAgeDays"]),
-		MinRequestCount:           parseLotteryIntOption(common.OptionMap["LotteryMinRequestCount"]),
-		RequireEmailVerified:      common.OptionMap["LotteryRequireEmailVerified"] == "true",
+		Enabled: common.OptionMap["LotteryEnabled"] == "true",
 	}
 }
 
 func LotterySettingsForUser(userId int) (LotterySettings, error) {
 	settings := LotterySettingsFromOptions()
-	if userId <= 0 {
-		return settings, nil
-	}
-	var user User
-	if err := DB.Select("id", "email", "created_at", "request_count").Where("id = ?", userId).First(&user).Error; err != nil {
-		return settings, err
-	}
-	eligibility, err := EvaluateLotteryEligibility(DB, user, settings)
-	if err != nil {
-		return settings, err
-	}
-	settings.Eligibility = eligibility
 	return settings, nil
 }
 
@@ -281,11 +296,42 @@ func parseLotteryFloatOption(value string) float64 {
 	return n
 }
 
+func lotteryEligibilityRulesFromLottery(lottery *Lottery) LotteryEligibilityRules {
+	if lottery == nil {
+		return LotteryEligibilityRules{}
+	}
+	return LotteryEligibilityRules{
+		RequireRecharge:           lottery.RequireRecharge,
+		MinRechargeAmount:         lottery.MinRechargeAmount,
+		RechargeWindowDays:        lottery.RechargeWindowDays,
+		CountRedemptionAsRecharge: lottery.CountRedemptionAsRecharge,
+		MinAccountAgeDays:         lottery.MinAccountAgeDays,
+		MinRequestCount:           lottery.MinRequestCount,
+		RequireEmailVerified:      lottery.RequireEmailVerified,
+	}
+}
+
+func normalizeLotteryEligibilityRules(req *LotteryCreateRequest) {
+	if req.MinRechargeAmount < 0 {
+		req.MinRechargeAmount = 0
+	}
+	if req.RechargeWindowDays < 0 {
+		req.RechargeWindowDays = 0
+	}
+	if req.MinAccountAgeDays < 0 {
+		req.MinAccountAgeDays = 0
+	}
+	if req.MinRequestCount < 0 {
+		req.MinRequestCount = 0
+	}
+}
+
 func normalizeLotteryCreateRequest(req LotteryCreateRequest) (LotteryCreateRequest, error) {
 	req.Title = strings.TrimSpace(req.Title)
 	req.PrizeName = strings.TrimSpace(req.PrizeName)
 	req.Description = strings.TrimSpace(req.Description)
 	req.Mode = strings.TrimSpace(strings.ToLower(req.Mode))
+	normalizeLotteryEligibilityRules(&req)
 	if req.Mode == "" {
 		req.Mode = LotteryModeOnce
 	}
@@ -428,21 +474,28 @@ func CreateLottery(req LotteryCreateRequest, creatorId int) (*Lottery, error) {
 		return nil, err
 	}
 	lottery := &Lottery{
-		Title:             req.Title,
-		Description:       req.Description,
-		PrizeName:         req.PrizeName,
-		Mode:              req.Mode,
-		Status:            LotteryStatusEnabled,
-		WinnerCount:       req.WinnerCount,
-		PrizePerWinner:    req.PrizePerWinner,
-		RegistrationStart: req.RegistrationStart,
-		RegistrationEnd:   req.RegistrationEnd,
-		DrawTime:          req.DrawTime,
-		ScheduleWeekdays:  lotteryWeekdaysToString(req.ScheduleWeekdays),
-		ScheduleStartTime: req.ScheduleStartTime,
-		ScheduleEndTime:   req.ScheduleEndTime,
-		ScheduleDrawTime:  req.ScheduleDrawTime,
-		CreatedBy:         creatorId,
+		Title:                     req.Title,
+		Description:               req.Description,
+		PrizeName:                 req.PrizeName,
+		Mode:                      req.Mode,
+		Status:                    LotteryStatusEnabled,
+		WinnerCount:               req.WinnerCount,
+		PrizePerWinner:            req.PrizePerWinner,
+		RequireRecharge:           req.RequireRecharge,
+		MinRechargeAmount:         req.MinRechargeAmount,
+		RechargeWindowDays:        req.RechargeWindowDays,
+		CountRedemptionAsRecharge: req.CountRedemptionAsRecharge,
+		MinAccountAgeDays:         req.MinAccountAgeDays,
+		MinRequestCount:           req.MinRequestCount,
+		RequireEmailVerified:      req.RequireEmailVerified,
+		RegistrationStart:         req.RegistrationStart,
+		RegistrationEnd:           req.RegistrationEnd,
+		DrawTime:                  req.DrawTime,
+		ScheduleWeekdays:          lotteryWeekdaysToString(req.ScheduleWeekdays),
+		ScheduleStartTime:         req.ScheduleStartTime,
+		ScheduleEndTime:           req.ScheduleEndTime,
+		ScheduleDrawTime:          req.ScheduleDrawTime,
+		CreatedBy:                 creatorId,
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(lottery).Error; err != nil {
@@ -505,19 +558,26 @@ func UpdateLottery(lotteryId int, req LotteryCreateRequest) (*Lottery, error) {
 		}
 
 		updates := map[string]interface{}{
-			"title":               req.Title,
-			"description":         req.Description,
-			"prize_name":          req.PrizeName,
-			"mode":                req.Mode,
-			"winner_count":        req.WinnerCount,
-			"prize_per_winner":    req.PrizePerWinner,
-			"registration_start":  req.RegistrationStart,
-			"registration_end":    req.RegistrationEnd,
-			"draw_time":           req.DrawTime,
-			"schedule_weekdays":   lotteryWeekdaysToString(req.ScheduleWeekdays),
-			"schedule_start_time": req.ScheduleStartTime,
-			"schedule_end_time":   req.ScheduleEndTime,
-			"schedule_draw_time":  req.ScheduleDrawTime,
+			"title":                        req.Title,
+			"description":                  req.Description,
+			"prize_name":                   req.PrizeName,
+			"mode":                         req.Mode,
+			"winner_count":                 req.WinnerCount,
+			"prize_per_winner":             req.PrizePerWinner,
+			"require_recharge":             req.RequireRecharge,
+			"min_recharge_amount":          req.MinRechargeAmount,
+			"recharge_window_days":         req.RechargeWindowDays,
+			"count_redemption_as_recharge": req.CountRedemptionAsRecharge,
+			"min_account_age_days":         req.MinAccountAgeDays,
+			"min_request_count":            req.MinRequestCount,
+			"require_email_verified":       req.RequireEmailVerified,
+			"registration_start":           req.RegistrationStart,
+			"registration_end":             req.RegistrationEnd,
+			"draw_time":                    req.DrawTime,
+			"schedule_weekdays":            lotteryWeekdaysToString(req.ScheduleWeekdays),
+			"schedule_start_time":          req.ScheduleStartTime,
+			"schedule_end_time":            req.ScheduleEndTime,
+			"schedule_draw_time":           req.ScheduleDrawTime,
 		}
 		if err := tx.Model(&Lottery{}).Where("id = ?", lottery.Id).Updates(updates).Error; err != nil {
 			return err
@@ -895,7 +955,7 @@ func JoinLotteryRound(lotteryId int, userId int) error {
 		if err := tx.Select("id", "username", "display_name", "email", "created_at", "request_count").Where("id = ?", userId).First(&user).Error; err != nil {
 			return err
 		}
-		eligibility, err := EvaluateLotteryEligibility(tx, user, settings)
+		eligibility, err := EvaluateLotteryEligibility(tx, user, lotteryEligibilityRulesFromLottery(&lottery))
 		if err != nil {
 			return err
 		}
@@ -938,20 +998,20 @@ func lotteryEligibilityIssueError(code string) error {
 	}
 }
 
-func EvaluateLotteryEligibility(tx *gorm.DB, user User, settings LotterySettings) (*LotteryEligibilityStatus, error) {
+func EvaluateLotteryEligibility(tx *gorm.DB, user User, rules LotteryEligibilityRules) (*LotteryEligibilityStatus, error) {
 	status := &LotteryEligibilityStatus{
 		Eligible: true,
 		Issues:   make([]LotteryEligibilityIssue, 0, 4),
 	}
-	if settings.RequireEmailVerified && strings.TrimSpace(user.Email) == "" {
+	if rules.RequireEmailVerified && strings.TrimSpace(user.Email) == "" {
 		status.Eligible = false
 		status.Issues = append(status.Issues, LotteryEligibilityIssue{
 			Code:    "email_required",
 			Message: "需要绑定邮箱后才能参与抽奖",
 		})
 	}
-	if settings.MinAccountAgeDays > 0 {
-		minCreatedAt := common.GetTimestamp() - int64(settings.MinAccountAgeDays*86400)
+	if rules.MinAccountAgeDays > 0 {
+		minCreatedAt := common.GetTimestamp() - int64(rules.MinAccountAgeDays*86400)
 		if user.CreatedAt > minCreatedAt {
 			status.Eligible = false
 			status.Issues = append(status.Issues, LotteryEligibilityIssue{
@@ -960,15 +1020,15 @@ func EvaluateLotteryEligibility(tx *gorm.DB, user User, settings LotterySettings
 			})
 		}
 	}
-	if settings.MinRequestCount > 0 && user.RequestCount < settings.MinRequestCount {
+	if rules.MinRequestCount > 0 && user.RequestCount < rules.MinRequestCount {
 		status.Eligible = false
 		status.Issues = append(status.Issues, LotteryEligibilityIssue{
 			Code:    "request_count_required",
 			Message: "请求次数不满足参与条件",
 		})
 	}
-	if settings.RequireRecharge || settings.MinRechargeAmount > 0 {
-		rechargeEligibility, err := evaluateLotteryRechargeEligibility(tx, user.Id, settings)
+	if rules.RequireRecharge || rules.MinRechargeAmount > 0 {
+		rechargeEligibility, err := evaluateLotteryRechargeEligibility(tx, user.Id, rules)
 		if err != nil {
 			return nil, err
 		}
@@ -988,15 +1048,15 @@ func EvaluateLotteryEligibility(tx *gorm.DB, user User, settings LotterySettings
 	return status, nil
 }
 
-func evaluateLotteryRechargeEligibility(tx *gorm.DB, userId int, settings LotterySettings) (lotteryRechargeEligibility, error) {
+func evaluateLotteryRechargeEligibility(tx *gorm.DB, userId int, rules LotteryEligibilityRules) (lotteryRechargeEligibility, error) {
 	result := lotteryRechargeEligibility{
-		RequiredAmount:            settings.MinRechargeAmount,
-		WindowDays:                settings.RechargeWindowDays,
-		CountRedemptionAsRecharge: settings.CountRedemptionAsRecharge,
+		RequiredAmount:            rules.MinRechargeAmount,
+		WindowDays:                rules.RechargeWindowDays,
+		CountRedemptionAsRecharge: rules.CountRedemptionAsRecharge,
 	}
 	startTime := int64(0)
-	if settings.RechargeWindowDays > 0 {
-		startTime = common.GetTimestamp() - int64(settings.RechargeWindowDays*86400)
+	if rules.RechargeWindowDays > 0 {
+		startTime = common.GetTimestamp() - int64(rules.RechargeWindowDays*86400)
 	}
 	query := tx.Model(&TopUp{}).Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess)
 	if startTime > 0 {
@@ -1012,11 +1072,11 @@ func evaluateLotteryRechargeEligibility(tx *gorm.DB, userId int, settings Lotter
 			result.CurrentAmount = topUp.Money
 		}
 	}
-	if lotteryRechargeAmountMeetsSettings(result.RecordFound, result.CurrentAmount, settings) {
+	if lotteryRechargeAmountMeetsSettings(result.RecordFound, result.CurrentAmount, rules) {
 		result.Eligible = true
 		return result, nil
 	}
-	if !settings.CountRedemptionAsRecharge {
+	if !rules.CountRedemptionAsRecharge {
 		result.RemainingAmount = lotteryRechargeRemainingAmount(result.RequiredAmount, result.CurrentAmount)
 		return result, nil
 	}
@@ -1065,7 +1125,7 @@ func evaluateLotteryRechargeEligibility(tx *gorm.DB, userId int, settings Lotter
 			result.CurrentAmount = redeemMoney
 		}
 	}
-	if lotteryRechargeAmountMeetsSettings(result.RecordFound, result.CurrentAmount, settings) {
+	if lotteryRechargeAmountMeetsSettings(result.RecordFound, result.CurrentAmount, rules) {
 		result.Eligible = true
 		return result, nil
 	}
@@ -1073,14 +1133,14 @@ func evaluateLotteryRechargeEligibility(tx *gorm.DB, userId int, settings Lotter
 	return result, nil
 }
 
-func lotteryRechargeAmountMeetsSettings(recordFound bool, amount float64, settings LotterySettings) bool {
+func lotteryRechargeAmountMeetsSettings(recordFound bool, amount float64, rules LotteryEligibilityRules) bool {
 	if !recordFound {
 		return false
 	}
-	if settings.MinRechargeAmount <= 0 {
+	if rules.MinRechargeAmount <= 0 {
 		return true
 	}
-	return amount >= settings.MinRechargeAmount
+	return amount >= rules.MinRechargeAmount
 }
 
 func lotteryRechargeRemainingAmount(requiredAmount float64, currentAmount float64) float64 {
@@ -1129,20 +1189,27 @@ func GetPublicLottery(lotteryId int, userId int) (*LotteryPublicView, error) {
 
 func buildLotteryPublicView(tx *gorm.DB, lottery *Lottery, userId int, includeWinners bool) (LotteryPublicView, error) {
 	view := LotteryPublicView{
-		Id:                lottery.Id,
-		Title:             lottery.Title,
-		Description:       lottery.Description,
-		PrizeName:         lottery.PrizeName,
-		Mode:              lottery.Mode,
-		Status:            lottery.Status,
-		WinnerCount:       lottery.WinnerCount,
-		PrizePerWinner:    lottery.PrizePerWinner,
-		ScheduleWeekdays:  lotteryWeekdaysFromString(lottery.ScheduleWeekdays),
-		ScheduleStartTime: lottery.ScheduleStartTime,
-		ScheduleEndTime:   lottery.ScheduleEndTime,
-		ScheduleDrawTime:  lottery.ScheduleDrawTime,
-		CreatedAt:         lottery.CreatedAt,
-		Deleted:           isLotteryDeletedStatus(lottery.Status),
+		Id:                        lottery.Id,
+		Title:                     lottery.Title,
+		Description:               lottery.Description,
+		PrizeName:                 lottery.PrizeName,
+		Mode:                      lottery.Mode,
+		Status:                    lottery.Status,
+		WinnerCount:               lottery.WinnerCount,
+		PrizePerWinner:            lottery.PrizePerWinner,
+		RequireRecharge:           lottery.RequireRecharge,
+		MinRechargeAmount:         lottery.MinRechargeAmount,
+		RechargeWindowDays:        lottery.RechargeWindowDays,
+		CountRedemptionAsRecharge: lottery.CountRedemptionAsRecharge,
+		MinAccountAgeDays:         lottery.MinAccountAgeDays,
+		MinRequestCount:           lottery.MinRequestCount,
+		RequireEmailVerified:      lottery.RequireEmailVerified,
+		ScheduleWeekdays:          lotteryWeekdaysFromString(lottery.ScheduleWeekdays),
+		ScheduleStartTime:         lottery.ScheduleStartTime,
+		ScheduleEndTime:           lottery.ScheduleEndTime,
+		ScheduleDrawTime:          lottery.ScheduleDrawTime,
+		CreatedAt:                 lottery.CreatedAt,
+		Deleted:                   isLotteryDeletedStatus(lottery.Status),
 	}
 	var round LotteryRound
 	err := tx.Where("lottery_id = ? AND status IN ?", lottery.Id, []string{LotteryRoundStatusPending, LotteryRoundStatusOpen, LotteryRoundStatusDrawing}).
@@ -1194,7 +1261,7 @@ func buildLotteryPublicView(tx *gorm.DB, lottery *Lottery, userId int, includeWi
 		if err := tx.Select("id", "email", "created_at", "request_count").Where("id = ?", userId).First(&user).Error; err != nil {
 			return view, err
 		}
-		eligibility, err := EvaluateLotteryEligibility(tx, user, LotterySettingsFromOptions())
+		eligibility, err := EvaluateLotteryEligibility(tx, user, lotteryEligibilityRulesFromLottery(lottery))
 		if err != nil {
 			return view, err
 		}
@@ -1235,6 +1302,97 @@ func getLotteryWinners(tx *gorm.DB, roundId int, includeCodes bool) ([]LotteryWi
 		winners = append(winners, winner)
 	}
 	return winners, nil
+}
+
+func buildLotteryRoundDetailViews(tx *gorm.DB, rounds []LotteryRound, includeCodes bool) ([]LotteryRoundDetailView, error) {
+	if len(rounds) == 0 {
+		return []LotteryRoundDetailView{}, nil
+	}
+	roundIDs := make([]int, 0, len(rounds))
+	drawnRoundIDs := make([]int, 0, len(rounds))
+	detailByRoundID := make(map[int]*LotteryRoundDetailView, len(rounds))
+	for i := range rounds {
+		round := rounds[i]
+		roundIDs = append(roundIDs, round.Id)
+		detail := &LotteryRoundDetailView{Round: round}
+		detailByRoundID[round.Id] = detail
+		if lotteryRoundIsDrawn(round.Status) {
+			drawnRoundIDs = append(drawnRoundIDs, round.Id)
+		}
+	}
+
+	var countRows []lotteryRoundParticipantCountRow
+	if err := tx.Model(&LotteryEntry{}).
+		Select("round_id, count(*) as participant_count").
+		Where("round_id IN ?", roundIDs).
+		Group("round_id").
+		Find(&countRows).Error; err != nil {
+		return nil, err
+	}
+	for i := range countRows {
+		if detail, ok := detailByRoundID[countRows[i].RoundId]; ok {
+			detail.ParticipantCount = countRows[i].ParticipantCount
+		}
+	}
+
+	if len(drawnRoundIDs) > 0 {
+		var winnerEntries []LotteryEntry
+		if err := tx.Where("round_id IN ? AND is_winner = ?", drawnRoundIDs, true).
+			Order("round_id asc, won_at asc, id asc").
+			Find(&winnerEntries).Error; err != nil {
+			return nil, err
+		}
+
+		prizesByRoundAndUser := make(map[int]map[int][]string)
+		if includeCodes {
+			var prizes []LotteryPrize
+			if err := tx.Where("round_id IN ?", drawnRoundIDs).
+				Order("round_id asc, id asc").
+				Find(&prizes).Error; err != nil {
+				return nil, err
+			}
+			prizesByRoundAndUser = make(map[int]map[int][]string, len(prizes))
+			for i := range prizes {
+				prize := prizes[i]
+				userPrizes, ok := prizesByRoundAndUser[prize.RoundId]
+				if !ok {
+					userPrizes = make(map[int][]string)
+					prizesByRoundAndUser[prize.RoundId] = userPrizes
+				}
+				userPrizes[prize.WinnerUserId] = append(userPrizes[prize.WinnerUserId], prize.Code)
+			}
+		}
+
+		winnersByRound := make(map[int][]LotteryWinnerView)
+		for i := range winnerEntries {
+			entry := winnerEntries[i]
+			winner := LotteryWinnerView{
+				MaskedName: maskLotteryName(displayLotteryName(entry.Username, entry.DisplayName)),
+				WonAt:      entry.WonAt,
+			}
+			if includeCodes {
+				winner.UserId = entry.UserId
+				winner.Username = entry.Username
+				if userPrizes, ok := prizesByRoundAndUser[entry.RoundId]; ok {
+					winner.Prizes = append(winner.Prizes, userPrizes[entry.UserId]...)
+				}
+			}
+			winnersByRound[entry.RoundId] = append(winnersByRound[entry.RoundId], winner)
+		}
+		for roundID, winners := range winnersByRound {
+			if detail, ok := detailByRoundID[roundID]; ok {
+				detail.Winners = winners
+			}
+		}
+	}
+
+	views := make([]LotteryRoundDetailView, 0, len(rounds))
+	for i := range rounds {
+		if detail, ok := detailByRoundID[rounds[i].Id]; ok {
+			views = append(views, *detail)
+		}
+	}
+	return views, nil
 }
 
 func lotteryViewMatchesDrawStatus(view LotteryPublicView, drawStatus string) bool {
@@ -1401,7 +1559,9 @@ func attachAdminLotteryRounds(view *LotteryPublicView, limit int) error {
 	if err := DB.Where("lottery_id = ?", view.Id).Order("draw_time desc").Limit(limit).Find(&rounds).Error; err != nil {
 		return err
 	}
-	view.Rounds = make([]LotteryRoundDetailView, 0, len(rounds))
+	if err := DB.Model(&LotteryPrize{}).Where("lottery_id = ? AND status = ?", view.Id, "assigned").Count(&view.AssignedPrizeCount).Error; err != nil {
+		return err
+	}
 	if err := DB.Model(&LotteryPrize{}).Where("lottery_id = ? AND status = ?", view.Id, "available").Count(&view.AvailablePrizeCount).Error; err != nil {
 		return err
 	}
@@ -1411,22 +1571,11 @@ func attachAdminLotteryRounds(view *LotteryPublicView, limit int) error {
 		Pluck("code", &view.PrizeCodes).Error; err != nil {
 		return err
 	}
-	for i := range rounds {
-		detail := LotteryRoundDetailView{
-			Round: rounds[i],
-		}
-		if err := DB.Model(&LotteryEntry{}).Where("round_id = ?", rounds[i].Id).Count(&detail.ParticipantCount).Error; err != nil {
-			return err
-		}
-		if rounds[i].Status == LotteryRoundStatusFinished {
-			winners, err := getLotteryWinners(DB, rounds[i].Id, true)
-			if err != nil {
-				return err
-			}
-			detail.Winners = winners
-		}
-		view.Rounds = append(view.Rounds, detail)
+	roundDetails, err := buildLotteryRoundDetailViews(DB, rounds, true)
+	if err != nil {
+		return err
 	}
+	view.Rounds = roundDetails
 	if view.Round != nil {
 		for i := range view.Rounds {
 			if view.Rounds[i].Round.Id == view.Round.Id {
@@ -1436,6 +1585,46 @@ func attachAdminLotteryRounds(view *LotteryPublicView, limit int) error {
 		}
 	}
 	return nil
+}
+
+func ListAdminLotteryRounds(lotteryId int, pageInfo *common.PageInfo, filter LotteryRoundListFilter) ([]LotteryRoundDetailView, int64, error) {
+	var lottery Lottery
+	if err := DB.Select("id").Where("id = ?", lotteryId).First(&lottery).Error; err != nil {
+		return nil, 0, ErrLotteryNotFound
+	}
+	query := DB.Model(&LotteryRound{}).Where("lottery_id = ?", lotteryId)
+	switch status := strings.ToLower(strings.TrimSpace(filter.Status)); status {
+	case "", "all":
+	case "drawn":
+		query = query.Where("status IN ?", []string{LotteryRoundStatusFinished, LotteryRoundStatusInsufficientPrizes})
+	case "undrawn":
+		query = query.Where("status IN ?", []string{LotteryRoundStatusPending, LotteryRoundStatusOpen, LotteryRoundStatusDrawing})
+	default:
+		query = query.Where("status = ?", status)
+	}
+	if keyword := strings.TrimSpace(filter.Query); keyword != "" {
+		pattern := "%" + keyword + "%"
+		query = query.Where(
+			"(round_key LIKE ? OR EXISTS (SELECT 1 FROM lottery_entries WHERE lottery_entries.round_id = lottery_rounds.id AND (lottery_entries.username LIKE ? OR lottery_entries.display_name LIKE ?)) OR EXISTS (SELECT 1 FROM lottery_prizes WHERE lottery_prizes.round_id = lottery_rounds.id AND lottery_prizes.code LIKE ?))",
+			pattern,
+			pattern,
+			pattern,
+			pattern,
+		)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rounds []LotteryRound
+	if err := query.Order("draw_time desc, id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&rounds).Error; err != nil {
+		return nil, 0, err
+	}
+	views, err := buildLotteryRoundDetailViews(DB, rounds, true)
+	if err != nil {
+		return nil, 0, err
+	}
+	return views, total, nil
 }
 
 func UpdateLotteryStatus(lotteryId int, status int) error {

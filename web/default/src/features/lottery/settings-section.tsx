@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
-import { useForm, type Control, type Resolver } from 'react-hook-form'
+import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -26,11 +26,8 @@ import {
   FormControl,
   FormDescription,
   FormField,
-  FormItem,
   FormLabel,
-  FormMessage,
 } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import {
   SettingsForm,
@@ -43,13 +40,6 @@ import { useUpdateOption } from '../system-settings/hooks/use-update-option'
 
 const schema = z.object({
   enabled: z.boolean(),
-  requireRecharge: z.boolean(),
-  minRechargeAmount: z.coerce.number().min(0),
-  rechargeWindowDays: z.coerce.number().int().min(0),
-  countRedemptionAsRecharge: z.boolean(),
-  minAccountAgeDays: z.coerce.number().int().min(0),
-  minRequestCount: z.coerce.number().int().min(0),
-  requireEmailVerified: z.boolean(),
 })
 
 type Values = z.infer<typeof schema>
@@ -66,19 +56,11 @@ export function LotterySettingsSection(props: LotterySettingsSectionProps) {
     defaultValues: props.defaultValues,
   })
   const { isDirty, isSubmitting } = form.formState
-  const enabled = form.watch('enabled')
 
   async function onSubmit(values: Values) {
     const updates: Array<{ key: string; value: string }> = []
     const pairs: Array<[keyof Values, string]> = [
       ['enabled', 'LotteryEnabled'],
-      ['requireRecharge', 'LotteryRequireRecharge'],
-      ['minRechargeAmount', 'LotteryMinRechargeAmount'],
-      ['rechargeWindowDays', 'LotteryRechargeWindowDays'],
-      ['countRedemptionAsRecharge', 'LotteryCountRedemptionAsRecharge'],
-      ['minAccountAgeDays', 'LotteryMinAccountAgeDays'],
-      ['minRequestCount', 'LotteryMinRequestCount'],
-      ['requireEmailVerified', 'LotteryRequireEmailVerified'],
     ]
 
     for (const [field, key] of pairs) {
@@ -130,133 +112,11 @@ export function LotterySettingsSection(props: LotterySettingsSectionProps) {
               </SettingsSwitchItem>
             )}
           />
-
-          {enabled && (
-            <>
-              <FormField
-                control={form.control}
-                name='requireRecharge'
-                render={({ field }) => (
-                  <SettingsSwitchItem>
-                    <SettingsSwitchContent>
-                      <FormLabel>{t('Require recharge history')}</FormLabel>
-                      <FormDescription>
-                        {t('Only users with successful recharge records can join draws.')}
-                      </FormDescription>
-                    </SettingsSwitchContent>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={updateOption.isPending || isSubmitting}
-                      />
-                    </FormControl>
-                  </SettingsSwitchItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='requireEmailVerified'
-                render={({ field }) => (
-                  <SettingsSwitchItem>
-                    <SettingsSwitchContent>
-                      <FormLabel>{t('Require bound email')}</FormLabel>
-                      <FormDescription>
-                        {t('Reduce repeated or disposable account participation.')}
-                      </FormDescription>
-                    </SettingsSwitchContent>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={updateOption.isPending || isSubmitting}
-                      />
-                    </FormControl>
-                  </SettingsSwitchItem>
-                )}
-              />
-
-              <div className='grid gap-6 md:grid-cols-3'>
-                <NumberField
-                  control={form.control}
-                  name='minRechargeAmount'
-                  label={t('Minimum recharge amount')}
-                  description={t('Set 0 to accept any successful recharge.')}
-                />
-                <NumberField
-                  control={form.control}
-                  name='rechargeWindowDays'
-                  label={t('Recharge validity window')}
-                  description={t('Set 0 to allow recharge records from any time. Unit: days.')}
-                />
-                <NumberField
-                  control={form.control}
-                  name='minAccountAgeDays'
-                  label={t('Minimum account age')}
-                  description={t('Days since registration required to join.')}
-                />
-                <NumberField
-                  control={form.control}
-                  name='minRequestCount'
-                  label={t('Minimum request count')}
-                  description={t('Require real API usage before joining draws.')}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
-                name='countRedemptionAsRecharge'
-                render={({ field }) => (
-                  <SettingsSwitchItem>
-                    <SettingsSwitchContent>
-                      <FormLabel>{t('Count quota redemption as recharge')}</FormLabel>
-                      <FormDescription>
-                        {t('When enabled, quota redemption codes can satisfy recharge-based lottery conditions after amount conversion.')}
-                      </FormDescription>
-                    </SettingsSwitchContent>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={updateOption.isPending || isSubmitting}
-                      />
-                    </FormControl>
-                  </SettingsSwitchItem>
-                )}
-              />
-            </>
-          )}
+          <FormDescription>
+            {t('Participation conditions are configured separately when creating or editing each draw.')}
+          </FormDescription>
         </SettingsForm>
       </Form>
     </SettingsSection>
-  )
-}
-
-function NumberField(props: {
-  control: Control<Values>
-  name:
-    | 'minRechargeAmount'
-    | 'rechargeWindowDays'
-    | 'minAccountAgeDays'
-    | 'minRequestCount'
-  label: string
-  description: string
-}) {
-  return (
-    <FormField
-      control={props.control}
-      name={props.name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{props.label}</FormLabel>
-          <FormControl>
-            <Input type='number' min={0} {...field} />
-          </FormControl>
-          <FormDescription>{props.description}</FormDescription>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
   )
 }

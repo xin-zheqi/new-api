@@ -16,5 +16,6 @@
   "The bound Store is the parent container for every Pancake product new-api creates from this admin — both the wallet top-up product and any subscription-plan products. One store is enough; pin a different one only if you genuinely run separate Pancake catalogs.": "The bound Store is the parent container for every Pancake product new-api creates from this admin — both the wallet top-up product and any subscription-plan products. One store is enough; pin a different one only if you genuinely run separate Pancake catalogs.",
   "The environment (test vs production) is decided by the key you paste here — use the Test key while integrating, then swap to the Production key when going live.": "The environment (test vs production) is decided by the key you paste here — use the Test key while integrating, then swap to the Production key when going live.",
   "Used as SuccessURL on the new product. You'll be prompted to confirm if left blank.": "Used as SuccessURL on the new product. You'll be prompted to confirm if left blank.",
-  "Verifying credentials and pulling stores from your Pancake account...": "Verifying credentials and pulling stores from your Pancake account..."
+  "Verifying credentials and pulling stores from your Pancake account...": "Verifying credentials and pulling stores from your Pancake account...",
+  "Won the draw \"{{title}}\" and received \"{{prize_name}}\"": "Won the draw \"{{title}}\" and received \"{{prize_name}}\""
 }

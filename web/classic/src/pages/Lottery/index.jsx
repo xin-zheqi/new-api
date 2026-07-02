@@ -38,7 +38,20 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Award, CalendarClock, Edit3, Eye, Gift, Trash2, Trophy, Users } from 'lucide-react';
+import {
+  Award,
+  CalendarClock,
+  Clock3,
+  Edit3,
+  Eye,
+  Gift,
+  Mail,
+  Trash2,
+  Trophy,
+  UserRound,
+  Users,
+  WalletCards,
+} from 'lucide-react';
 import { API, isAdmin, timestamp2string } from '../../helpers';
 
 const { Text, Title } = Typography;
@@ -52,6 +65,13 @@ const defaultForm = {
   mode: 'once',
   winner_count: 1,
   prize_per_winner: 1,
+  require_recharge: false,
+  min_recharge_amount: 0,
+  recharge_window_days: 0,
+  count_redemption_as_recharge: false,
+  min_account_age_days: 0,
+  min_request_count: 0,
+  require_email_verified: false,
   registration_start: null,
   registration_end: null,
   draw_time: null,
@@ -253,6 +273,131 @@ function EligibilityPanel({ eligibility, t, compact = false }) {
   );
 }
 
+function ConditionInfoItem({ icon, label, value, strong = false }) {
+  return (
+    <div className='flex min-w-0 items-start gap-3 rounded border border-[var(--semi-color-border)] bg-white p-3'>
+      <div className='mt-0.5 shrink-0 text-[var(--semi-color-text-2)]'>{icon}</div>
+      <div className='min-w-0'>
+        <Text type='secondary' size='small'>
+          {label}
+        </Text>
+        <div className={`truncate ${strong ? 'font-semibold' : 'font-medium'}`}>
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DrawConditions({ lottery, t }) {
+  const hasRechargeRule =
+    lottery.require_recharge ||
+    lottery.min_recharge_amount > 0 ||
+    lottery.recharge_window_days > 0 ||
+    lottery.count_redemption_as_recharge;
+  const rows = [];
+  if (lottery.min_account_age_days > 0) {
+    rows.push({
+      label: t('账号天数'),
+      value: t('至少 {{count}} 天', { count: lottery.min_account_age_days }),
+      icon: <UserRound size={16} />,
+    });
+  }
+  if (lottery.min_request_count > 0) {
+    rows.push({
+      label: t('请求次数'),
+      value: t('至少 {{count}} 次', { count: lottery.min_request_count }),
+      icon: <Users size={16} />,
+    });
+  }
+  if (lottery.require_email_verified) {
+    rows.push({ label: t('邮箱条件'), value: t('需要绑定邮箱'), icon: <Mail size={16} /> });
+  }
+  if (!hasRechargeRule && rows.length === 0) return null;
+  return (
+    <div className='rounded border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-4 text-sm'>
+      <div className='mb-3 flex items-center gap-2 font-medium'>
+        <Gift size={16} />
+        {t('本活动参与条件')}
+      </div>
+      {hasRechargeRule && (
+        <div className='mb-3 rounded border border-[var(--semi-color-border)] bg-white p-3'>
+          <div className='mb-3 flex flex-wrap items-start justify-between gap-2'>
+            <div className='flex min-w-0 items-center gap-2'>
+              <WalletCards size={16} className='shrink-0 text-[var(--semi-color-primary)]' />
+              <div className='min-w-0'>
+                <Text strong>{t('充值条件')}</Text>
+                <div>
+                  <Text type='secondary' size='small'>
+                    {lottery.recharge_window_days > 0
+                      ? t('需要在最近 {{days}} 天内完成符合条件的充值', {
+                        days: lottery.recharge_window_days,
+                      })
+                      : t('允许任意时间内的符合条件充值')}
+                  </Text>
+                </div>
+              </div>
+            </div>
+            {lottery.count_redemption_as_recharge && (
+              <Tag>{t('兑换码兑换计入')}</Tag>
+            )}
+          </div>
+          <div className='grid gap-2 md:grid-cols-3'>
+            <ConditionInfoItem
+              icon={<Gift size={16} />}
+              label={t('需要金额')}
+              value={
+                lottery.min_recharge_amount > 0
+                  ? formatLotteryAmount(lottery.min_recharge_amount)
+                  : t('任意成功充值')
+              }
+              strong
+            />
+            <ConditionInfoItem
+              icon={<Clock3 size={16} />}
+              label={t('充值有效期')}
+              value={
+                lottery.recharge_window_days > 0
+                  ? t('{{count}} 天', { count: lottery.recharge_window_days })
+                  : t('不限制时间')
+              }
+            />
+            <ConditionInfoItem
+              icon={<CalendarClock size={16} />}
+              label={t('适用范围')}
+              value={t('仅本活动')}
+            />
+          </div>
+        </div>
+      )}
+      {rows.length > 0 && (
+        <div className='grid gap-2 md:grid-cols-3'>
+        {rows.map((row) => (
+          <ConditionInfoItem
+            key={row.label}
+            icon={row.icon}
+            label={row.label}
+            value={row.value}
+          />
+        ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function hasLotteryConditions(lottery) {
+  return Boolean(
+    lottery.require_recharge ||
+      lottery.min_recharge_amount > 0 ||
+      lottery.recharge_window_days > 0 ||
+      lottery.count_redemption_as_recharge ||
+      lottery.min_account_age_days > 0 ||
+      lottery.min_request_count > 0 ||
+      lottery.require_email_verified,
+  );
+}
+
 function LotteryCard({ lottery, onJoin, joining, t }) {
   const round = lottery.round;
   const drawn = isRoundDrawn(round?.status);
@@ -328,6 +473,8 @@ function LotteryCard({ lottery, onJoin, joining, t }) {
           </div>
         </div>
 
+        <DrawConditions lottery={lottery} t={t} />
+
         {round && (
           <div className='rounded border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3'>
             <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
@@ -361,14 +508,18 @@ function LotteryCard({ lottery, onJoin, joining, t }) {
           <Text type='secondary'>{t('本次抽奖已开奖，暂无中奖用户。')}</Text>
         )}
 
-        {lottery.eligibility && !lottery.eligibility.eligible && !drawn && (
+        {lottery.eligibility && hasLotteryConditions(lottery) && !drawn && (
           <EligibilityPanel eligibility={lottery.eligibility} t={t} compact />
         )}
 
         <div className='flex items-center justify-between'>
-          <Text type='tertiary' size='small'>
-            {lottery.joined ? t('你已参与本轮抽奖') : t('每轮仅可参与一次')}
-          </Text>
+          {lottery.joined ? (
+            <Text type='tertiary' size='small'>
+              {t('你已参与本轮抽奖')}
+            </Text>
+          ) : (
+            <span />
+          )}
           <Button
             type='primary'
             disabled={!canJoin || lottery.joined}
@@ -398,6 +549,15 @@ export default function Lottery() {
   const [adminMode, setAdminMode] = useState('');
   const [adminStatus, setAdminStatus] = useState('');
   const [adminDrawStatus, setAdminDrawStatus] = useState('all');
+  const [resultsVisible, setResultsVisible] = useState(false);
+  const [resultsLottery, setResultsLottery] = useState(null);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultsRounds, setResultsRounds] = useState([]);
+  const [resultsTotal, setResultsTotal] = useState(0);
+  const [resultsPage, setResultsPage] = useState(1);
+  const [resultsPageSize, setResultsPageSize] = useState(5);
+  const [resultsKeyword, setResultsKeyword] = useState('');
+  const [resultsStatus, setResultsStatus] = useState('all');
   const [joining, setJoining] = useState(0);
   const [createVisible, setCreateVisible] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -467,6 +627,39 @@ export default function Lottery() {
   useEffect(() => {
     loadAdminData();
   }, [adminPage, adminPageSize, adminKeyword, adminMode, adminStatus, adminDrawStatus]);
+
+  useEffect(() => {
+    if (!resultsVisible || !resultsLottery) return;
+    const loadResults = async () => {
+      setResultsLoading(true);
+      try {
+        const params = new URLSearchParams({
+          p: String(resultsPage),
+          page_size: String(resultsPageSize),
+        });
+        if (resultsKeyword) params.append('keyword', resultsKeyword);
+        if (resultsStatus) params.append('status', resultsStatus);
+        const res = await API.get(
+          `/api/lottery/admin/${resultsLottery.id}/rounds?${params.toString()}`
+        );
+        if (res.data.success) {
+          setResultsRounds(res.data.data?.items || []);
+          setResultsTotal(res.data.data?.total || 0);
+        } else {
+          Toast.error({ content: res.data.message || t('加载失败') });
+        }
+      } catch (error) {
+        Toast.error({ content: t('加载失败') });
+      } finally {
+        setResultsLoading(false);
+      }
+    };
+    loadResults();
+  }, [resultsVisible, resultsLottery, resultsPage, resultsPageSize, resultsKeyword, resultsStatus, t]);
+
+  useEffect(() => {
+    setResultsPage(1);
+  }, [resultsKeyword, resultsStatus, resultsPageSize, resultsLottery?.id]);
 
   const handleJoin = async (id) => {
     setJoining(id);
@@ -550,6 +743,15 @@ export default function Lottery() {
     });
   };
 
+  const openResultsModal = (lottery) => {
+    setResultsLottery(lottery);
+    setResultsVisible(true);
+    setResultsPage(1);
+    setResultsPageSize(5);
+    setResultsKeyword('');
+    setResultsStatus('all');
+  };
+
   const openCreateModal = () => {
     setEditingLottery(null);
     setDetailOnly(false);
@@ -568,6 +770,13 @@ export default function Lottery() {
       mode: lottery.mode,
       winner_count: lottery.winner_count,
       prize_per_winner: lottery.prize_per_winner,
+      require_recharge: lottery.require_recharge,
+      min_recharge_amount: lottery.min_recharge_amount,
+      recharge_window_days: lottery.recharge_window_days,
+      count_redemption_as_recharge: lottery.count_redemption_as_recharge,
+      min_account_age_days: lottery.min_account_age_days,
+      min_request_count: lottery.min_request_count,
+      require_email_verified: lottery.require_email_verified,
       registration_start: dateFromUnix(lottery.round?.registration_start),
       registration_end: dateFromUnix(lottery.round?.registration_end),
       draw_time: dateFromUnix(lottery.round?.draw_time),
@@ -578,6 +787,17 @@ export default function Lottery() {
       prize_codes: (lottery.prize_codes || []).join('\n'),
     });
     setCreateVisible(true);
+  };
+
+  const handleFormValuesChange = (values) => {
+    setForm((current) => {
+      const next = { ...current, ...values };
+      for (const field of ['registration_start', 'registration_end', 'draw_time']) {
+        if (!Object.prototype.hasOwnProperty.call(values, field)) continue;
+        next[field] = current[field];
+      }
+      return next;
+    });
   };
 
   const handleSave = async () => {
@@ -607,6 +827,13 @@ export default function Lottery() {
       mode: form.mode,
       winner_count: Number(form.winner_count || 1),
       prize_per_winner: Number(form.prize_per_winner || 1),
+      require_recharge: Boolean(form.require_recharge),
+      min_recharge_amount: Number(form.min_recharge_amount || 0),
+      recharge_window_days: Number(form.recharge_window_days || 0),
+      count_redemption_as_recharge: Boolean(form.count_redemption_as_recharge),
+      min_account_age_days: Number(form.min_account_age_days || 0),
+      min_request_count: Number(form.min_request_count || 0),
+      require_email_verified: Boolean(form.require_email_verified),
       registration_start:
         form.mode === 'once' ? toUnixSeconds(form.registration_start) : 0,
       registration_end:
@@ -698,9 +925,14 @@ export default function Lottery() {
       render: (count) => count || 0,
     },
     {
-      title: t('剩余奖品'),
+      title: t('已分配奖品'),
+      dataIndex: 'assigned_prize_count',
+      render: (count) => count ?? 0,
+    },
+    {
+      title: t('未分配奖品'),
       dataIndex: 'available_prize_count',
-      render: (count) => count ?? '-',
+      render: (count) => count ?? 0,
     },
     {
       title: t('操作'),
@@ -732,6 +964,14 @@ export default function Lottery() {
           <Button
             size='small'
             theme='outline'
+            icon={<Trophy size={14} />}
+            onClick={() => openResultsModal(record)}
+          >
+            {t('开奖结果')}
+          </Button>
+          <Button
+            size='small'
+            theme='outline'
             icon={
               record.status === 3 || !record.can_edit || !isRoundUndrawn(record.round?.status)
                 ? <Eye size={14} />
@@ -759,6 +999,47 @@ export default function Lottery() {
             {t('删除')}
           </Button>
         </Space>
+      ),
+    },
+  ];
+
+  const resultsColumns = [
+    {
+      title: t('状态'),
+      dataIndex: 'round',
+      render: (round) => roundStatusTag(round?.status, t),
+    },
+    {
+      title: t('轮次'),
+      dataIndex: 'round',
+      render: (round) => round?.round_key || '-',
+    },
+    {
+      title: t('开奖时间'),
+      dataIndex: 'round',
+      render: (round) => formatLotteryTime(round?.draw_time),
+    },
+    {
+      title: t('参与人数'),
+      dataIndex: 'participant_count',
+      render: (count) => count || 0,
+    },
+    {
+      title: t('中奖人数'),
+      dataIndex: 'winners',
+      render: (winners) => (winners?.length || 0),
+    },
+    {
+      title: t('中奖用户'),
+      dataIndex: 'winners',
+      render: (winners) => (
+        <div className='flex flex-wrap gap-1'>
+          {(winners || []).map((winner, index) => (
+            <Tag key={`${winner.masked_name}-${index}`} color='amber'>
+              {winner.masked_name}
+            </Tag>
+          ))}
+        </div>
       ),
     },
   ];
@@ -802,16 +1083,8 @@ export default function Lottery() {
             <Tag color={settings?.enabled ? 'green' : 'grey'}>
               {settings?.enabled ? t('已开启') : t('未开启')}
             </Tag>
-            {settings?.require_recharge && <Tag>{t('需充值')}</Tag>}
-            {settings?.require_email_verified && <Tag>{t('需绑定邮箱')}</Tag>}
           </Space>
         </div>
-
-        {settings?.enabled && settings?.eligibility && (
-          <Card bodyStyle={{ padding: 16 }} className='mb-4'>
-            <EligibilityPanel eligibility={settings.eligibility} t={t} />
-          </Card>
-        )}
 
         {settings && !settings.enabled ? (
           <Card>
@@ -962,6 +1235,75 @@ export default function Lottery() {
       </Spin>
 
       <Modal
+        title={t('开奖结果')}
+        visible={resultsVisible}
+        onCancel={() => {
+          setResultsVisible(false);
+          setResultsLottery(null);
+        }}
+        footer={null}
+        width={960}
+      >
+        {resultsLottery && (
+          <div className='mb-4 rounded border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-4'>
+            <div className='mb-3 flex flex-col gap-1 md:flex-row md:items-start md:justify-between'>
+              <div className='min-w-0'>
+                <Text strong>{resultsLottery.title}</Text>
+                <Tooltip content={resultsLottery.prize_name}>
+                  <div className='max-w-[360px] truncate text-[var(--semi-color-text-2)]'>
+                    {resultsLottery.prize_name}
+                  </div>
+                </Tooltip>
+              </div>
+              <Space>
+                <Tag color='green'>
+                  {t('已分配奖品')}：{resultsLottery.assigned_prize_count || 0}
+                </Tag>
+                <Tag color='grey'>
+                  {t('未分配奖品')}：{resultsLottery.available_prize_count || 0}
+                </Tag>
+              </Space>
+            </div>
+            <div className='flex flex-col gap-2 md:flex-row md:items-center'>
+              <Input
+                value={resultsKeyword}
+                onChange={setResultsKeyword}
+                placeholder={t('搜索轮次、中奖用户或兑换码')}
+                style={{ maxWidth: 280 }}
+              />
+              <Select
+                value={resultsStatus}
+                onChange={(value) => setResultsStatus(value || 'all')}
+                style={{ width: 140 }}
+              >
+                <Select.Option value='all'>{t('全部轮次')}</Select.Option>
+                <Select.Option value='drawn'>{t('已开奖')}</Select.Option>
+                <Select.Option value='undrawn'>{t('未开奖')}</Select.Option>
+              </Select>
+            </div>
+          </div>
+        )}
+        <Table
+          columns={resultsColumns}
+          dataSource={resultsRounds}
+          rowKey={(record) => record.round?.id}
+          loading={resultsLoading}
+          empty={<Empty description={t('暂无开奖结果')} />}
+          pagination={{
+            currentPage: resultsPage,
+            pageSize: resultsPageSize,
+            total: resultsTotal,
+            showSizeChanger: true,
+            onPageChange: setResultsPage,
+            onPageSizeChange: (size) => {
+              setResultsPageSize(size);
+              setResultsPage(1);
+            },
+          }}
+        />
+      </Modal>
+
+      <Modal
         title={
           detailOnly
             ? t('详情')
@@ -985,7 +1327,7 @@ export default function Lottery() {
         <Form
           key={editingLottery?.id || 'create'}
           labelPosition='top'
-          onValueChange={(values) => setForm((current) => ({ ...current, ...values }))}
+          onValueChange={handleFormValuesChange}
           initValues={form}
         >
           <Form.Input field='title' label={t('活动标题')} disabled={detailOnly} />
@@ -1008,6 +1350,62 @@ export default function Lottery() {
               label={t('每人奖品数')}
               min={1}
               max={100}
+              disabled={detailOnly}
+            />
+          </div>
+          <div className='rounded border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3'>
+            <div className='mb-3 font-medium'>{t('参与条件')}</div>
+            <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+              <Form.Switch
+                field='require_recharge'
+                label={t('参与前必须完成充值')}
+                checkedText='｜'
+                uncheckedText='〇'
+                disabled={detailOnly}
+              />
+              <Form.Switch
+                field='require_email_verified'
+                label={t('参与前必须绑定邮箱')}
+                checkedText='｜'
+                uncheckedText='〇'
+                disabled={detailOnly}
+              />
+              <Form.InputNumber
+                field='min_recharge_amount'
+                label={t('最低充值金额')}
+                min={0}
+                step={1}
+                disabled={detailOnly}
+                extraText={t('0 表示任意成功充值即可满足金额条件')}
+              />
+              <Form.InputNumber
+                field='recharge_window_days'
+                label={t('充值有效期天数')}
+                min={0}
+                step={1}
+                disabled={detailOnly}
+                extraText={t('0 表示不限制充值或兑换发生时间')}
+              />
+              <Form.InputNumber
+                field='min_account_age_days'
+                label={t('账号最小天数')}
+                min={0}
+                step={1}
+                disabled={detailOnly}
+              />
+              <Form.InputNumber
+                field='min_request_count'
+                label={t('最小请求次数')}
+                min={0}
+                step={1}
+                disabled={detailOnly}
+              />
+            </div>
+            <Form.Switch
+              field='count_redemption_as_recharge'
+              label={t('兑换码兑换计入充值条件')}
+              checkedText='｜'
+              uncheckedText='〇'
               disabled={detailOnly}
             />
           </div>

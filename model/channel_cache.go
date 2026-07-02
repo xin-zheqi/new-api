@@ -134,24 +134,10 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 		return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channels[0])
 	}
 
-	uniquePriorities := make(map[int]bool)
-	for _, channelId := range channels {
-		if channel, ok := channelsIDM[channelId]; ok {
-			uniquePriorities[int(channel.GetPriority())] = true
-		} else {
-			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
-		}
+	targetPriority, err := getTargetPriorityFromOrderedChannels(channels, retry)
+	if err != nil {
+		return nil, err
 	}
-	var sortedUniquePriorities []int
-	for priority := range uniquePriorities {
-		sortedUniquePriorities = append(sortedUniquePriorities, priority)
-	}
-	sort.Sort(sort.Reverse(sort.IntSlice(sortedUniquePriorities)))
-
-	if retry >= len(uniquePriorities) {
-		retry = len(uniquePriorities) - 1
-	}
-	targetPriority := int64(sortedUniquePriorities[retry])
 
 	// get the priority for the given retry number
 	var sumWeight = 0
@@ -200,6 +186,38 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	}
 	// return null if no channel is not found
 	return nil, errors.New("channel not found")
+}
+
+// getTargetPriorityFromOrderedChannels relies on InitChannelCache keeping
+// group2model2channels sorted by priority descending. filterChannelsByRequestPath
+// preserves that order, so request-time selection can avoid rebuilding and sorting
+// the unique priority set on every model call.
+func getTargetPriorityFromOrderedChannels(channels []int, retry int) (int64, error) {
+	var lastPriority int64
+	var fallbackPriority int64
+	hasPriority := false
+	uniqueIndex := 0
+	for _, channelId := range channels {
+		channel, ok := channelsIDM[channelId]
+		if !ok {
+			return 0, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
+		}
+		priority := channel.GetPriority()
+		if hasPriority && priority == lastPriority {
+			continue
+		}
+		if uniqueIndex == retry {
+			return priority, nil
+		}
+		hasPriority = true
+		lastPriority = priority
+		fallbackPriority = priority
+		uniqueIndex++
+	}
+	if !hasPriority {
+		return 0, errors.New("channel priority not found")
+	}
+	return fallbackPriority, nil
 }
 
 // filterChannelsByRequestPath restricts candidates by request path. Only Advanced

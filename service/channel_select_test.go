@@ -119,6 +119,27 @@ func TestCacheGetRandomSatisfiedChannelMultiGroupUsesFirstMatchingGroup(t *testi
 	require.Equal(t, "default", selectedGroup)
 }
 
+func TestCacheGetRandomSatisfiedChannelAutoGroupUsesDefaultRoute(t *testing.T) {
+	db := setupChannelSelectTestDB(t)
+	seedChannelSelectAbility(t, db, 1, "default", "same-model")
+	model.InitChannelCache()
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+
+	retry := 0
+	channel, selectedGroup, err := CacheGetRandomSatisfiedChannel(&RetryParam{
+		Ctx:        ctx,
+		TokenGroup: "auto",
+		ModelName:  "same-model",
+		Retry:      &retry,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, 1, channel.Id)
+	require.Equal(t, "default", selectedGroup)
+}
+
 func TestCacheGetRandomSatisfiedChannelMultiGroupFallsThroughByOrder(t *testing.T) {
 	db := setupChannelSelectTestDB(t)
 	seedChannelSelectAbility(t, db, 2, "vip", "vip-only-model")
@@ -264,5 +285,78 @@ func TestCacheGetRandomSatisfiedChannelMultiGroupWithoutCrossRetryStaysOnGroup(t
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	require.Equal(t, 1, channel.Id)
+	require.Equal(t, "default", selectedGroup)
+}
+
+func TestCacheGetRandomSatisfiedChannelRespectsPriorityOrder(t *testing.T) {
+	db := setupChannelSelectTestDB(t)
+	highPriority := int64(10)
+	lowPriority := int64(1)
+	weight := uint(1)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:       11,
+		Type:     constant.ChannelTypeOpenAI,
+		Key:      "priority-high",
+		Status:   common.ChannelStatusEnabled,
+		Name:     "priority-high",
+		Group:    "default",
+		Models:   "same-model",
+		Priority: &highPriority,
+		Weight:   &weight,
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group:     "default",
+		Model:     "same-model",
+		ChannelId: 11,
+		Enabled:   true,
+		Priority:  &highPriority,
+		Weight:    weight,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:       12,
+		Type:     constant.ChannelTypeOpenAI,
+		Key:      "priority-low",
+		Status:   common.ChannelStatusEnabled,
+		Name:     "priority-low",
+		Group:    "default",
+		Models:   "same-model",
+		Priority: &lowPriority,
+		Weight:   &weight,
+	}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group:     "default",
+		Model:     "same-model",
+		ChannelId: 12,
+		Enabled:   true,
+		Priority:  &lowPriority,
+		Weight:    weight,
+	}).Error)
+	model.InitChannelCache()
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+
+	retry := 0
+	channel, selectedGroup, err := CacheGetRandomSatisfiedChannel(&RetryParam{
+		Ctx:        ctx,
+		TokenGroup: "default",
+		ModelName:  "same-model",
+		Retry:      &retry,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, 11, channel.Id)
+	require.Equal(t, "default", selectedGroup)
+
+	retry = 1
+	channel, selectedGroup, err = CacheGetRandomSatisfiedChannel(&RetryParam{
+		Ctx:        ctx,
+		TokenGroup: "default",
+		ModelName:  "same-model",
+		Retry:      &retry,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, 12, channel.Id)
 	require.Equal(t, "default", selectedGroup)
 }

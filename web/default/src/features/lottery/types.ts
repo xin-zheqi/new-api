@@ -20,14 +20,6 @@ export type LotteryMode = 'once' | 'scheduled'
 
 export type LotterySettings = {
   enabled: boolean
-  require_recharge: boolean
-  min_recharge_amount: number
-  recharge_window_days: number
-  count_redemption_as_recharge: boolean
-  min_account_age_days: number
-  min_request_count: number
-  require_email_verified: boolean
-  eligibility?: LotteryEligibilityStatus
 }
 
 export type LotteryEligibilityIssue = {
@@ -86,6 +78,13 @@ export type LotteryActivity = {
   status: number
   winner_count: number
   prize_per_winner: number
+  require_recharge: boolean
+  min_recharge_amount: number
+  recharge_window_days: number
+  count_redemption_as_recharge: boolean
+  min_account_age_days: number
+  min_request_count: number
+  require_email_verified: boolean
   schedule_weekdays?: number[]
   schedule_start_time?: string
   schedule_end_time?: string
@@ -99,6 +98,7 @@ export type LotteryActivity = {
   can_edit?: boolean
   winners?: LotteryWinner[]
   rounds?: LotteryRoundDetail[]
+  assigned_prize_count?: number
   available_prize_count?: number
   prize_codes?: string[]
   created_at: number
@@ -138,6 +138,13 @@ export type CreateLotteryPayload = {
   mode: LotteryMode
   winner_count: number
   prize_per_winner: number
+  require_recharge: boolean
+  min_recharge_amount: number
+  recharge_window_days: number
+  count_redemption_as_recharge: boolean
+  min_account_age_days: number
+  min_request_count: number
+  require_email_verified: boolean
   registration_start: number
   registration_end: number
   draw_time: number

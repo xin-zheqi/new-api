@@ -351,6 +351,41 @@ func SyncUpstreamModels(c *gin.Context) {
 
 	// 本地缓存：vendorName -> id
 	vendorIDCache := make(map[string]int)
+	localModelNames := make([]string, 0, len(missing)+len(req.Overwrite))
+	localModelNameSet := make(map[string]struct{}, len(missing)+len(req.Overwrite))
+	for _, name := range missing {
+		if name == "" {
+			continue
+		}
+		if _, exists := localModelNameSet[name]; exists {
+			continue
+		}
+		localModelNameSet[name] = struct{}{}
+		localModelNames = append(localModelNames, name)
+	}
+	for _, ow := range req.Overwrite {
+		if ow.ModelName == "" {
+			continue
+		}
+		if _, exists := localModelNameSet[ow.ModelName]; exists {
+			continue
+		}
+		localModelNameSet[ow.ModelName] = struct{}{}
+		localModelNames = append(localModelNames, ow.ModelName)
+	}
+	localModelsByName := make(map[string]model.Model, len(localModelNames))
+	localModelCacheReady := true
+	if len(localModelNames) > 0 {
+		var localModels []model.Model
+		if err := model.DB.Where("model_name IN ?", localModelNames).Find(&localModels).Error; err != nil {
+			common.SysError("failed to preload local model metadata: " + err.Error())
+			localModelCacheReady = false
+		} else {
+			for _, localModel := range localModels {
+				localModelsByName[localModel.ModelName] = localModel
+			}
+		}
+	}
 
 	for _, name := range missing {
 		up, ok := modelByName[name]
@@ -360,8 +395,14 @@ func SyncUpstreamModels(c *gin.Context) {
 		}
 
 		// 若本地已存在且设置为不同步，则跳过（极端情况：缺失列表与本地状态不同步时）
-		var existing model.Model
-		if err := model.DB.Where("model_name = ?", name).First(&existing).Error; err == nil {
+		existing, existingFound := localModelsByName[name]
+		if !localModelCacheReady {
+			existingFound = false
+			if err := model.DB.Where("model_name = ?", name).First(&existing).Error; err == nil {
+				existingFound = true
+			}
+		}
+		if existingFound {
 			if existing.SyncOfficial == 0 {
 				skipped = append(skipped, name)
 				continue
@@ -384,6 +425,9 @@ func SyncUpstreamModels(c *gin.Context) {
 		if err := mi.Insert(); err == nil {
 			createdModels++
 			createdList = append(createdList, name)
+			if localModelCacheReady {
+				localModelsByName[name] = *mi
+			}
 		} else {
 			skipped = append(skipped, name)
 		}
@@ -397,8 +441,14 @@ func SyncUpstreamModels(c *gin.Context) {
 			if !ok {
 				continue
 			}
-			var local model.Model
-			if err := model.DB.Where("model_name = ?", ow.ModelName).First(&local).Error; err != nil {
+			local, localFound := localModelsByName[ow.ModelName]
+			if !localModelCacheReady {
+				localFound = false
+				if err := model.DB.Where("model_name = ?", ow.ModelName).First(&local).Error; err == nil {
+					localFound = true
+				}
+			}
+			if !localFound {
 				continue
 			}
 
@@ -411,6 +461,7 @@ func SyncUpstreamModels(c *gin.Context) {
 			newVendorID := ensureVendorID(up.VendorName, vendorByName, vendorIDCache, &createdVendors)
 
 			// 应用字段覆盖（事务）
+			saved := false
 			_ = model.DB.Transaction(func(tx *gorm.DB) error {
 				needUpdate := false
 				if containsField(ow.Fields, "description") {
@@ -445,8 +496,12 @@ func SyncUpstreamModels(c *gin.Context) {
 				}
 				updatedModels++
 				updatedList = append(updatedList, ow.ModelName)
+				saved = true
 				return nil
 			})
+			if saved && localModelCacheReady {
+				localModelsByName[ow.ModelName] = local
+			}
 		}
 	}
 

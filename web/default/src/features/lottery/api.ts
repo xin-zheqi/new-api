@@ -23,6 +23,7 @@ import type {
   LotteryActivity,
   LotteryDrawStatusFilter,
   LotteryPrize,
+  LotteryRoundDetail,
   LotterySettings,
   PageResponse,
 } from './types'
@@ -69,6 +70,22 @@ export async function getAdminLotteries(params: {
 }) {
   const res = await api.get<ApiResponse<PageResponse<LotteryActivity>>>(
     '/api/lottery/admin/',
+    { params }
+  )
+  return res.data
+}
+
+export async function getAdminLotteryRounds(
+  id: number,
+  params: {
+    p: number
+    page_size: number
+    status?: string
+    keyword?: string
+  }
+) {
+  const res = await api.get<ApiResponse<PageResponse<LotteryRoundDetail>>>(
+    `/api/lottery/admin/${id}/rounds`,
     { params }
   )
   return res.data

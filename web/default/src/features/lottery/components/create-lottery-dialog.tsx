@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { createLottery, updateLottery } from '../api'
 import { defaultLotteryForm, WEEKDAYS } from '../constants'
@@ -84,6 +85,13 @@ export function CreateLotteryDialog(props: {
       mode: lottery.mode,
       winnerCount: lottery.winner_count,
       prizePerWinner: lottery.prize_per_winner,
+      requireRecharge: lottery.require_recharge,
+      minRechargeAmount: lottery.min_recharge_amount,
+      rechargeWindowDays: lottery.recharge_window_days,
+      countRedemptionAsRecharge: lottery.count_redemption_as_recharge,
+      minAccountAgeDays: lottery.min_account_age_days,
+      minRequestCount: lottery.min_request_count,
+      requireEmailVerified: lottery.require_email_verified,
       registrationStart: toDateTimeLocal(lottery.round?.registration_start),
       registrationEnd: toDateTimeLocal(lottery.round?.registration_end),
       drawTime: toDateTimeLocal(lottery.round?.draw_time),
@@ -156,6 +164,13 @@ export function CreateLotteryDialog(props: {
       mode: form.mode,
       winner_count: form.winnerCount,
       prize_per_winner: form.prizePerWinner,
+      require_recharge: form.requireRecharge,
+      min_recharge_amount: form.minRechargeAmount,
+      recharge_window_days: form.rechargeWindowDays,
+      count_redemption_as_recharge: form.countRedemptionAsRecharge,
+      min_account_age_days: form.minAccountAgeDays,
+      min_request_count: form.minRequestCount,
+      require_email_verified: form.requireEmailVerified,
       registration_start: toUnixSeconds(form.registrationStart),
       registration_end: toUnixSeconds(form.registrationEnd),
       draw_time: toUnixSeconds(form.drawTime),
@@ -259,6 +274,123 @@ export function CreateLotteryDialog(props: {
                 }
               />
             </Field>
+            </div>
+          </section>
+
+          <section className='flex flex-col gap-3'>
+            <div>
+              <h3 className='text-sm font-medium'>{t('Participation conditions')}</h3>
+              <p className='text-muted-foreground text-sm'>
+                {t('These conditions apply only to this draw activity.')}
+              </p>
+            </div>
+            <div className='grid gap-4 lg:grid-cols-[1.2fr_0.8fr]'>
+              <div className='border-input bg-muted/20 flex flex-col gap-4 rounded-xl border p-4'>
+                <div className='flex items-start justify-between gap-3'>
+                  <div className='min-w-0'>
+                    <div className='text-sm font-medium'>{t('Recharge requirement')}</div>
+                    <div className='text-muted-foreground text-sm'>
+                      {t('Only users with successful recharge records can join this draw.')}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={form.requireRecharge}
+                    disabled={readOnly}
+                    onCheckedChange={(checked) => update('requireRecharge', checked)}
+                  />
+                </div>
+                <div className='grid gap-3 sm:grid-cols-2'>
+                  <Field
+                    label={t('Minimum recharge amount')}
+                    hint={t('Set 0 to accept any successful recharge.')}
+                  >
+                    <Input
+                      type='number'
+                      min={0}
+                      value={form.minRechargeAmount}
+                      disabled={readOnly}
+                      onChange={(event) =>
+                        update('minRechargeAmount', Number(event.target.value) || 0)
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label={t('Recharge validity window')}
+                    hint={t('Set 0 to allow recharge records from any time. Unit: days.')}
+                  >
+                    <Input
+                      type='number'
+                      min={0}
+                      value={form.rechargeWindowDays}
+                      disabled={readOnly}
+                      onChange={(event) =>
+                        update('rechargeWindowDays', Number(event.target.value) || 0)
+                      }
+                    />
+                  </Field>
+                </div>
+                <div className='border-input bg-background flex items-center justify-between gap-3 rounded-lg border p-3'>
+                  <div className='min-w-0'>
+                    <div className='text-sm font-medium'>
+                      {t('Count redemption codes as recharge')}
+                    </div>
+                    <div className='text-muted-foreground text-sm'>
+                      {t('When enabled, subscription and quota redemption codes can satisfy recharge conditions for this draw.')}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={form.countRedemptionAsRecharge}
+                    disabled={readOnly}
+                    onCheckedChange={(checked) =>
+                      update('countRedemptionAsRecharge', checked)
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className='border-input bg-muted/20 flex flex-col gap-4 rounded-xl border p-4'>
+                <div className='flex items-start justify-between gap-3'>
+                  <div className='min-w-0'>
+                    <div className='text-sm font-medium'>{t('Email condition')}</div>
+                    <div className='text-muted-foreground text-sm'>
+                      {t('Require users to bind an email before joining this draw.')}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={form.requireEmailVerified}
+                    disabled={readOnly}
+                    onCheckedChange={(checked) => update('requireEmailVerified', checked)}
+                  />
+                </div>
+                <Field
+                  label={t('Minimum account age')}
+                  hint={t('Days since registration required to join.')}
+                >
+                  <Input
+                    type='number'
+                    min={0}
+                    value={form.minAccountAgeDays}
+                    disabled={readOnly}
+                    onChange={(event) =>
+                      update('minAccountAgeDays', Number(event.target.value) || 0)
+                    }
+                  />
+                </Field>
+                <Field
+                  label={t('Minimum request count')}
+                  hint={t('Require real API usage before joining draws.')}
+                >
+                  <Input
+                    type='number'
+                    min={0}
+                    value={form.minRequestCount}
+                    disabled={readOnly}
+                    onChange={(event) =>
+                      update('minRequestCount', Number(event.target.value) || 0)
+                    }
+                  />
+                </Field>
+              </div>
             </div>
           </section>
 

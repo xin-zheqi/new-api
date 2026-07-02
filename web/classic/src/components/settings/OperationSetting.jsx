@@ -83,13 +83,6 @@ const OperationSetting = () => {
 
     /* 抽奖设置 */
     LotteryEnabled: false,
-    LotteryRequireRecharge: false,
-    LotteryMinRechargeAmount: 0,
-    LotteryRechargeWindowDays: 0,
-    LotteryCountRedemptionAsRecharge: false,
-    LotteryMinAccountAgeDays: 0,
-    LotteryMinRequestCount: 0,
-    LotteryRequireEmailVerified: false,
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,

@@ -1,21 +1,45 @@
 package helper
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
+	commonroot "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/relay/common"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
-func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Request) error {
+const modelMappingCacheContextKey = "_model_mapping_cache"
+
+type modelMappingCache struct {
+	raw    string
+	values map[string]string
+}
+
+func getRequestModelMapping(c *gin.Context, raw string) (map[string]string, error) {
+	if cached, ok := c.Get(modelMappingCacheContextKey); ok {
+		if mappingCache, ok := cached.(modelMappingCache); ok && mappingCache.raw == raw {
+			return mappingCache.values, nil
+		}
+	}
+	modelMap := make(map[string]string)
+	if err := commonroot.Unmarshal([]byte(raw), &modelMap); err != nil {
+		return nil, err
+	}
+	c.Set(modelMappingCacheContextKey, modelMappingCache{
+		raw:    raw,
+		values: modelMap,
+	})
+	return modelMap, nil
+}
+
+func ModelMappedHelper(c *gin.Context, info *relaycommon.RelayInfo, request dto.Request) error {
 	if info.ChannelMeta == nil {
-		info.ChannelMeta = &common.ChannelMeta{}
+		info.ChannelMeta = &relaycommon.ChannelMeta{}
 	}
 
 	isResponsesCompact := info.RelayMode == relayconstant.RelayModeResponsesCompact
@@ -28,8 +52,7 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 	// map model name
 	modelMapping := c.GetString("model_mapping")
 	if modelMapping != "" && modelMapping != "{}" {
-		modelMap := make(map[string]string)
-		err := json.Unmarshal([]byte(modelMapping), &modelMap)
+		modelMap, err := getRequestModelMapping(c, modelMapping)
 		if err != nil {
 			return fmt.Errorf("unmarshal_model_mapping_failed")
 		}

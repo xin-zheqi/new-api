@@ -18,13 +18,6 @@ func enableLotteryForTest(t *testing.T) {
 		common.OptionMap = map[string]string{}
 	}
 	common.OptionMap["LotteryEnabled"] = "true"
-	common.OptionMap["LotteryRequireRecharge"] = "false"
-	common.OptionMap["LotteryMinRechargeAmount"] = "0"
-	common.OptionMap["LotteryRechargeWindowDays"] = "0"
-	common.OptionMap["LotteryCountRedemptionAsRecharge"] = "false"
-	common.OptionMap["LotteryMinAccountAgeDays"] = "0"
-	common.OptionMap["LotteryMinRequestCount"] = "0"
-	common.OptionMap["LotteryRequireEmailVerified"] = "false"
 	common.OptionMapRWMutex.Unlock()
 }
 
@@ -184,9 +177,6 @@ func TestCreateLotteryAllowsDrawTimeEqualRegistrationEnd(t *testing.T) {
 func TestJoinLotteryRequiresRechargeWhenConfigured(t *testing.T) {
 	truncateTables(t)
 	enableLotteryForTest(t)
-	common.OptionMapRWMutex.Lock()
-	common.OptionMap["LotteryRequireRecharge"] = "true"
-	common.OptionMapRWMutex.Unlock()
 
 	insertLotteryUser(t, 101)
 	now := common.GetTimestamp()
@@ -196,6 +186,7 @@ func TestJoinLotteryRequiresRechargeWhenConfigured(t *testing.T) {
 		Mode:              LotteryModeOnce,
 		WinnerCount:       1,
 		PrizePerWinner:    2,
+		RequireRecharge:   true,
 		RegistrationStart: now - 60,
 		RegistrationEnd:   now + 120,
 		DrawTime:          now + 180,
@@ -213,9 +204,6 @@ func TestJoinLotteryRequiresRechargeWhenConfigured(t *testing.T) {
 func TestJoinLotteryRedemptionDoesNotCountAsRechargeByDefault(t *testing.T) {
 	truncateTables(t)
 	enableLotteryForTest(t)
-	common.OptionMapRWMutex.Lock()
-	common.OptionMap["LotteryRequireRecharge"] = "true"
-	common.OptionMapRWMutex.Unlock()
 
 	insertLotteryUser(t, 111)
 	successfulLotteryRedemptionForTest(t, 111, int(common.QuotaPerUnit*10), common.GetTimestamp())
@@ -227,6 +215,7 @@ func TestJoinLotteryRedemptionDoesNotCountAsRechargeByDefault(t *testing.T) {
 		Mode:              LotteryModeOnce,
 		WinnerCount:       1,
 		PrizePerWinner:    1,
+		RequireRecharge:   true,
 		RegistrationStart: now - 60,
 		RegistrationEnd:   now + 120,
 		DrawTime:          now + 180,
@@ -241,25 +230,24 @@ func TestJoinLotteryRedemptionDoesNotCountAsRechargeByDefault(t *testing.T) {
 func TestJoinLotteryCanUseRedemptionAsRechargeWhenEnabled(t *testing.T) {
 	truncateTables(t)
 	enableLotteryForTest(t)
-	common.OptionMapRWMutex.Lock()
-	common.OptionMap["LotteryMinRechargeAmount"] = "10"
-	common.OptionMap["LotteryCountRedemptionAsRecharge"] = "true"
-	common.OptionMapRWMutex.Unlock()
 
 	insertLotteryUser(t, 112)
 	successfulLotteryRedemptionForTest(t, 112, int(common.QuotaPerUnit*12), common.GetTimestamp())
 
 	now := common.GetTimestamp()
 	lottery, err := CreateLottery(LotteryCreateRequest{
-		Title:             "Recharge gate redeem",
-		PrizeName:         "Gift",
-		Mode:              LotteryModeOnce,
-		WinnerCount:       1,
-		PrizePerWinner:    1,
-		RegistrationStart: now - 60,
-		RegistrationEnd:   now + 120,
-		DrawTime:          now + 180,
-		PrizeCodes:        []string{"A"},
+		Title:                     "Recharge gate redeem",
+		PrizeName:                 "Gift",
+		Mode:                      LotteryModeOnce,
+		WinnerCount:               1,
+		PrizePerWinner:            1,
+		RequireRecharge:           true,
+		MinRechargeAmount:         10,
+		CountRedemptionAsRecharge: true,
+		RegistrationStart:         now - 60,
+		RegistrationEnd:           now + 120,
+		DrawTime:                  now + 180,
+		PrizeCodes:                []string{"A"},
 	}, 1)
 	require.NoError(t, err)
 
@@ -269,10 +257,6 @@ func TestJoinLotteryCanUseRedemptionAsRechargeWhenEnabled(t *testing.T) {
 func TestJoinLotteryRechargeWindowFiltersOutExpiredRecharge(t *testing.T) {
 	truncateTables(t)
 	enableLotteryForTest(t)
-	common.OptionMapRWMutex.Lock()
-	common.OptionMap["LotteryMinRechargeAmount"] = "5"
-	common.OptionMap["LotteryRechargeWindowDays"] = "7"
-	common.OptionMapRWMutex.Unlock()
 
 	insertLotteryUser(t, 113)
 	topUp := &TopUp{
@@ -290,15 +274,18 @@ func TestJoinLotteryRechargeWindowFiltersOutExpiredRecharge(t *testing.T) {
 
 	now := common.GetTimestamp()
 	lottery, err := CreateLottery(LotteryCreateRequest{
-		Title:             "Recharge gate window",
-		PrizeName:         "Gift",
-		Mode:              LotteryModeOnce,
-		WinnerCount:       1,
-		PrizePerWinner:    1,
-		RegistrationStart: now - 60,
-		RegistrationEnd:   now + 120,
-		DrawTime:          now + 180,
-		PrizeCodes:        []string{"A"},
+		Title:              "Recharge gate window",
+		PrizeName:          "Gift",
+		Mode:               LotteryModeOnce,
+		WinnerCount:        1,
+		PrizePerWinner:     1,
+		RequireRecharge:    true,
+		MinRechargeAmount:  5,
+		RechargeWindowDays: 7,
+		RegistrationStart:  now - 60,
+		RegistrationEnd:    now + 120,
+		DrawTime:           now + 180,
+		PrizeCodes:         []string{"A"},
 	}, 1)
 	require.NoError(t, err)
 
@@ -309,9 +296,6 @@ func TestJoinLotteryRechargeWindowFiltersOutExpiredRecharge(t *testing.T) {
 func TestJoinLotterySubscriptionRedemptionDoesNotCountAsRechargeByDefault(t *testing.T) {
 	truncateTables(t)
 	enableLotteryForTest(t)
-	common.OptionMapRWMutex.Lock()
-	common.OptionMap["LotteryRequireRecharge"] = "true"
-	common.OptionMapRWMutex.Unlock()
 
 	insertLotteryUser(t, 114)
 	successfulLotterySubscriptionRedemptionForTest(t, 114, 8001, 29.9, common.GetTimestamp())
@@ -323,6 +307,7 @@ func TestJoinLotterySubscriptionRedemptionDoesNotCountAsRechargeByDefault(t *tes
 		Mode:              LotteryModeOnce,
 		WinnerCount:       1,
 		PrizePerWinner:    1,
+		RequireRecharge:   true,
 		RegistrationStart: now - 60,
 		RegistrationEnd:   now + 120,
 		DrawTime:          now + 180,
@@ -337,25 +322,24 @@ func TestJoinLotterySubscriptionRedemptionDoesNotCountAsRechargeByDefault(t *tes
 func TestJoinLotteryCanUseSubscriptionRedemptionAsRechargeWhenEnabled(t *testing.T) {
 	truncateTables(t)
 	enableLotteryForTest(t)
-	common.OptionMapRWMutex.Lock()
-	common.OptionMap["LotteryMinRechargeAmount"] = "20"
-	common.OptionMap["LotteryCountRedemptionAsRecharge"] = "true"
-	common.OptionMapRWMutex.Unlock()
 
 	insertLotteryUser(t, 115)
 	successfulLotterySubscriptionRedemptionForTest(t, 115, 8002, 29.9, common.GetTimestamp())
 
 	now := common.GetTimestamp()
 	lottery, err := CreateLottery(LotteryCreateRequest{
-		Title:             "Subscription redeem enabled",
-		PrizeName:         "Gift",
-		Mode:              LotteryModeOnce,
-		WinnerCount:       1,
-		PrizePerWinner:    1,
-		RegistrationStart: now - 60,
-		RegistrationEnd:   now + 120,
-		DrawTime:          now + 180,
-		PrizeCodes:        []string{"A"},
+		Title:                     "Subscription redeem enabled",
+		PrizeName:                 "Gift",
+		Mode:                      LotteryModeOnce,
+		WinnerCount:               1,
+		PrizePerWinner:            1,
+		RequireRecharge:           true,
+		MinRechargeAmount:         20,
+		CountRedemptionAsRecharge: true,
+		RegistrationStart:         now - 60,
+		RegistrationEnd:           now + 120,
+		DrawTime:                  now + 180,
+		PrizeCodes:                []string{"A"},
 	}, 1)
 	require.NoError(t, err)
 
@@ -365,25 +349,24 @@ func TestJoinLotteryCanUseSubscriptionRedemptionAsRechargeWhenEnabled(t *testing
 func TestJoinLotterySubscriptionRedemptionUsesPlanPriceAmount(t *testing.T) {
 	truncateTables(t)
 	enableLotteryForTest(t)
-	common.OptionMapRWMutex.Lock()
-	common.OptionMap["LotteryMinRechargeAmount"] = "30"
-	common.OptionMap["LotteryCountRedemptionAsRecharge"] = "true"
-	common.OptionMapRWMutex.Unlock()
 
 	insertLotteryUser(t, 116)
 	successfulLotterySubscriptionRedemptionForTest(t, 116, 8003, 29.9, common.GetTimestamp())
 
 	now := common.GetTimestamp()
 	lottery, err := CreateLottery(LotteryCreateRequest{
-		Title:             "Subscription redeem threshold",
-		PrizeName:         "Gift",
-		Mode:              LotteryModeOnce,
-		WinnerCount:       1,
-		PrizePerWinner:    1,
-		RegistrationStart: now - 60,
-		RegistrationEnd:   now + 120,
-		DrawTime:          now + 180,
-		PrizeCodes:        []string{"A"},
+		Title:                     "Subscription redeem threshold",
+		PrizeName:                 "Gift",
+		Mode:                      LotteryModeOnce,
+		WinnerCount:               1,
+		PrizePerWinner:            1,
+		RequireRecharge:           true,
+		MinRechargeAmount:         30,
+		CountRedemptionAsRecharge: true,
+		RegistrationStart:         now - 60,
+		RegistrationEnd:           now + 120,
+		DrawTime:                  now + 180,
+		PrizeCodes:                []string{"A"},
 	}, 1)
 	require.NoError(t, err)
 
@@ -392,7 +375,11 @@ func TestJoinLotterySubscriptionRedemptionUsesPlanPriceAmount(t *testing.T) {
 
 	var user User
 	require.NoError(t, DB.Where("id = ?", 116).First(&user).Error)
-	eligibility, err := EvaluateLotteryEligibility(DB, user, LotterySettingsFromOptions())
+	eligibility, err := EvaluateLotteryEligibility(DB, user, LotteryEligibilityRules{
+		RequireRecharge:           true,
+		MinRechargeAmount:         30,
+		CountRedemptionAsRecharge: true,
+	})
 	require.NoError(t, err)
 	require.NotNil(t, eligibility)
 	require.False(t, eligibility.Eligible)
@@ -405,26 +392,25 @@ func TestJoinLotterySubscriptionRedemptionUsesPlanPriceAmount(t *testing.T) {
 func TestJoinLotteryRechargeWindowFiltersOutExpiredSubscriptionRedemption(t *testing.T) {
 	truncateTables(t)
 	enableLotteryForTest(t)
-	common.OptionMapRWMutex.Lock()
-	common.OptionMap["LotteryMinRechargeAmount"] = "10"
-	common.OptionMap["LotteryRechargeWindowDays"] = "7"
-	common.OptionMap["LotteryCountRedemptionAsRecharge"] = "true"
-	common.OptionMapRWMutex.Unlock()
 
 	insertLotteryUser(t, 117)
 	successfulLotterySubscriptionRedemptionForTest(t, 117, 8004, 29.9, common.GetTimestamp()-15*86400)
 
 	now := common.GetTimestamp()
 	lottery, err := CreateLottery(LotteryCreateRequest{
-		Title:             "Subscription redeem window",
-		PrizeName:         "Gift",
-		Mode:              LotteryModeOnce,
-		WinnerCount:       1,
-		PrizePerWinner:    1,
-		RegistrationStart: now - 60,
-		RegistrationEnd:   now + 120,
-		DrawTime:          now + 180,
-		PrizeCodes:        []string{"A"},
+		Title:                     "Subscription redeem window",
+		PrizeName:                 "Gift",
+		Mode:                      LotteryModeOnce,
+		WinnerCount:               1,
+		PrizePerWinner:            1,
+		RequireRecharge:           true,
+		MinRechargeAmount:         10,
+		RechargeWindowDays:        7,
+		CountRedemptionAsRecharge: true,
+		RegistrationStart:         now - 60,
+		RegistrationEnd:           now + 120,
+		DrawTime:                  now + 180,
+		PrizeCodes:                []string{"A"},
 	}, 1)
 	require.NoError(t, err)
 
@@ -510,6 +496,7 @@ func TestLotteryPublicViewDoesNotExposeWinnerCodes(t *testing.T) {
 	assert.Empty(t, publicView.Winners[0].Prizes)
 	assert.Empty(t, publicView.Winners[0].Username)
 	assert.Zero(t, publicView.Winners[0].UserId)
+	assert.Zero(t, publicView.AssignedPrizeCount)
 	assert.Zero(t, publicView.AvailablePrizeCount)
 
 	adminView, err := GetAdminLottery(lottery.Id)
@@ -518,6 +505,7 @@ func TestLotteryPublicViewDoesNotExposeWinnerCodes(t *testing.T) {
 	assert.Len(t, adminView.Winners[0].Prizes, 1)
 	assert.Equal(t, "lottery_user_251", adminView.Winners[0].Username)
 	assert.Equal(t, 251, adminView.Winners[0].UserId)
+	assert.EqualValues(t, 1, adminView.AssignedPrizeCount)
 	assert.EqualValues(t, 1, adminView.AvailablePrizeCount)
 }
 

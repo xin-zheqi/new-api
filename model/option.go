@@ -54,13 +54,6 @@ func InitOptionMap() {
 	common.OptionMap["TaskEnabled"] = strconv.FormatBool(common.TaskEnabled)
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
 	common.OptionMap["LotteryEnabled"] = "false"
-	common.OptionMap["LotteryRequireRecharge"] = "false"
-	common.OptionMap["LotteryMinRechargeAmount"] = "0"
-	common.OptionMap["LotteryRechargeWindowDays"] = "0"
-	common.OptionMap["LotteryCountRedemptionAsRecharge"] = "false"
-	common.OptionMap["LotteryMinAccountAgeDays"] = "0"
-	common.OptionMap["LotteryMinRequestCount"] = "0"
-	common.OptionMap["LotteryRequireEmailVerified"] = "false"
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
 	common.OptionMap["EmailAliasRestrictionEnabled"] = strconv.FormatBool(common.EmailAliasRestrictionEnabled)

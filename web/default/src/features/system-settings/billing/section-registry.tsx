@@ -207,13 +207,6 @@ const BILLING_SECTIONS = [
       <LotterySettingsSection
         defaultValues={{
           enabled: settings.LotteryEnabled,
-          requireRecharge: settings.LotteryRequireRecharge,
-          minRechargeAmount: settings.LotteryMinRechargeAmount,
-          rechargeWindowDays: settings.LotteryRechargeWindowDays,
-          countRedemptionAsRecharge: settings.LotteryCountRedemptionAsRecharge,
-          minAccountAgeDays: settings.LotteryMinAccountAgeDays,
-          minRequestCount: settings.LotteryMinRequestCount,
-          requireEmailVerified: settings.LotteryRequireEmailVerified,
         }}
       />
     ),

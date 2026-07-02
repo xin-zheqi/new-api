@@ -149,19 +149,19 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
+	tokenGroups := model.NormalizeTokenGroupList(param.TokenGroup)
 
-	if TokenGroupIsAuto(param.TokenGroup) {
+	if len(tokenGroups) == 1 && tokenGroups[0] == "auto" {
 		if len(setting.GetAutoGroups()) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
 		}
-		autoGroups := GetTokenRouteGroups(param.TokenGroup, userGroup)
+		autoGroups := GetUserAutoGroup(userGroup)
 		channel, selectGroup, err = getChannelFromOrderedGroups(param, autoGroups)
 		if err != nil {
 			return nil, selectGroup, err
 		}
-	} else if TokenGroupIsMulti(param.TokenGroup) {
-		routeGroups := GetTokenRouteGroups(param.TokenGroup, userGroup)
-		channel, selectGroup, err = getChannelFromOrderedGroups(param, routeGroups)
+	} else if len(tokenGroups) > 1 {
+		channel, selectGroup, err = getChannelFromOrderedGroups(param, tokenGroups)
 		if err != nil {
 			return nil, selectGroup, err
 		}

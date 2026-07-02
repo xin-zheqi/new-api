@@ -18,7 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Edit3, Eye, ListFilter, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import {
+  Edit3,
+  Eye,
+  ListFilter,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Trophy,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -46,7 +54,6 @@ import {
 import type {
   LotteryActivity,
   LotteryDrawStatusFilter,
-  LotteryRoundDetail,
 } from '../types'
 import {
   formatTime,
@@ -55,6 +62,7 @@ import {
   isRoundUndrawn,
 } from '../utils'
 import { CreateLotteryDialog } from './create-lottery-dialog'
+import { LotteryResultsDialog } from './lottery-results-dialog'
 
 export function LotteryAdmin() {
   const { t } = useTranslation()
@@ -66,6 +74,7 @@ export function LotteryAdmin() {
   const [drawStatus, setDrawStatus] = useState<LotteryDrawStatusFilter>('all')
   const [editingLottery, setEditingLottery] = useState<LotteryActivity | null>(null)
   const [detailLottery, setDetailLottery] = useState<LotteryActivity | null>(null)
+  const [resultsLottery, setResultsLottery] = useState<LotteryActivity | null>(null)
 
   const adminQuery = useQuery({
     queryKey: ['admin-lotteries', keyword, mode, status, drawStatus],
@@ -177,6 +186,7 @@ export function LotteryAdmin() {
             }}
             onEdit={() => setEditingLottery(lottery)}
             onDetail={() => setDetailLottery(lottery)}
+            onResults={() => setResultsLottery(lottery)}
             onDelete={() => deleteMutation.mutate(lottery.id)}
           />
         ))}
@@ -198,6 +208,13 @@ export function LotteryAdmin() {
         lottery={detailLottery}
         readOnly
       />
+      <LotteryResultsDialog
+        open={Boolean(resultsLottery)}
+        onOpenChange={(open) => {
+          if (!open) setResultsLottery(null)
+        }}
+        lottery={resultsLottery}
+      />
     </div>
   )
 }
@@ -209,12 +226,11 @@ function AdminLotteryRow(props: {
   onDraw: () => void
   onEdit: () => void
   onDetail: () => void
+  onResults: () => void
   onDelete: () => void
 }) {
   const { t } = useTranslation()
   const round = props.lottery.round
-  const rounds = props.lottery.rounds ?? []
-  const winners = props.lottery.winners ?? []
   const deleted = props.lottery.status === 3
   const canDraw = Boolean(
     round && (round.status === 'pending' || round.status === 'open')
@@ -244,6 +260,14 @@ function AdminLotteryRow(props: {
                 count: props.lottery.participant_count,
               })}
             </div>
+            <div className='mt-2 flex flex-wrap gap-2 text-xs'>
+              <Badge variant='secondary'>
+                {t('Assigned prizes')}: {props.lottery.assigned_prize_count ?? 0}
+              </Badge>
+              <Badge variant='outline'>
+                {t('Unassigned prizes')}: {props.lottery.available_prize_count ?? 0}
+              </Badge>
+            </div>
           </div>
           <div className='flex flex-wrap gap-2'>
             <Button variant='outline' disabled={props.updating || deleted} onClick={props.onToggle}>
@@ -264,6 +288,10 @@ function AdminLotteryRow(props: {
                 {t('View details')}
               </Button>
             )}
+            <Button variant='outline' onClick={props.onResults}>
+              <Trophy data-icon='inline-start' />
+              {t('View winning details')}
+            </Button>
             <AlertDialog open={drawConfirmOpen} onOpenChange={setDrawConfirmOpen}>
               <AlertDialogTrigger
                 render={
@@ -333,85 +361,7 @@ function AdminLotteryRow(props: {
             <span>{formatTime(round.draw_time)}</span>
           </div>
         )}
-        {rounds.length > 0 && (
-          <div className='flex flex-col gap-2'>
-            <span className='text-sm font-medium'>{t('Recent rounds')}</span>
-            <div className='grid gap-2'>
-              {rounds.map((detail) => (
-                <AdminRoundDetail key={detail.round.id} detail={detail} />
-              ))}
-            </div>
-          </div>
-        )}
-        {rounds.length === 0 && winners.length > 0 && (
-          <div className='flex flex-col gap-2'>
-            <span className='text-sm font-medium'>{t('Winning users')}</span>
-            <div className='grid gap-2'>
-              {winners.map((winner, index) => (
-                <div
-                  key={
-                    winner.user_id ?? `${winner.masked_name}-${winner.won_at}-${index}`
-                  }
-                  className='bg-muted/40 rounded-lg p-3 text-sm'
-                >
-                  <div className='font-medium'>
-                    {winner.username || winner.masked_name} ({winner.masked_name})
-                  </div>
-                  {winner.prizes && winner.prizes.length > 0 && (
-                    <div className='mt-1 font-mono text-xs break-all'>
-                      {winner.prizes.join(', ')}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
-  )
-}
-
-function AdminRoundDetail(props: { detail: LotteryRoundDetail }) {
-  const { t } = useTranslation()
-  const round = props.detail.round
-
-  return (
-    <div className='bg-muted/40 rounded-lg p-3 text-sm'>
-      <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
-        <div className='flex flex-wrap items-center gap-2'>
-          <Badge variant='outline' className='gap-1.5'>
-            <span className={`size-2 rounded-full ${getRoundStatusDotClass(round.status)}`} />
-            {getRoundStatusLabel(round.status, t)}
-          </Badge>
-          <span className='text-muted-foreground'>{formatTime(round.draw_time)}</span>
-        </div>
-        <span className='text-muted-foreground'>
-          {t('{{count}} total', {
-            count: props.detail.participant_count,
-          })}
-        </span>
-      </div>
-
-      {props.detail.winners && props.detail.winners.length > 0 && (
-        <div className='mt-3 grid gap-2'>
-          {props.detail.winners.map((winner, index) => (
-            <div
-              key={winner.user_id ?? `${winner.masked_name}-${winner.won_at}-${index}`}
-              className='rounded-md border p-2'
-            >
-              <div className='font-medium'>
-                {winner.username || winner.masked_name} ({winner.masked_name})
-              </div>
-              {winner.prizes && winner.prizes.length > 0 && (
-                <div className='mt-1 font-mono text-xs break-all'>
-                  {winner.prizes.join(', ')}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   )
 }

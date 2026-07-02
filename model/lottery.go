@@ -188,11 +188,18 @@ type LotteryParticipantView struct {
 }
 
 type LotteryWinnerView struct {
-	UserId     int      `json:"user_id,omitempty"`
-	Username   string   `json:"username,omitempty"`
-	MaskedName string   `json:"masked_name"`
-	WonAt      int64    `json:"won_at"`
-	Prizes     []string `json:"prizes,omitempty"`
+	UserId       int                      `json:"user_id,omitempty"`
+	Username     string                   `json:"username,omitempty"`
+	MaskedName   string                   `json:"masked_name"`
+	WonAt        int64                    `json:"won_at"`
+	Prizes       []string                 `json:"prizes,omitempty"`
+	PrizeDetails []LotteryWinnerPrizeView `json:"prize_details,omitempty"`
+}
+
+type LotteryWinnerPrizeView struct {
+	Id        int    `json:"id"`
+	PrizeName string `json:"prize_name"`
+	Code      string `json:"code"`
 }
 
 type LotteryRoundDetailView struct {
@@ -1297,6 +1304,11 @@ func getLotteryWinners(tx *gorm.DB, roundId int, includeCodes bool) ([]LotteryWi
 			}
 			for _, prize := range prizes {
 				winner.Prizes = append(winner.Prizes, prize.Code)
+				winner.PrizeDetails = append(winner.PrizeDetails, LotteryWinnerPrizeView{
+					Id:        prize.Id,
+					PrizeName: prize.PrizeName,
+					Code:      prize.Code,
+				})
 			}
 		}
 		winners = append(winners, winner)
@@ -1343,7 +1355,7 @@ func buildLotteryRoundDetailViews(tx *gorm.DB, rounds []LotteryRound, includeCod
 			return nil, err
 		}
 
-		prizesByRoundAndUser := make(map[int]map[int][]string)
+		prizesByRoundAndUser := make(map[int]map[int][]LotteryWinnerPrizeView)
 		if includeCodes {
 			var prizes []LotteryPrize
 			if err := tx.Where("round_id IN ?", drawnRoundIDs).
@@ -1351,15 +1363,19 @@ func buildLotteryRoundDetailViews(tx *gorm.DB, rounds []LotteryRound, includeCod
 				Find(&prizes).Error; err != nil {
 				return nil, err
 			}
-			prizesByRoundAndUser = make(map[int]map[int][]string, len(prizes))
+			prizesByRoundAndUser = make(map[int]map[int][]LotteryWinnerPrizeView, len(prizes))
 			for i := range prizes {
 				prize := prizes[i]
 				userPrizes, ok := prizesByRoundAndUser[prize.RoundId]
 				if !ok {
-					userPrizes = make(map[int][]string)
+					userPrizes = make(map[int][]LotteryWinnerPrizeView)
 					prizesByRoundAndUser[prize.RoundId] = userPrizes
 				}
-				userPrizes[prize.WinnerUserId] = append(userPrizes[prize.WinnerUserId], prize.Code)
+				userPrizes[prize.WinnerUserId] = append(userPrizes[prize.WinnerUserId], LotteryWinnerPrizeView{
+					Id:        prize.Id,
+					PrizeName: prize.PrizeName,
+					Code:      prize.Code,
+				})
 			}
 		}
 
@@ -1374,7 +1390,10 @@ func buildLotteryRoundDetailViews(tx *gorm.DB, rounds []LotteryRound, includeCod
 				winner.UserId = entry.UserId
 				winner.Username = entry.Username
 				if userPrizes, ok := prizesByRoundAndUser[entry.RoundId]; ok {
-					winner.Prizes = append(winner.Prizes, userPrizes[entry.UserId]...)
+					winner.PrizeDetails = append(winner.PrizeDetails, userPrizes[entry.UserId]...)
+					for _, prize := range userPrizes[entry.UserId] {
+						winner.Prizes = append(winner.Prizes, prize.Code)
+					}
 				}
 			}
 			winnersByRound[entry.RoundId] = append(winnersByRound[entry.RoundId], winner)

@@ -28,6 +28,24 @@ export function formatTime(value?: number) {
   return new Date(value * 1000).toLocaleString()
 }
 
+export function formatRoundLabel(
+  mode: string | undefined,
+  roundKey: string | undefined,
+  drawTime: number | undefined,
+  t: (key: string) => string
+) {
+  if (mode === 'once') {
+    return t('One-time draw')
+  }
+  if (roundKey && /^\d{8}$/.test(roundKey)) {
+    return `${roundKey.slice(0, 4)}-${roundKey.slice(4, 6)}-${roundKey.slice(6)}`
+  }
+  if (drawTime) {
+    return new Date(drawTime * 1000).toLocaleDateString()
+  }
+  return roundKey || '-'
+}
+
 export function toDateTimeLocal(value?: number) {
   if (!value) return ''
   const date = new Date(value * 1000)

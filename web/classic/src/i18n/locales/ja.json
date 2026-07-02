@@ -3723,6 +3723,12 @@
     "Well-Known URL 必须以 http:// 或 https:// 开头": "Well-Known URLは、http://またはhttps://で始まることが必須です",
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "whsec_xxx のWebhook署名シークレット。機密情報は表示されません",
     "Worker地址": "Workerアドレス",
-    "Worker密钥": "WorkerAPIキー"
+    "Worker密钥": "WorkerAPIキー",
+    "一次性开奖": "単発抽選",
+    "内部轮次标识": "内部抽選回キー",
+    "本轮尚未开奖。": "この回はまだ抽選されていません。",
+    "本轮已开奖，暂无中奖用户。": "この回は抽選済みですが、当選者はいません。",
+    "用户ID": "ユーザー ID",
+    "{{count}} 个奖品": "{{count}} 個の賞品"
   }
 }

@@ -3755,6 +3755,12 @@
     "Well-Known URL 必须以 http:// 或 https:// 开头": "Well-Known URL 必須以 http:// 或 https:// 開頭",
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "whsec_xxx 的 Webhook 簽名密鑰，敏感資訊不顯示",
     "Worker地址": "Worker位址",
-    "Worker密钥": "Worker密鑰"
+    "Worker密钥": "Worker密鑰",
+    "一次性开奖": "一次性開獎",
+    "内部轮次标识": "內部輪次標識",
+    "本轮尚未开奖。": "本輪尚未開獎。",
+    "本轮已开奖，暂无中奖用户。": "本輪已開獎，暫無中獎使用者。",
+    "用户ID": "使用者 ID",
+    "{{count}} 个奖品": "{{count}} 個獎品"
   }
 }

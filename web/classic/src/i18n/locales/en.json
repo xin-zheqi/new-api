@@ -3912,6 +3912,12 @@
     "Well-Known URL 必须以 http:// 或 https:// 开头": "Well-Known URL must start with http:// or https://",
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Webhook signature key for whsec_xxx, sensitive information not displayed",
     "Worker地址": "Worker Address",
-    "Worker密钥": "Worker Key"
+    "Worker密钥": "Worker Key",
+    "一次性开奖": "One-time draw",
+    "内部轮次标识": "Internal round key",
+    "本轮尚未开奖。": "This round has not been drawn yet.",
+    "本轮已开奖，暂无中奖用户。": "This round has been drawn with no winners.",
+    "用户ID": "User ID",
+    "{{count}} 个奖品": "{{count}} prizes"
   }
 }

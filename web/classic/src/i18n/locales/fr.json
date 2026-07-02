@@ -3752,6 +3752,12 @@
     "Well-Known URL 必须以 http:// 或 https:// 开头": "L'URL bien connue doit commencer par http:// ou https://",
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Clé de signature Webhook whsec_xxx, les informations sensibles ne sont pas affichées",
     "Worker地址": "Adresse du Worker",
-    "Worker密钥": "Clé du Worker"
+    "Worker密钥": "Clé du Worker",
+    "一次性开奖": "Tirage unique",
+    "内部轮次标识": "Identifiant interne du tour",
+    "本轮尚未开奖。": "Ce tour n'a pas encore été tiré.",
+    "本轮已开奖，暂无中奖用户。": "Ce tour est terminé sans gagnant.",
+    "用户ID": "ID utilisateur",
+    "{{count}} 个奖品": "{{count}} lots"
   }
 }

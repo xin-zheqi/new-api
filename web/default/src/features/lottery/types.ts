@@ -61,6 +61,13 @@ export type LotteryWinner = {
   masked_name: string
   won_at: number
   prizes?: string[]
+  prize_details?: LotteryWinnerPrize[]
+}
+
+export type LotteryWinnerPrize = {
+  id: number
+  prize_name: string
+  code: string
 }
 
 export type LotteryRoundDetail = {

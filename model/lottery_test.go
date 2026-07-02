@@ -503,10 +503,24 @@ func TestLotteryPublicViewDoesNotExposeWinnerCodes(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, adminView.Winners, 1)
 	assert.Len(t, adminView.Winners[0].Prizes, 1)
+	require.Len(t, adminView.Winners[0].PrizeDetails, 1)
+	assert.Equal(t, "Gift", adminView.Winners[0].PrizeDetails[0].PrizeName)
+	assert.Equal(t, adminView.Winners[0].Prizes[0], adminView.Winners[0].PrizeDetails[0].Code)
 	assert.Equal(t, "lottery_user_251", adminView.Winners[0].Username)
 	assert.Equal(t, 251, adminView.Winners[0].UserId)
 	assert.EqualValues(t, 1, adminView.AssignedPrizeCount)
 	assert.EqualValues(t, 1, adminView.AvailablePrizeCount)
+
+	rounds, total, err := ListAdminLotteryRounds(lottery.Id, &common.PageInfo{Page: 1, PageSize: 10}, LotteryRoundListFilter{})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, rounds, 1)
+	require.Len(t, rounds[0].Winners, 1)
+	assert.Equal(t, "lottery_user_251", rounds[0].Winners[0].Username)
+	assert.Equal(t, 251, rounds[0].Winners[0].UserId)
+	require.Len(t, rounds[0].Winners[0].PrizeDetails, 1)
+	assert.Equal(t, "Gift", rounds[0].Winners[0].PrizeDetails[0].PrizeName)
+	assert.Equal(t, rounds[0].Winners[0].Prizes[0], rounds[0].Winners[0].PrizeDetails[0].Code)
 }
 
 func TestMaskLotteryNameShortUserIds(t *testing.T) {

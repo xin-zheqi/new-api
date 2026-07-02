@@ -4288,6 +4288,11 @@
     "Well-Known URL 必须以 http:// 或 https:// 开头": "Well-Known URL phải bắt đầu bằng http:// hoặc https://",
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Khóa chữ ký Webhook cho whsec_xxx, thông tin nhạy cảm không được hiển thị",
     "Worker地址": "Địa chỉ Worker",
-    "Worker密钥": "Khóa Worker"
+    "Worker密钥": "Khóa Worker",
+    "一次性开奖": "Quay một lần",
+    "内部轮次标识": "Mã lượt nội bộ",
+    "本轮尚未开奖。": "Lượt này chưa quay.",
+    "本轮已开奖，暂无中奖用户。": "Lượt này đã quay nhưng chưa có người trúng.",
+    "{{count}} 个奖品": "{{count}} phần thưởng"
   }
 }

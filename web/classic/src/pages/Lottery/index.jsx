@@ -94,6 +94,19 @@ function formatLotteryTime(value) {
   return value ? timestamp2string(value) : '-';
 }
 
+function formatLotteryRoundLabel(mode, round, t) {
+  if (!round) return '-';
+  if (mode === 'once') return t('一次性开奖');
+  const key = String(round.round_key || '');
+  if (/^\d{8}$/.test(key)) {
+    return `${key.slice(0, 4)}-${key.slice(4, 6)}-${key.slice(6)}`;
+  }
+  if (round.draw_time) {
+    return new Date(round.draw_time * 1000).toLocaleDateString();
+  }
+  return key || '-';
+}
+
 function dateFromUnix(value) {
   return value ? new Date(value * 1000) : null;
 }
@@ -1003,6 +1016,88 @@ export default function Lottery() {
     },
   ];
 
+  const renderResultsExpandedRow = (record) => {
+    const round = record.round || {};
+    const winners = record.winners || [];
+    const drawn = isRoundDrawn(round.status);
+    return (
+      <div className='rounded border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-4'>
+        <div className='mb-3 grid grid-cols-1 gap-3 md:grid-cols-3'>
+          <div>
+            <Text type='secondary' size='small'>
+              {t('报名开始')}
+            </Text>
+            <div>{formatLotteryTime(round.registration_start)}</div>
+          </div>
+          <div>
+            <Text type='secondary' size='small'>
+              {t('报名结束')}
+            </Text>
+            <div>{formatLotteryTime(round.registration_end)}</div>
+          </div>
+          <div>
+            <Text type='secondary' size='small'>
+              {t('内部轮次标识')}
+            </Text>
+            <div className='font-mono'>{round.round_key || '-'}</div>
+          </div>
+        </div>
+        {drawn && winners.length > 0 ? (
+          <div className='flex flex-col gap-3'>
+            {winners.map((winner, winnerIndex) => {
+              const prizes =
+                winner.prize_details && winner.prize_details.length > 0
+                  ? winner.prize_details
+                  : (winner.prizes || []).map((code, prizeIndex) => ({
+                      id: prizeIndex,
+                      prize_name: '',
+                      code,
+                    }));
+              return (
+                <div
+                  key={winner.user_id || `${winner.masked_name}-${winnerIndex}`}
+                  className='rounded border border-[var(--semi-color-border)] bg-[var(--semi-color-bg-0)] p-3'
+                >
+                  <div className='mb-2 flex flex-col gap-1 md:flex-row md:items-start md:justify-between'>
+                    <div>
+                      <Text strong>{winner.username || winner.masked_name}</Text>
+                      <div className='text-xs text-[var(--semi-color-text-2)]'>
+                        {t('用户ID')}：{winner.user_id || '-'} · {t('中奖时间')}：
+                        {formatLotteryTime(winner.won_at)}
+                      </div>
+                    </div>
+                    <Tag color='blue'>{t('{{count}} 个奖品', { count: prizes.length })}</Tag>
+                  </div>
+                  <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
+                    {prizes.map((prize) => (
+                      <div
+                        key={`${prize.id}-${prize.code}`}
+                        className='min-w-0 rounded bg-[var(--semi-color-fill-1)] px-3 py-2'
+                      >
+                        <Tooltip content={prize.prize_name || t('兑换码')}>
+                          <div className='truncate text-xs text-[var(--semi-color-text-2)]'>
+                            {prize.prize_name || t('兑换码')}
+                          </div>
+                        </Tooltip>
+                        <Text copyable ellipsis={{ showTooltip: true }}>
+                          {prize.code}
+                        </Text>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <Text type='secondary'>
+            {drawn ? t('本轮已开奖，暂无中奖用户。') : t('本轮尚未开奖。')}
+          </Text>
+        )}
+      </div>
+    );
+  };
+
   const resultsColumns = [
     {
       title: t('状态'),
@@ -1012,7 +1107,7 @@ export default function Lottery() {
     {
       title: t('轮次'),
       dataIndex: 'round',
-      render: (round) => round?.round_key || '-',
+      render: (round) => formatLotteryRoundLabel(resultsLottery?.mode, round, t),
     },
     {
       title: t('开奖时间'),
@@ -1028,19 +1123,6 @@ export default function Lottery() {
       title: t('中奖人数'),
       dataIndex: 'winners',
       render: (winners) => (winners?.length || 0),
-    },
-    {
-      title: t('中奖用户'),
-      dataIndex: 'winners',
-      render: (winners) => (
-        <div className='flex flex-wrap gap-1'>
-          {(winners || []).map((winner, index) => (
-            <Tag key={`${winner.masked_name}-${index}`} color='amber'>
-              {winner.masked_name}
-            </Tag>
-          ))}
-        </div>
-      ),
     },
   ];
 
@@ -1287,6 +1369,7 @@ export default function Lottery() {
           columns={resultsColumns}
           dataSource={resultsRounds}
           rowKey={(record) => record.round?.id}
+          expandedRowRender={renderResultsExpandedRow}
           loading={resultsLoading}
           empty={<Empty description={t('暂无开奖结果')} />}
           pagination={{

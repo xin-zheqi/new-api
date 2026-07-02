@@ -18,9 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import {
   Dialog,
   DialogContent,
@@ -33,98 +39,144 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Separator } from '@/components/ui/separator'
 import { getAdminLotteryRounds } from '../api'
 import type { LotteryActivity, LotteryRoundDetail } from '../types'
-import { formatTime, getRoundStatusDotClass, getRoundStatusLabel } from '../utils'
+import {
+  formatRoundLabel,
+  formatTime,
+  getRoundStatusDotClass,
+  getRoundStatusLabel,
+} from '../utils'
 
-function RoundWinnerCard(props: {
-  winner: NonNullable<LotteryRoundDetail['winners']>[number]
+function RoundResultRow(props: {
+  detail: LotteryRoundDetail
+  lotteryMode?: string
 }) {
   const { t } = useTranslation()
-  return (
-    <div className='border-border/60 bg-background rounded-lg border p-3'>
-      <div className='flex flex-wrap items-center gap-2'>
-        <span className='font-medium'>
-          {props.winner.username || props.winner.masked_name}
-        </span>
-        <Badge variant='outline'>{props.winner.masked_name}</Badge>
-      </div>
-      <div className='text-muted-foreground mt-1 text-xs'>
-        {t('Winning time')}：{formatTime(props.winner.won_at)}
-      </div>
-      {props.winner.prizes && props.winner.prizes.length > 0 && (
-        <div className='mt-2 flex flex-wrap gap-2'>
-          {props.winner.prizes.map((prize) => (
-            <Badge key={prize} variant='secondary' className='max-w-full truncate'>
-              {prize}
-            </Badge>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function RoundDetailCard(props: { detail: LotteryRoundDetail }) {
-  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
   const round = props.detail.round
   const winners = props.detail.winners ?? []
   const drawn = round.status === 'finished' || round.status === 'insufficient_prizes'
+  const roundLabel = formatRoundLabel(
+    props.lotteryMode,
+    round.round_key,
+    round.draw_time,
+    t
+  )
 
   return (
-    <div className='border-border/60 bg-muted/30 flex flex-col gap-3 rounded-xl border p-4'>
-      <div className='flex flex-wrap items-start justify-between gap-3'>
-        <div className='flex min-w-0 flex-wrap items-center gap-2'>
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className='overflow-hidden rounded-xl border'
+    >
+      <CollapsibleTrigger className='hover:bg-muted/50 flex w-full flex-col gap-3 p-4 text-left transition-colors lg:grid lg:grid-cols-[1.2fr_1fr_1fr_.8fr_.8fr_auto] lg:items-center'>
+        <div className='flex min-w-0 items-center gap-2'>
           <Badge variant='outline' className='gap-1.5'>
             <span className={`size-2 rounded-full ${getRoundStatusDotClass(round.status)}`} />
             {getRoundStatusLabel(round.status, t)}
           </Badge>
-          <span className='text-muted-foreground text-sm'>
-            {t('Round')}: {round.round_key}
-          </span>
         </div>
-        <div className='text-muted-foreground text-sm'>
-          {t('Draw time')}：{formatTime(round.draw_time)}
-        </div>
-      </div>
-
-      <div className='grid gap-2 text-sm md:grid-cols-3'>
-        <div>
-          <div className='text-muted-foreground text-xs'>{t('Registration start')}</div>
-          <div>{formatTime(round.registration_start)}</div>
+        <div className='min-w-0'>
+          <div className='text-muted-foreground text-xs'>{t('Round')}</div>
+          <div className='truncate font-medium'>{roundLabel}</div>
         </div>
         <div>
-          <div className='text-muted-foreground text-xs'>{t('Registration end')}</div>
-          <div>{formatTime(round.registration_end)}</div>
+          <div className='text-muted-foreground text-xs'>{t('Draw time')}</div>
+          <div>{formatTime(round.draw_time)}</div>
         </div>
         <div>
           <div className='text-muted-foreground text-xs'>{t('Participants')}</div>
-          <div>{t('{{count}} total', { count: props.detail.participant_count })}</div>
+          <div>{props.detail.participant_count || 0}</div>
         </div>
-      </div>
-
-      {drawn ? (
-        winners.length > 0 ? (
-          <div className='grid gap-2'>
-            <div className='text-sm font-medium'>{t('Winning users')}</div>
-            <div className='grid gap-2 xl:grid-cols-2'>
-              {winners.map((winner, index) => (
-                <RoundWinnerCard
-                  key={winner.user_id ?? `${winner.masked_name}-${winner.won_at}-${index}`}
-                  winner={winner}
-                />
-              ))}
+        <div>
+          <div className='text-muted-foreground text-xs'>{t('Winning users')}</div>
+          <div>{winners.length}</div>
+        </div>
+        <span
+          className='bg-muted/50 flex size-8 items-center justify-center rounded-lg'
+          aria-hidden='true'
+        >
+          <ChevronDown
+            data-icon='inline-start'
+            className={open ? 'rotate-180 transition-transform' : 'transition-transform'}
+          />
+        </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className='bg-muted/20 border-t p-4'>
+          <div className='grid gap-3 text-sm md:grid-cols-3'>
+            <div>
+              <div className='text-muted-foreground text-xs'>{t('Registration start')}</div>
+              <div>{formatTime(round.registration_start)}</div>
+            </div>
+            <div>
+              <div className='text-muted-foreground text-xs'>{t('Registration end')}</div>
+              <div>{formatTime(round.registration_end)}</div>
+            </div>
+            <div>
+              <div className='text-muted-foreground text-xs'>{t('Internal round key')}</div>
+              <div className='font-mono'>{round.round_key || '-'}</div>
             </div>
           </div>
-        ) : (
-          <div className='text-muted-foreground text-sm'>
-            {t('This draw has been completed without winners.')}
-          </div>
-        )
-      ) : (
-        <div className='text-muted-foreground text-sm'>
-          {t('This round has not drawn yet.')}
+
+          <Separator className='my-4' />
+
+          {drawn && winners.length > 0 ? (
+            <div className='flex flex-col gap-3'>
+              {winners.map((winner, index) => {
+                const prizeDetails =
+                  winner.prize_details && winner.prize_details.length > 0
+                    ? winner.prize_details
+                    : (winner.prizes ?? []).map((code, prizeIndex) => ({
+                        id: prizeIndex,
+                        prize_name: '',
+                        code,
+                      }))
+                return (
+                  <div
+                    key={winner.user_id ?? `${winner.masked_name}-${winner.won_at}-${index}`}
+                    className='bg-background rounded-lg border p-3'
+                  >
+                    <div className='flex flex-col gap-2 md:flex-row md:items-start md:justify-between'>
+                      <div>
+                        <div className='font-medium'>
+                          {winner.username || winner.masked_name}
+                        </div>
+                        <div className='text-muted-foreground text-xs'>
+                          {t('User ID')}: {winner.user_id || '-'} · {t('Winning time')}:
+                          {formatTime(winner.won_at)}
+                        </div>
+                      </div>
+                      <Badge variant='secondary'>
+                        {t('{{count}} total', { count: prizeDetails.length })}
+                      </Badge>
+                    </div>
+                    <div className='mt-3 grid gap-2 md:grid-cols-2'>
+                      {prizeDetails.map((prize) => (
+                        <div
+                          key={`${prize.id}-${prize.code}`}
+                          className='bg-muted/40 min-w-0 rounded-lg px-3 py-2'
+                        >
+                          <div className='text-muted-foreground truncate text-xs'>
+                            {prize.prize_name || t('Prize code')}
+                          </div>
+                          <div className='truncate font-mono text-sm'>{prize.code}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className='text-muted-foreground text-sm'>
+              {drawn
+                ? t('This draw has been completed without winners.')
+                : t('This round has not drawn yet.')}
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -175,13 +227,12 @@ export function LotteryResultsDialog(props: {
   const rounds = pageData?.items ?? []
   const total = pageData?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
-
   const assignedPrizeCount = props.lottery?.assigned_prize_count ?? 0
   const availablePrizeCount = props.lottery?.available_prize_count ?? 0
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className='max-h-[90vh] overflow-auto sm:max-w-5xl'>
+      <DialogContent className='max-h-[90vh] overflow-auto sm:max-w-6xl'>
         <DialogHeader>
           <DialogTitle>{t('Winning details')}</DialogTitle>
           <DialogDescription>
@@ -199,24 +250,31 @@ export function LotteryResultsDialog(props: {
                 <div className='text-muted-foreground text-sm'>{props.lottery.prize_name}</div>
               </div>
               <div className='flex flex-wrap items-center gap-2 text-sm'>
-                <div className='rounded-lg border border-border/60 bg-background px-3 py-2'>
+                <div className='bg-background rounded-lg border px-3 py-2'>
                   <div className='text-muted-foreground text-xs'>{t('Assigned prizes')}</div>
                   <div className='font-medium'>{assignedPrizeCount}</div>
                 </div>
-                <div className='rounded-lg border border-border/60 bg-background px-3 py-2'>
+                <div className='bg-background rounded-lg border px-3 py-2'>
                   <div className='text-muted-foreground text-xs'>{t('Unassigned prizes')}</div>
                   <div className='font-medium'>{availablePrizeCount}</div>
                 </div>
               </div>
             </div>
             <div className='grid gap-2 sm:grid-cols-3'>
-              <div className='border-border/60 bg-background rounded-lg border p-3'>
+              <div className='bg-background rounded-lg border p-3'>
                 <div className='text-muted-foreground text-xs'>{t('Current round')}</div>
                 <div className='font-medium'>
-                  {props.lottery.round ? props.lottery.round.round_key : t('None')}
+                  {props.lottery.round
+                    ? formatRoundLabel(
+                        props.lottery.mode,
+                        props.lottery.round.round_key,
+                        props.lottery.round.draw_time,
+                        t
+                      )
+                    : t('None')}
                 </div>
               </div>
-              <div className='border-border/60 bg-background rounded-lg border p-3'>
+              <div className='bg-background rounded-lg border p-3'>
                 <div className='text-muted-foreground text-xs'>{t('Winning users')}</div>
                 <div className='font-medium'>
                   {t('{{count}} total', {
@@ -227,7 +285,7 @@ export function LotteryResultsDialog(props: {
                   })}
                 </div>
               </div>
-              <div className='border-border/60 bg-background rounded-lg border p-3'>
+              <div className='bg-background rounded-lg border p-3'>
                 <div className='text-muted-foreground text-xs'>{t('Rounds')}</div>
                 <div className='font-medium'>{t('{{count}} total', { count: total })}</div>
               </div>
@@ -278,7 +336,11 @@ export function LotteryResultsDialog(props: {
 
         <div className='flex flex-col gap-3'>
           {rounds.map((detail) => (
-            <RoundDetailCard key={detail.round.id} detail={detail} />
+            <RoundResultRow
+              key={detail.round.id}
+              detail={detail}
+              lotteryMode={props.lottery?.mode}
+            />
           ))}
           {!query.isLoading && rounds.length === 0 && (
             <div className='text-muted-foreground rounded-lg border border-dashed p-6 text-center text-sm'>

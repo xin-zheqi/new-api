@@ -2688,6 +2688,12 @@
     "Well-Known URL 必须以 http:// 或 https:// 开头": "Well-Known URL 必须以 http:// 或 https:// 开头",
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示",
     "Worker地址": "Worker地址",
-    "Worker密钥": "Worker密钥"
+    "Worker密钥": "Worker密钥",
+    "一次性开奖": "一次性开奖",
+    "内部轮次标识": "内部轮次标识",
+    "本轮尚未开奖。": "本轮尚未开奖。",
+    "本轮已开奖，暂无中奖用户。": "本轮已开奖，暂无中奖用户。",
+    "用户ID": "用户ID",
+    "{{count}} 个奖品": "{{count}} 个奖品"
   }
 }

@@ -252,6 +252,10 @@ func SendEmailVerification(c *gin.Context) {
 	}
 	localPart := parts[0]
 	domainPart := parts[1]
+	if err := validateEmailPolicy(email); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if common.EmailDomainRestrictionEnabled {
 		allowed := false
 		for _, domain := range common.EmailDomainWhitelist {

@@ -1,3 +1,4 @@
+import { zodResolver } from '@hookform/resolvers/zod'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,10 +18,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
-import * as z from 'zod'
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
+import * as z from 'zod'
+
 import {
   Form,
   FormControl,
@@ -30,8 +31,10 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -49,7 +52,13 @@ const basicAuthSchema = z.object({
   RegisterEnabled: z.boolean(),
   EmailDomainRestrictionEnabled: z.boolean(),
   EmailAliasRestrictionEnabled: z.boolean(),
+  EmailQQNumericOnlyEnabled: z.boolean(),
   EmailDomainWhitelist: z.string(),
+  RegisterIPLimitEnabled: z.boolean(),
+  RegisterIPLimitDailyCount: z.number().min(1),
+  RegisterIPLimitDisableInviteReward: z.boolean(),
+  RegisterIPLimitDisableInitialQuota: z.boolean(),
+  RegisterIPLimitBlockRegistration: z.boolean(),
 })
 
 type BasicAuthFormValues = z.infer<typeof basicAuthSchema>
@@ -240,6 +249,27 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
 
           <FormField
             control={form.control}
+            name='EmailQQNumericOnlyEnabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('QQ email numeric only')}</FormLabel>
+                  <FormDescription>
+                    {t('Only allow numeric QQ email accounts, not QQ aliases')}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name='EmailDomainWhitelist'
             render={({ field }) => (
               <FormItem>
@@ -260,6 +290,141 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
               </FormItem>
             )}
           />
+
+          <div className='rounded-lg border p-4'>
+            <div className='mb-4'>
+              <h3 className='text-sm font-medium'>
+                {t('Registration IP protection')}
+              </h3>
+              <p className='text-muted-foreground mt-1 text-sm'>
+                {t(
+                  'Limit short-term bulk registrations from the same IP address.'
+                )}
+              </p>
+            </div>
+
+            <div className='space-y-4'>
+              <FormField
+                control={form.control}
+                name='RegisterIPLimitEnabled'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>
+                        {t('Enable same-IP registration limit')}
+                      </FormLabel>
+                      <FormDescription>
+                        {t('Track successful registrations by IP for one day')}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='RegisterIPLimitDailyCount'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Daily same-IP threshold')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        value={field.value}
+                        onChange={(event) =>
+                          field.onChange(Number(event.target.value) || 1)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Registrations beyond this number trigger protection')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='RegisterIPLimitDisableInviteReward'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>
+                        {t('Do not grant invite rewards after trigger')}
+                      </FormLabel>
+                      <FormDescription>
+                        {t('Both inviter and invitee receive no invite reward')}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='RegisterIPLimitDisableInitialQuota'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>
+                        {t('Do not grant initial quota after trigger')}
+                      </FormLabel>
+                      <FormDescription>
+                        {t(
+                          'New users from triggered IPs start with zero quota'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='RegisterIPLimitBlockRegistration'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>
+                        {t('Block registration after trigger')}
+                      </FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Reject new registrations once the same-IP threshold is exceeded'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+            </div>
+          </div>
         </SettingsForm>
       </Form>
     </SettingsSection>

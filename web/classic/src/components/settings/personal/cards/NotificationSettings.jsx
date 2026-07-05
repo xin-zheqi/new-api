@@ -773,27 +773,44 @@ const NotificationSettings = ({
               </div>
             </TabPane>
 
-            {/* 隐私设置 Tab */}
+            {/* 安全审计 Tab */}
             <TabPane
               tab={
                 <div className='flex items-center'>
                   <ShieldCheck size={16} className='mr-2' />
-                  {t('隐私设置')}
+                  {t('安全审计')}
                 </div>
               }
               itemKey='privacy'
             >
               <div className='py-4'>
-                <Form.Switch
-                  field='recordIpLog'
-                  label={t('记录请求与错误日志IP')}
-                  checkedText={t('开')}
-                  uncheckedText={t('关')}
-                  onChange={(value) => handleFormChange('recordIpLog', value)}
-                  extraText={t(
-                    '开启后，仅"消费"和"错误"日志将记录您的客户端IP地址',
-                  )}
-                />
+                <div
+                  className='flex items-start gap-3 rounded-xl border p-4'
+                  style={{
+                    borderColor: 'var(--semi-color-border)',
+                    backgroundColor: 'var(--semi-color-fill-0)',
+                  }}
+                >
+                  <ShieldCheck
+                    size={18}
+                    style={{
+                      flex: '0 0 auto',
+                      marginTop: 2,
+                      color: 'var(--semi-color-primary)',
+                    }}
+                  />
+                  <div>
+                    <Typography.Text strong>{t('安全审计')}</Typography.Text>
+                    <div
+                      className='mt-1 text-xs leading-relaxed'
+                      style={{ color: 'var(--semi-color-text-2)' }}
+                    >
+                      {t(
+                        '系统会自动记录使用日志和错误日志的客户端IP与UserAgent，用于安全审计，用户不能关闭。',
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </TabPane>
 

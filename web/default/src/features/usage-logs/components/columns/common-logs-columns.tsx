@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
-import { CircleAlert, GitBranch, Sparkles, KeyRound } from 'lucide-react'
+import { CircleAlert, GitBranch, Sparkles, KeyRound, Globe2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
@@ -519,6 +519,41 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             </button>
           )
         },
+      },
+      {
+        accessorKey: 'ip',
+        header: t('IP Address'),
+        cell: ({ row }) => {
+          const log = row.original
+          const other = parseLogOther(log.other)
+          const ip = log.ip || other?.admin_info?.request_ip || ''
+
+          if (!ip) {
+            return <span className='text-muted-foreground/40'>—</span>
+          }
+
+          return (
+            <TooltipProvider delay={300}>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className='border-border/60 bg-muted/30 inline-flex h-6 max-w-[132px] items-center gap-1.5 rounded-md border px-2 font-mono text-xs tabular-nums' />
+                  }
+                >
+                  <Globe2
+                    className='text-muted-foreground size-3 shrink-0'
+                    aria-hidden='true'
+                  />
+                  <span className='truncate'>{ip}</span>
+                </TooltipTrigger>
+                <TooltipContent side='top' className='font-mono text-xs'>
+                  {ip}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )
+        },
+        size: 140,
       }
     )
   }

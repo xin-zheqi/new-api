@@ -37,7 +37,16 @@ const AUTH_SECTIONS = [
           RegisterEnabled: settings.RegisterEnabled,
           EmailDomainRestrictionEnabled: settings.EmailDomainRestrictionEnabled,
           EmailAliasRestrictionEnabled: settings.EmailAliasRestrictionEnabled,
+          EmailQQNumericOnlyEnabled: settings.EmailQQNumericOnlyEnabled,
           EmailDomainWhitelist: settings.EmailDomainWhitelist,
+          RegisterIPLimitEnabled: settings.RegisterIPLimitEnabled,
+          RegisterIPLimitDailyCount: settings.RegisterIPLimitDailyCount,
+          RegisterIPLimitDisableInviteReward:
+            settings.RegisterIPLimitDisableInviteReward,
+          RegisterIPLimitDisableInitialQuota:
+            settings.RegisterIPLimitDisableInitialQuota,
+          RegisterIPLimitBlockRegistration:
+            settings.RegisterIPLimitBlockRegistration,
         }}
       />
     ),

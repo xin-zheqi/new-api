@@ -44,6 +44,10 @@ export const userSchema = z.object({
   used_quota: z.number(),
   request_count: z.number(),
   group: z.string(),
+  rate_limit_enabled: z.boolean().optional(),
+  rate_limit_duration_minutes: z.number().optional(),
+  rate_limit_total_count: z.number().optional(),
+  rate_limit_success_count: z.number().optional(),
   aff_code: z.string().optional(),
   aff_count: z.number().optional(),
   aff_quota: z.number().optional(),
@@ -106,6 +110,10 @@ export interface UserFormData {
   quota?: number // Only used when updating user
   group?: string // Only used when updating user
   remark?: string // Only used when updating user
+  rate_limit_enabled?: boolean
+  rate_limit_duration_minutes?: number
+  rate_limit_total_count?: number
+  rate_limit_success_count?: number
 }
 
 export type ManageUserAction =

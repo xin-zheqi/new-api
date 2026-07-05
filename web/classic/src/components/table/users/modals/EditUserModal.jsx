@@ -94,6 +94,10 @@ const EditUserModal = (props) => {
     quota_amount: 0,
     group: 'default',
     remark: '',
+    rate_limit_enabled: false,
+    rate_limit_duration_minutes: 1,
+    rate_limit_total_count: 0,
+    rate_limit_success_count: 1000,
   });
 
   const fetchGroups = async () => {
@@ -170,7 +174,11 @@ const EditUserModal = (props) => {
   const adjustQuota = async () => {
     const quotaVal = parseInt(adjustQuotaLocal) || 0;
     if (quotaVal <= 0 && adjustMode !== 'override') return;
-    if (adjustMode === 'override' && (adjustQuotaLocal === '' || adjustQuotaLocal == null)) return;
+    if (
+      adjustMode === 'override' &&
+      (adjustQuotaLocal === '' || adjustQuotaLocal == null)
+    )
+      return;
     setAdjustLoading(true);
     try {
       const res = await API.post('/api/user/manage', {
@@ -401,7 +409,10 @@ const EditUserModal = (props) => {
                             ? `▾ ${t('收起原生额度输入')}`
                             : `▸ ${t('使用原生额度输入')}`}
                         </div>
-                        <div style={{ display: showQuotaInput ? 'block' : 'none' }} className='mt-2'>
+                        <div
+                          style={{ display: showQuotaInput ? 'block' : 'none' }}
+                          className='mt-2'
+                        >
                           <Form.InputNumber
                             field='quota'
                             label={t('额度')}
@@ -410,6 +421,62 @@ const EditUserModal = (props) => {
                             readonly
                           />
                         </div>
+                      </Col>
+                    </Row>
+                  </Card>
+                )}
+
+                {/* 绑定信息入口 */}
+                {userId && (
+                  <Card className='!rounded-2xl shadow-sm border-0'>
+                    <div className='flex items-center mb-2'>
+                      <Avatar
+                        size='small'
+                        color='orange'
+                        className='mr-2 shadow-md'
+                      >
+                        <IconEdit size={16} />
+                      </Avatar>
+                      <div>
+                        <Text className='text-lg font-medium'>
+                          {t('用户独立速率限制')}
+                        </Text>
+                        <div className='text-xs text-gray-600'>
+                          {t('开启后覆盖分组和全局模型请求速率限制')}
+                        </div>
+                      </div>
+                    </div>
+                    <Row gutter={12}>
+                      <Col span={24}>
+                        <Form.Switch
+                          field='rate_limit_enabled'
+                          label={t('启用用户速率限制')}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Form.InputNumber
+                          field='rate_limit_duration_minutes'
+                          label={t('窗口分钟')}
+                          min={1}
+                          style={{ width: '100%' }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Form.InputNumber
+                          field='rate_limit_total_count'
+                          label={t('总请求数')}
+                          min={0}
+                          style={{ width: '100%' }}
+                          extraText={t('0 表示不限制总请求')}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Form.InputNumber
+                          field='rate_limit_success_count'
+                          label={t('成功请求数')}
+                          min={1}
+                          style={{ width: '100%' }}
+                        />
                       </Col>
                     </Row>
                   </Card>
@@ -539,7 +606,10 @@ const EditUserModal = (props) => {
             ? `▾ ${t('收起原生额度输入')}`
             : `▸ ${t('使用原生额度输入')}`}
         </div>
-        <div style={{ display: showAdjustQuotaRaw ? 'block' : 'none' }} className='mt-2'>
+        <div
+          style={{ display: showAdjustQuotaRaw ? 'block' : 'none' }}
+          className='mt-2'
+        >
           <div className='mb-1'>
             <Text size='small'>{t('额度')}</Text>
           </div>

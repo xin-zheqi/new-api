@@ -46,6 +46,7 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
   const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
   const [checkinData, setCheckinData] = useState({
     enabled: false,
+    checkin_nonce: '',
     stats: {
       checked_in_today: false,
       total_checkins: 0,
@@ -117,7 +118,7 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
     const url = token
       ? `/api/user/checkin?turnstile=${encodeURIComponent(token)}`
       : '/api/user/checkin';
-    return API.post(url);
+    return API.post(url, { nonce: checkinData.checkin_nonce });
   };
 
   const shouldTriggerTurnstile = (message) => {
@@ -129,6 +130,11 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
   const doCheckin = async (token) => {
     setCheckinLoading(true);
     try {
+      if (!checkinData.checkin_nonce) {
+        showError(t('签到校验已过期，请刷新页面后重试'));
+        fetchCheckinStatus(currentMonth);
+        return;
+      }
       const res = await postCheckin(token);
       const { success, data, message } = res.data;
       if (success) {

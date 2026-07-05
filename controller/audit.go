@@ -64,12 +64,12 @@ func auditContentEN(action string, params map[string]interface{}) string {
 
 // auditOperatorInfo 从上下文构建操作者身份信息（管理员 id/用户名/角色）。
 func auditOperatorInfo(c *gin.Context) map[string]interface{} {
-	return map[string]interface{}{
+	return model.MergeLogRequestAdminInfo(c, map[string]interface{}{
 		"admin_id":       c.GetInt("id"),
 		"admin_username": c.GetString("username"),
 		"admin_role":     c.GetInt("role"),
 		"auth_method":    auditAuthMethod(c),
-	}
+	})
 }
 
 func auditAuthMethod(c *gin.Context) string {

@@ -31,10 +31,8 @@ import {
   Info,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
-import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
-import { cn } from '@/lib/utils'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+
+import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -45,8 +43,12 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
+import { cn } from '@/lib/utils'
+
 import type { UsageLog } from '../../data/schema'
 import {
   parseLogOther,
@@ -497,6 +499,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const useChannel = other?.admin_info?.use_channel
   const channelChain =
     useChannel && useChannel.length > 0 ? useChannel.join(' → ') : undefined
+  const showRequestContext =
+    props.isAdmin &&
+    !!adminInfo &&
+    (!!adminInfo.request_ip || !!adminInfo.user_agent)
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
@@ -631,6 +637,28 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 />
               )}
             </div>
+
+            {showRequestContext && (
+              <DetailSection
+                icon={<ShieldCheck className='size-3.5' aria-hidden='true' />}
+                label={t('Request Context')}
+              >
+                {adminInfo?.request_ip && (
+                  <DetailRow
+                    label={t('IP Address')}
+                    value={adminInfo.request_ip}
+                    mono
+                  />
+                )}
+                {adminInfo?.user_agent && (
+                  <DetailRow
+                    label={t('UserAgent')}
+                    value={adminInfo.user_agent}
+                    mono
+                  />
+                )}
+              </DetailSection>
+            )}
 
             {/* Request conversion (admin only, not for refund) */}
             {showConversion && (
@@ -1095,5 +1123,5 @@ export function DetailsDialog(props: DetailsDialogProps) {
 }
 
 function isDisplayableType(type: number): boolean {
-  return [0, 2, 5, 6].includes(type)
+  return [0, 2, 5, 6, 7].includes(type)
 }

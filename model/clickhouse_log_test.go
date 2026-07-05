@@ -1,15 +1,32 @@
 package model
 
 import (
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func newLogRequestTestContext() *gin.Context {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	req.RemoteAddr = "203.0.113.9:1234"
+	req.Header.Set("Authorization", "Bearer sk-secret")
+	req.Header.Set("X-Custom-Header", "visible-value")
+	req.Header.Set("User-Agent", "new-api-test")
+	c.Request = req
+	c.Set("username", "log-user")
+	c.Set(common.RequestIdKey, "req-test")
+	return c
+}
 
 func TestIsClickHouseDSN(t *testing.T) {
 	cases := []struct {
@@ -123,4 +140,50 @@ func TestAssignDisplayLogIds(t *testing.T) {
 	assert.Equal(t, []int{21, 22, 23}, []int{logs[0].Id, logs[1].Id, logs[2].Id})
 
 	assert.NotPanics(t, func() { assignDisplayLogIds(nil, 0) })
+}
+
+func TestBuildLogRequestAdminInfoStoresUserAgentOnly(t *testing.T) {
+	c := newLogRequestTestContext()
+
+	adminInfo := BuildLogRequestAdminInfo(c)
+
+	assert.Equal(t, "203.0.113.9", adminInfo["request_ip"])
+	assert.Equal(t, "new-api-test", adminInfo["user_agent"])
+	assert.NotContains(t, adminInfo, "request_headers")
+}
+
+func TestRecordConsumeLogStoresRequestContextOnlyForAdminView(t *testing.T) {
+	truncateTables(t)
+	c := newLogRequestTestContext()
+
+	RecordConsumeLog(c, 42, RecordConsumeLogParams{
+		ChannelId:      1,
+		ModelName:      "gpt-test",
+		TokenName:      "test-token",
+		Quota:          10,
+		Content:        "test consume",
+		TokenId:        7,
+		Other:          map[string]interface{}{"source": "unit-test"},
+		UseTimeSeconds: 1,
+	})
+
+	var log Log
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", 42, LogTypeConsume).First(&log).Error)
+	assert.Equal(t, "203.0.113.9", log.Ip)
+	adminOther, err := common.StrToMap(log.Other)
+	require.NoError(t, err)
+	adminInfo, ok := adminOther["admin_info"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "203.0.113.9", adminInfo["request_ip"])
+	assert.Equal(t, "new-api-test", adminInfo["user_agent"])
+	assert.NotContains(t, adminInfo, "request_headers")
+
+	userLogs, total, err := GetUserLogs(42, LogTypeConsume, 0, 0, "", "", 0, 10, "", "", "")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, userLogs, 1)
+	userOther, err := common.StrToMap(userLogs[0].Other)
+	require.NoError(t, err)
+	assert.NotContains(t, userOther, "admin_info")
+	assert.Equal(t, "unit-test", userOther["source"])
 }

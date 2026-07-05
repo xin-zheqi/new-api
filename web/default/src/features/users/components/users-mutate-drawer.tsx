@@ -1,3 +1,6 @@
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery } from '@tanstack/react-query'
+import { Pencil } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -18,13 +21,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery } from '@tanstack/react-query'
-import { Pencil } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
-import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+
+import {
+  SideDrawerSection,
+  sideDrawerContentClassName,
+  sideDrawerFooterClassName,
+  sideDrawerFormClassName,
+  sideDrawerHeaderClassName,
+} from '@/components/drawer-layout'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -54,14 +60,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  SideDrawerSection,
-  sideDrawerContentClassName,
-  sideDrawerFooterClassName,
-  sideDrawerFormClassName,
-  sideDrawerHeaderClassName,
-} from '@/components/drawer-layout'
+import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+
 import { createUser, updateUser, getUser, getGroups } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -414,6 +417,106 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
+                </SideDrawerSection>
+              )}
+
+              {isUpdate && (
+                <SideDrawerSection>
+                  <h3 className='text-sm font-medium'>
+                    {t('User rate limit')}
+                  </h3>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'When enabled, this user-specific limit overrides group and global model request limits.'
+                    )}
+                  </p>
+
+                  <FormField
+                    control={form.control}
+                    name='rate_limit_enabled'
+                    render={({ field }) => (
+                      <FormItem className='flex items-center justify-between rounded-lg border p-3'>
+                        <div className='space-y-1'>
+                          <FormLabel>{t('Enable user rate limit')}</FormLabel>
+                          <FormDescription>
+                            {t('Apply a separate request limit to this user')}
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
+                    <FormField
+                      control={form.control}
+                      name='rate_limit_duration_minutes'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Window (minutes)')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              min={1}
+                              value={field.value}
+                              onChange={(event) =>
+                                field.onChange(Number(event.target.value) || 1)
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name='rate_limit_total_count'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Total requests')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              min={0}
+                              value={field.value}
+                              onChange={(event) =>
+                                field.onChange(Number(event.target.value) || 0)
+                              }
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t('0 means no total limit')}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name='rate_limit_success_count'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Successful requests')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              min={1}
+                              value={field.value}
+                              onChange={(event) =>
+                                field.onChange(Number(event.target.value) || 1)
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                 </SideDrawerSection>
               )}
 

@@ -57,6 +57,7 @@ func InitOptionMap() {
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
 	common.OptionMap["EmailAliasRestrictionEnabled"] = strconv.FormatBool(common.EmailAliasRestrictionEnabled)
+	common.OptionMap["EmailQQNumericOnlyEnabled"] = strconv.FormatBool(common.EmailQQNumericOnlyEnabled)
 	common.OptionMap["EmailDomainWhitelist"] = strings.Join(common.EmailDomainWhitelist, ",")
 	common.OptionMap["SMTPServer"] = ""
 	common.OptionMap["SMTPFrom"] = ""
@@ -132,6 +133,11 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
+	common.OptionMap["RegisterIPLimitEnabled"] = strconv.FormatBool(common.RegisterIPLimitEnabled)
+	common.OptionMap["RegisterIPLimitDailyCount"] = strconv.Itoa(common.RegisterIPLimitDailyCount)
+	common.OptionMap["RegisterIPLimitDisableInviteReward"] = strconv.FormatBool(common.RegisterIPLimitDisableInviteReward)
+	common.OptionMap["RegisterIPLimitDisableInitialQuota"] = strconv.FormatBool(common.RegisterIPLimitDisableInitialQuota)
+	common.OptionMap["RegisterIPLimitBlockRegistration"] = strconv.FormatBool(common.RegisterIPLimitBlockRegistration)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -276,7 +282,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.ImageDownloadPermission = intValue
 		}
 	}
-	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" {
+	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" ||
+		key == "RegisterIPLimitDisableInviteReward" || key == "RegisterIPLimitDisableInitialQuota" || key == "RegisterIPLimitBlockRegistration" {
 		boolValue := value == "true"
 		switch key {
 		case "PasswordRegisterEnabled":
@@ -297,10 +304,20 @@ func updateOptionMap(key string, value string) (err error) {
 			common.TurnstileCheckEnabled = boolValue
 		case "RegisterEnabled":
 			common.RegisterEnabled = boolValue
+		case "RegisterIPLimitEnabled":
+			common.RegisterIPLimitEnabled = boolValue
+		case "RegisterIPLimitDisableInviteReward":
+			common.RegisterIPLimitDisableInviteReward = boolValue
+		case "RegisterIPLimitDisableInitialQuota":
+			common.RegisterIPLimitDisableInitialQuota = boolValue
+		case "RegisterIPLimitBlockRegistration":
+			common.RegisterIPLimitBlockRegistration = boolValue
 		case "EmailDomainRestrictionEnabled":
 			common.EmailDomainRestrictionEnabled = boolValue
 		case "EmailAliasRestrictionEnabled":
 			common.EmailAliasRestrictionEnabled = boolValue
+		case "EmailQQNumericOnlyEnabled":
+			common.EmailQQNumericOnlyEnabled = boolValue
 		case "AutomaticDisableChannelEnabled":
 			common.AutomaticDisableChannelEnabled = boolValue
 		case "AutomaticEnableChannelEnabled":
@@ -501,6 +518,11 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaForInviter, _ = strconv.Atoi(value)
 	case "QuotaForInvitee":
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
+	case "RegisterIPLimitDailyCount":
+		common.RegisterIPLimitDailyCount, _ = strconv.Atoi(value)
+		if common.RegisterIPLimitDailyCount < 1 {
+			common.RegisterIPLimitDailyCount = 1
+		}
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":

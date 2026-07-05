@@ -178,7 +178,9 @@ export const useLogsData = () => {
   };
 
   // Column visibility state
-  const [visibleColumns, setVisibleColumns] = useState(getInitialVisibleColumns);
+  const [visibleColumns, setVisibleColumns] = useState(
+    getInitialVisibleColumns,
+  );
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [billingDisplayMode, setBillingDisplayMode] = useState(
     getInitialBillingDisplayMode,
@@ -402,7 +404,10 @@ export const useLogsData = () => {
       );
       let expandDataLocal = [];
 
-      if (isAdminUser && (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)) {
+      if (
+        isAdminUser &&
+        (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)
+      ) {
         expandDataLocal.push({
           key: t('渠道信息'),
           value: `${logs[i].channel} - ${logs[i].channel_name || '[未知]'}`,
@@ -413,6 +418,43 @@ export const useLogsData = () => {
           key: t('Request ID'),
           value: logs[i].request_id,
         });
+      }
+      if (isAdminUser && other?.admin_info) {
+        const requestIp = other.admin_info.request_ip;
+        const userAgent = other.admin_info.user_agent;
+        if (requestIp || userAgent) {
+          expandDataLocal.push({
+            key: t('Request Context'),
+            value: (
+              <div
+                style={{
+                  maxWidth: 720,
+                  maxHeight: 180,
+                  overflow: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all',
+                  lineHeight: 1.6,
+                  fontFamily:
+                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                  fontSize: 12,
+                }}
+              >
+                {requestIp ? (
+                  <div>
+                    <span style={{ opacity: 0.7 }}>{t('IP')}：</span>
+                    {requestIp}
+                  </div>
+                ) : null}
+                {userAgent ? (
+                  <div style={{ marginTop: 4 }}>
+                    <span style={{ opacity: 0.7 }}>{t('UserAgent')}：</span>
+                    {userAgent}
+                  </div>
+                ) : null}
+              </div>
+            ),
+          });
+        }
       }
       if (other?.ws || other?.audio) {
         expandDataLocal.push({
@@ -449,7 +491,10 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('日志详情'),
             value: other?.claude
-              ? renderClaudeLogContent({ ...other, displayMode: billingDisplayMode })
+              ? renderClaudeLogContent({
+                  ...other,
+                  displayMode: billingDisplayMode,
+                })
               : renderLogContent({ ...other, displayMode: billingDisplayMode }),
           });
         }
@@ -489,7 +534,14 @@ export const useLogsData = () => {
             expandDataLocal.push({
               key: t('原始错误信息'),
               value: (
-                <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+                <div
+                  style={{
+                    maxWidth: 600,
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                    lineHeight: 1.6,
+                  }}
+                >
                   {other.original_error_message}
                 </div>
               ),
@@ -499,7 +551,14 @@ export const useLogsData = () => {
             expandDataLocal.push({
               key: t('修改后错误信息'),
               value: (
-                <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+                <div
+                  style={{
+                    maxWidth: 600,
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                    lineHeight: 1.6,
+                  }}
+                >
                   {other.final_error_message}
                 </div>
               ),
@@ -580,7 +639,14 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('失败原因'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {other.reason}
               </div>
             ),
@@ -597,7 +663,8 @@ export const useLogsData = () => {
         const ss = other.stream_status;
         const isOk = ss.status === 'ok';
         const statusLabel = isOk ? '✓ ' + t('正常') : '✗ ' + t('异常');
-        let streamValue = statusLabel + ' (' + (ss.end_reason || 'unknown') + ')';
+        let streamValue =
+          statusLabel + ' (' + (ss.end_reason || 'unknown') + ')';
         if (ss.error_count > 0) {
           streamValue += ` [${t('软错误')}: ${ss.error_count}]`;
         }
@@ -612,7 +679,14 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('流错误详情'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'pre-line', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'pre-line',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {ss.errors.join('\n')}
               </div>
             ),

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useCallback } from 'react'
-import { Bell, Loader2, Mail, Server, Webhook } from 'lucide-react'
+import { Bell, Loader2, Mail, Server, ShieldCheck, Webhook } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ROLE } from '@/lib/roles'
@@ -374,20 +374,17 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
           />
         </div>
 
-        {/* Record IP Log */}
-        <div className='flex items-start justify-between gap-3 rounded-lg border p-3 sm:items-center sm:p-4'>
+        {/* Security audit notice */}
+        <div className='bg-muted/40 flex items-start gap-3 rounded-lg border p-3 sm:p-4'>
+          <ShieldCheck className='text-muted-foreground mt-0.5 h-4 w-4 shrink-0' />
           <div className='space-y-0.5'>
-            <Label htmlFor='recordIp'>{t('Record IP Address')}</Label>
+            <Label>{t('Security Audit')}</Label>
             <p className='text-muted-foreground text-xs sm:text-sm'>
-              {t('Log IP address for usage and error logs')}
+              {t(
+                'IP address and UserAgent are recorded automatically for usage and error logs to support security auditing.'
+              )}
             </p>
           </div>
-          <Switch
-            id='recordIp'
-            className='shrink-0'
-            checked={settings.record_ip_log}
-            onCheckedChange={(checked) => updateField('record_ip_log', checked)}
-          />
         </div>
       </div>
 

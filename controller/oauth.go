@@ -257,6 +257,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		user.DisplayName = provider.GetName() + " User"
 	}
 	if oauthUser.Email != "" {
+		if err := validateEmailPolicy(oauthUser.Email); err != nil {
+			return nil, err
+		}
 		user.Email = oauthUser.Email
 	}
 	user.Role = common.RoleCommonUser
@@ -268,13 +271,24 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	if affCode != nil {
 		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
 	}
+	registerDecision, rollbackRegisterIP, err := reserveRegistrationIP(c)
+	if err != nil {
+		rollbackRegisterIP()
+		return nil, err
+	}
+	registerCommitted := false
+	defer func() {
+		if !registerCommitted {
+			rollbackRegisterIP()
+		}
+	}()
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
 		// Custom provider: create user and binding in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
-			if err := user.InsertWithTx(tx, inviterId); err != nil {
+			if err := user.InsertWithTxAndRewardPolicy(tx, inviterId, registerDecision.Policy); err != nil {
 				return err
 			}
 
@@ -295,12 +309,13 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		}
 
 		// Perform post-transaction tasks (logs, sidebar config, inviter rewards)
-		user.FinalizeOAuthUserCreation(inviterId)
+		registerCommitted = true
+		user.FinalizeOAuthUserCreationWithRewardPolicy(inviterId, registerDecision.Policy)
 	} else {
 		// Built-in provider: create user and update provider ID in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
-			if err := user.InsertWithTx(tx, inviterId); err != nil {
+			if err := user.InsertWithTxAndRewardPolicy(tx, inviterId, registerDecision.Policy); err != nil {
 				return err
 			}
 
@@ -324,7 +339,8 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		}
 
 		// Perform post-transaction tasks
-		user.FinalizeOAuthUserCreation(inviterId)
+		registerCommitted = true
+		user.FinalizeOAuthUserCreationWithRewardPolicy(inviterId, registerDecision.Policy)
 	}
 
 	return user, nil

@@ -79,7 +79,13 @@ export type AuthSettings = {
   RegisterEnabled: boolean
   EmailDomainRestrictionEnabled: boolean
   EmailAliasRestrictionEnabled: boolean
+  EmailQQNumericOnlyEnabled: boolean
   EmailDomainWhitelist: string
+  RegisterIPLimitEnabled: boolean
+  RegisterIPLimitDailyCount: number
+  RegisterIPLimitDisableInviteReward: boolean
+  RegisterIPLimitDisableInitialQuota: boolean
+  RegisterIPLimitBlockRegistration: boolean
   GitHubOAuthEnabled: boolean
   GitHubClientId: string
   GitHubClientSecret: string

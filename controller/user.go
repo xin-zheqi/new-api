@@ -121,6 +121,9 @@ func recordLoginAudit(user *model.User, c *gin.Context) {
 		"login_method": method,
 		"user_agent":   c.Request.UserAgent(),
 	}
+	if adminInfo := model.BuildLogRequestAdminInfo(c); len(adminInfo) > 0 {
+		extra["admin_info"] = adminInfo
+	}
 	content := fmt.Sprintf("Logged in successfully via %s", method)
 	model.RecordLoginLog(user.Id, user.Username, content, ip, "login", map[string]interface{}{
 		"method": method,
@@ -197,6 +200,10 @@ func Register(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailVerificationRequired)
 			return
 		}
+		if err := validateEmailPolicy(user.Email); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 		if !common.VerifyCodeWithKey(user.Email, user.VerificationCode, common.EmailVerificationPurpose) {
 			common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 			return
@@ -214,6 +221,18 @@ func Register(c *gin.Context) {
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := model.GetUserIdByAffCode(affCode)
+	registerDecision, rollbackRegisterIP, err := reserveRegistrationIP(c)
+	if err != nil {
+		rollbackRegisterIP()
+		common.ApiError(c, err)
+		return
+	}
+	registerCommitted := false
+	defer func() {
+		if !registerCommitted {
+			rollbackRegisterIP()
+		}
+	}()
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
@@ -224,10 +243,11 @@ func Register(c *gin.Context) {
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
-	if err := cleanUser.Insert(inviterId); err != nil {
+	if err := cleanUser.InsertWithRewardPolicy(inviterId, registerDecision.Policy); err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	registerCommitted = true
 
 	// 获取插入后的用户ID
 	var insertedUser model.User
@@ -631,6 +651,12 @@ func UpdateUser(c *gin.Context) {
 	}
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
+	}
+	if updatedUser.RateLimitEnabled {
+		if updatedUser.RateLimitDurationMinutes <= 0 || updatedUser.RateLimitSuccessCount <= 0 || updatedUser.RateLimitTotalCount < 0 {
+			common.ApiErrorMsg(c, "用户速率限制参数无效")
+			return
+		}
 	}
 	updatePassword := updatedUser.Password != ""
 	if err := updatedUser.Edit(updatePassword); err != nil {
@@ -1086,6 +1112,10 @@ func EmailBind(c *gin.Context) {
 	}
 	email := req.Email
 	code := req.Code
+	if err := validateEmailPolicy(email); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if !common.VerifyCodeWithKey(email, code, common.EmailVerificationPurpose) {
 		common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 		return
@@ -1335,7 +1365,7 @@ func UpdateUserSetting(c *gin.Context) {
 		QuotaWarningThreshold:            req.QuotaWarningThreshold,
 		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
 		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
-		RecordIpLog:                      req.RecordIpLog,
+		RecordIpLog:                      true,
 	}
 
 	// 如果是webhook类型,添加webhook相关设置

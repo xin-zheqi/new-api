@@ -1,3 +1,12 @@
+import { useQuery } from '@tanstack/react-query'
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Sparkles,
+} from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,20 +26,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import {
-  CalendarDays,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  Sparkles,
-} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { formatQuotaWithCurrency } from '@/lib/currency'
-import dayjs from '@/lib/dayjs'
-import { cn } from '@/lib/utils'
+
+import { Dialog } from '@/components/dialog'
+import { Turnstile } from '@/components/turnstile'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -40,8 +40,10 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from '@/components/ui/tooltip'
-import { Dialog } from '@/components/dialog'
-import { Turnstile } from '@/components/turnstile'
+import { formatQuotaWithCurrency } from '@/lib/currency'
+import dayjs from '@/lib/dayjs'
+import { cn } from '@/lib/utils'
+
 import { getCheckinStatus, performCheckin } from '../api'
 import type { CheckinRecord } from '../types'
 
@@ -139,7 +141,13 @@ export function CheckinCalendarCard({
     async (token?: string) => {
       setCheckinLoading(true)
       try {
-        const res = await performCheckin(token)
+        const nonce = checkinData?.checkin_nonce
+        if (!nonce) {
+          toast.error(t('Check-in verification expired, please refresh.'))
+          refetch()
+          return
+        }
+        const res = await performCheckin(nonce, token)
         if (res.success && res.data) {
           toast.success(
             `${t('Check-in successful! Received')} ${formatQuotaWithCurrency(res.data.quota_awarded)}`
@@ -166,7 +174,13 @@ export function CheckinCalendarCard({
         setCheckinLoading(false)
       }
     },
-    [refetch, shouldTriggerTurnstile, t, turnstileSiteKey]
+    [
+      checkinData?.checkin_nonce,
+      refetch,
+      shouldTriggerTurnstile,
+      t,
+      turnstileSiteKey,
+    ]
   )
 
   const handlePrevMonth = () => {

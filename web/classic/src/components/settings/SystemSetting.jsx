@@ -90,6 +90,12 @@ const SystemSetting = () => {
     'passkey.attachment_preference': '',
     EmailDomainRestrictionEnabled: '',
     EmailAliasRestrictionEnabled: '',
+    EmailQQNumericOnlyEnabled: '',
+    RegisterIPLimitEnabled: '',
+    RegisterIPLimitDailyCount: 5,
+    RegisterIPLimitDisableInviteReward: true,
+    RegisterIPLimitDisableInitialQuota: false,
+    RegisterIPLimitBlockRegistration: false,
     SMTPSSLEnabled: '',
     SMTPForceAuthLogin: '',
     EmailDomainWhitelist: [],
@@ -182,6 +188,11 @@ const SystemSetting = () => {
           case 'TurnstileCheckEnabled':
           case 'EmailDomainRestrictionEnabled':
           case 'EmailAliasRestrictionEnabled':
+          case 'EmailQQNumericOnlyEnabled':
+          case 'RegisterIPLimitEnabled':
+          case 'RegisterIPLimitDisableInviteReward':
+          case 'RegisterIPLimitDisableInitialQuota':
+          case 'RegisterIPLimitBlockRegistration':
           case 'SMTPSSLEnabled':
           case 'SMTPForceAuthLogin':
           case 'LinuxDOOAuthEnabled':
@@ -208,6 +219,7 @@ const SystemSetting = () => {
             break;
           case 'Price':
           case 'MinTopUp':
+          case 'RegisterIPLimitDailyCount':
             item.value = parseFloat(item.value);
             break;
           default:
@@ -360,6 +372,15 @@ const SystemSetting = () => {
     } else {
       showError(t('邮箱域名白名单格式不正确'));
     }
+  };
+
+  const submitRegisterIPLimit = async () => {
+    await updateOptions([
+      {
+        key: 'RegisterIPLimitDailyCount',
+        value: Math.max(1, Number(inputs.RegisterIPLimitDailyCount) || 1),
+      },
+    ]);
   };
 
   const submitSSRF = async () => {
@@ -1097,6 +1118,88 @@ const SystemSetting = () => {
               </Card>
 
               <Card>
+                <Form.Section text={t('注册风控')}>
+                  <Text type='secondary'>
+                    {t(
+                      '限制同一 IP 在一天内批量注册，触发后可阻断注册或取消奖励。',
+                    )}
+                  </Text>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Checkbox
+                        field='RegisterIPLimitEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('RegisterIPLimitEnabled', e)
+                        }
+                      >
+                        {t('启用同 IP 注册限制')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='RegisterIPLimitDisableInviteReward'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange(
+                            'RegisterIPLimitDisableInviteReward',
+                            e,
+                          )
+                        }
+                      >
+                        {t('触发后不给邀请奖励')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='RegisterIPLimitDisableInitialQuota'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange(
+                            'RegisterIPLimitDisableInitialQuota',
+                            e,
+                          )
+                        }
+                      >
+                        {t('触发后不给新用户初始额度')}
+                      </Form.Checkbox>
+                    </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Checkbox
+                        field='RegisterIPLimitBlockRegistration'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange(
+                            'RegisterIPLimitBlockRegistration',
+                            e,
+                          )
+                        }
+                      >
+                        {t('触发后禁止继续注册')}
+                      </Form.Checkbox>
+                      <Form.InputNumber
+                        field='RegisterIPLimitDailyCount'
+                        label={t('同 IP 每日触发阈值')}
+                        min={1}
+                        style={{ width: '100%' }}
+                        onChange={(value) =>
+                          setInputs((prev) => ({
+                            ...prev,
+                            RegisterIPLimitDailyCount: value,
+                          }))
+                        }
+                      />
+                      <Button
+                        onClick={submitRegisterIPLimit}
+                        style={{ marginTop: 10 }}
+                      >
+                        {t('保存注册风控设置')}
+                      </Button>
+                    </Col>
+                  </Row>
+                </Form.Section>
+              </Card>
+
+              <Card>
                 <Form.Section text={t('配置 Passkey')}>
                   <Text>{t('用以支持基于 WebAuthn 的无密码登录注册')}</Text>
                   <Banner
@@ -1257,6 +1360,15 @@ const SystemSetting = () => {
                         }
                       >
                         启用邮箱别名限制
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='EmailQQNumericOnlyEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('EmailQQNumericOnlyEnabled', e)
+                        }
+                      >
+                        {t('限制 QQ 邮箱只能使用数字')}
                       </Form.Checkbox>
                     </Col>
                   </Row>

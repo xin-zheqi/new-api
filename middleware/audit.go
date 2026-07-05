@@ -164,6 +164,7 @@ func finishAdminAudit(c *gin.Context, writer *auditResponseWriter) {
 		"admin_role":     operatorRole,
 		"auth_method":    auditAuthMethod(c),
 	}
+	adminInfo = model.MergeLogRequestAdminInfo(c, adminInfo)
 	auditInfo := map[string]interface{}{
 		"method":  method,
 		"route":   route,

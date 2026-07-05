@@ -221,6 +221,8 @@ export interface CheckinStats {
 export interface CheckinStatusResponse {
   /** Whether check-in feature is enabled */
   enabled: boolean
+  /** One-time nonce required for check-in */
+  checkin_nonce: string
   /** Check-in statistics */
   stats: CheckinStats
 }

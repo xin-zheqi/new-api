@@ -133,6 +133,12 @@ function renderType(type, t) {
           {t('退款')}
         </Tag>
       );
+    case 7:
+      return (
+        <Tag color='blue' shape='circle'>
+          {t('登录')}
+        </Tag>
+      );
     default:
       return (
         <Tag color='grey' shape='circle'>
@@ -424,10 +430,29 @@ function renderCompactDetailSummary(summarySegments) {
   );
 }
 
+const auditTemplates = {
+  login: 'Logged in successfully via {{method}}',
+  generic: '{{method}} {{route}}',
+};
+
+function renderAuditText(other, fallback, t) {
+  const op = other?.op;
+  if (!op?.action) {
+    return fallback;
+  }
+  const template = auditTemplates[op.action];
+  if (!template) {
+    return fallback;
+  }
+  return t(template, op.params || {});
+}
+
 function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
   const other = getLogOther(record.other);
   const displayText =
-    other?.op?.action === 'lottery.win'
+    record.type === 3 || record.type === 7
+      ? renderAuditText(other, text, t)
+      : other?.op?.action === 'lottery.win'
       ? t('抽奖中奖：{{title}}，奖品：{{prize_name}}', {
           title: other?.op?.params?.title || '',
           prize_name: other?.op?.params?.prize_name || '',
@@ -845,7 +870,7 @@ export const getLogsColumns = ({
           {t('IP')}
           <Tooltip
             content={t(
-              '只有当用户设置开启IP记录时，才会进行请求和错误类型日志的IP记录',
+              '系统会强制记录使用日志和错误日志的客户端IP，用于安全审计',
             )}
           >
             <IconHelpCircle className='text-gray-400 cursor-help' />
@@ -854,11 +879,7 @@ export const getLogsColumns = ({
       ),
       dataIndex: 'ip',
       render: (text, record, index) => {
-        const showIp =
-          (record.type === 2 ||
-            record.type === 5 ||
-            (isAdminUser && record.type === 1)) &&
-          text;
+        const showIp = isAdminUser && text;
         return showIp ? (
           <Tooltip content={text}>
             <span>
@@ -916,7 +937,9 @@ export const getLogsColumns = ({
       render: (text, record, index) => {
         const other = getLogOther(record.other);
         const displayText =
-          other?.op?.action === 'lottery.win'
+          record.type === 3 || record.type === 7
+            ? renderAuditText(other, text, t)
+            : other?.op?.action === 'lottery.win'
             ? t('抽奖中奖：{{title}}，奖品：{{prize_name}}', {
                 title: other?.op?.params?.title || '',
                 prize_name: other?.op?.params?.prize_name || '',

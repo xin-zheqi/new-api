@@ -93,6 +93,7 @@ var RegisterEnabled = true
 
 var EmailDomainRestrictionEnabled = false // 是否启用邮箱域名限制
 var EmailAliasRestrictionEnabled = false  // 是否启用邮箱别名限制
+var EmailQQNumericOnlyEnabled = false     // 是否限制 QQ 邮箱只能使用数字 QQ 号
 var EmailDomainWhitelist = []string{
 	"gmail.com",
 	"163.com",
@@ -144,6 +145,11 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+var RegisterIPLimitEnabled = false
+var RegisterIPLimitDailyCount = 5
+var RegisterIPLimitDisableInviteReward = true
+var RegisterIPLimitDisableInitialQuota = false
+var RegisterIPLimitBlockRegistration = false
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

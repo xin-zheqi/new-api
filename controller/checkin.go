@@ -9,8 +9,13 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
+
+type checkinRequest struct {
+	Nonce string `json:"nonce"`
+}
 
 // GetCheckinStatus 获取用户签到状态和历史记录
 func GetCheckinStatus(c *gin.Context) {
@@ -32,13 +37,22 @@ func GetCheckinStatus(c *gin.Context) {
 		return
 	}
 
+	nonce := common.GetRandomString(24)
+	session := sessions.Default(c)
+	session.Set("checkin_nonce", nonce)
+	if err := session.Save(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"enabled":   setting.Enabled,
-			"min_quota": setting.MinQuota,
-			"max_quota": setting.MaxQuota,
-			"stats":     stats,
+			"enabled":       setting.Enabled,
+			"min_quota":     setting.MinQuota,
+			"max_quota":     setting.MaxQuota,
+			"stats":         stats,
+			"checkin_nonce": nonce,
 		},
 	})
 }
@@ -52,6 +66,21 @@ func DoCheckin(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
+	var req checkinRequest
+	if c.Request.Body != nil {
+		_ = common.DecodeJson(c.Request.Body, &req)
+	}
+	session := sessions.Default(c)
+	nonce, _ := session.Get("checkin_nonce").(string)
+	session.Delete("checkin_nonce")
+	_ = session.Save()
+	if nonce == "" || req.Nonce == "" || nonce != req.Nonce {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "签到校验失败，请刷新页面后重试",
+		})
+		return
+	}
 
 	checkin, err := model.UserCheckin(userId)
 	if err != nil {

@@ -201,6 +201,45 @@ func TestJoinLotteryRequiresRechargeWhenConfigured(t *testing.T) {
 	require.NoError(t, JoinLotteryRound(lottery.Id, 101))
 }
 
+func TestJoinLotteryIgnoresRechargeDetailsWhenRechargeRequirementDisabled(t *testing.T) {
+	truncateTables(t)
+	enableLotteryForTest(t)
+
+	insertLotteryUser(t, 102)
+	now := common.GetTimestamp()
+	lottery, err := CreateLottery(LotteryCreateRequest{
+		Title:                     "Recharge details disabled",
+		PrizeName:                 "Gift",
+		Mode:                      LotteryModeOnce,
+		WinnerCount:               1,
+		PrizePerWinner:            1,
+		RequireRecharge:           false,
+		MinRechargeAmount:         100,
+		RechargeWindowDays:        7,
+		CountRedemptionAsRecharge: true,
+		RegistrationStart:         now - 60,
+		RegistrationEnd:           now + 120,
+		DrawTime:                  now + 180,
+		PrizeCodes:                []string{"A"},
+	}, 1)
+	require.NoError(t, err)
+
+	require.NoError(t, JoinLotteryRound(lottery.Id, 102))
+
+	var user User
+	require.NoError(t, DB.Where("id = ?", 102).First(&user).Error)
+	eligibility, err := EvaluateLotteryEligibility(DB, user, LotteryEligibilityRules{
+		RequireRecharge:           false,
+		MinRechargeAmount:         100,
+		RechargeWindowDays:        7,
+		CountRedemptionAsRecharge: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, eligibility)
+	assert.True(t, eligibility.Eligible)
+	assert.Empty(t, eligibility.Issues)
+}
+
 func TestJoinLotteryRedemptionDoesNotCountAsRechargeByDefault(t *testing.T) {
 	truncateTables(t)
 	enableLotteryForTest(t)

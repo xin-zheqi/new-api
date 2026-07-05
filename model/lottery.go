@@ -1034,7 +1034,7 @@ func EvaluateLotteryEligibility(tx *gorm.DB, user User, rules LotteryEligibility
 			Message: "请求次数不满足参与条件",
 		})
 	}
-	if rules.RequireRecharge || rules.MinRechargeAmount > 0 {
+	if rules.RequireRecharge {
 		rechargeEligibility, err := evaluateLotteryRechargeEligibility(tx, user.Id, rules)
 		if err != nil {
 			return nil, err

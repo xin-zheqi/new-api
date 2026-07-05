@@ -3,6 +3,7 @@ package model
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,7 +24,7 @@ func BuildLogRequestAdminInfo(c *gin.Context) map[string]interface{} {
 		return nil
 	}
 	adminInfo := map[string]interface{}{
-		"request_ip": c.ClientIP(),
+		"request_ip": common.GetClientIP(c),
 	}
 	if userAgent := trimLogRequestUserAgent(c.Request.UserAgent()); userAgent != "" {
 		adminInfo["user_agent"] = userAgent

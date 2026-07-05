@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
@@ -140,6 +141,38 @@ func TestProcessHeaderOverride_PassthroughSkipsAcceptEncoding(t *testing.T) {
 
 	_, hasAcceptEncoding := headers["accept-encoding"]
 	require.False(t, hasAcceptEncoding)
+}
+
+func TestProcessHeaderOverride_DoesNotForwardInternalRealIPHeader(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx.Request.Header.Set(common2.InternalRealIPHeader, "203.0.113.10")
+	ctx.Request.Header.Set("X-Trace-Id", "trace-123")
+
+	info := &relaycommon.RelayInfo{
+		IsChannelTest: false,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			HeadersOverride: map[string]any{
+				"*":             "",
+				"X-Upstream-IP": "{client_header:" + common2.InternalRealIPHeader + "}",
+			},
+		},
+	}
+
+	headers, err := processHeaderOverride(info, ctx)
+	require.NoError(t, err)
+	require.Equal(t, "trace-123", headers["x-trace-id"])
+	require.NotContains(t, headers, strings.ToLower(common2.InternalRealIPHeader))
+	require.NotContains(t, headers, "x-upstream-ip")
+
+	upstreamReq := httptest.NewRequest(http.MethodPost, "https://example.com/v1/chat/completions", nil)
+	upstreamReq.Header.Set(common2.InternalRealIPHeader, "should-be-removed")
+	applyHeaderOverrideToRequest(upstreamReq, headers)
+	require.Empty(t, upstreamReq.Header.Get(common2.InternalRealIPHeader))
 }
 
 func TestProcessHeaderOverride_PassHeadersTemplateSetsRuntimeHeaders(t *testing.T) {

@@ -136,6 +136,9 @@ func shouldSkipPassthroughHeader(name string) bool {
 	if name == "" {
 		return true
 	}
+	if common2.IsInternalRequestHeader(name) {
+		return true
+	}
 	lower := strings.ToLower(name)
 	if _, ok := passthroughSkipHeaderNamesLower[lower]; ok {
 		return true
@@ -155,6 +158,9 @@ func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey str
 		name := strings.TrimSpace(afterPrefix[:end])
 		if name == "" {
 			return "", false, fmt.Errorf("client_header placeholder name is empty: %q", template)
+		}
+		if common2.IsInternalRequestHeader(name) {
+			return "", false, nil
 		}
 		if c == nil || c.Request == nil {
 			return "", false, fmt.Errorf("missing request context for client_header placeholder")
@@ -294,7 +300,11 @@ func applyHeaderOverrideToRequest(req *http.Request, headerOverride map[string]s
 	if req == nil {
 		return
 	}
+	req.Header.Del(common2.InternalRealIPHeader)
 	for key, value := range headerOverride {
+		if common2.IsInternalRequestHeader(key) {
+			continue
+		}
 		req.Header.Set(key, value)
 		// set Host in req
 		if strings.EqualFold(key, "Host") {
@@ -382,8 +392,12 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, err
 	}
 	for key, value := range headerOverride {
+		if common2.IsInternalRequestHeader(key) {
+			continue
+		}
 		targetHeader.Set(key, value)
 	}
+	targetHeader.Del(common2.InternalRealIPHeader)
 	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
 	targetConn, _, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
 	if err != nil {

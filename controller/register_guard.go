@@ -34,7 +34,7 @@ func reserveRegistrationIP(c *gin.Context) (registrationIPDecision, func(), erro
 	if limit < 1 {
 		limit = 1
 	}
-	ip := strings.TrimSpace(c.ClientIP())
+	ip := strings.TrimSpace(common.GetClientIP(c))
 	if ip == "" {
 		return registrationIPDecision{}, func() {}, nil
 	}

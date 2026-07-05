@@ -405,6 +405,9 @@ func sanitizeHeaderOverrideMap(source map[string]interface{}) map[string]interfa
 		if normalizedKey == "" {
 			continue
 		}
+		if common.IsInternalRequestHeader(normalizedKey) {
+			continue
+		}
 		normalizedValue := strings.TrimSpace(fmt.Sprintf("%v", value))
 		if normalizedValue == "" {
 			if isHeaderPassthroughRuleKeyForOverride(normalizedKey) {
@@ -1075,6 +1078,9 @@ func setHeaderOverrideInContext(context map[string]interface{}, headerName strin
 	if headerName == "" {
 		return fmt.Errorf("header name is required")
 	}
+	if common.IsInternalRequestHeader(headerName) {
+		return nil
+	}
 
 	rawHeaders := ensureMapKeyInContext(context, paramOverrideContextHeaderOverride)
 	if keepOrigin {
@@ -1238,6 +1244,12 @@ func copyHeaderInContext(context map[string]interface{}, fromHeader, toHeader st
 	toHeader = normalizeHeaderContextKey(toHeader)
 	if fromHeader == "" || toHeader == "" {
 		return fmt.Errorf("copy_header from/to is required")
+	}
+	if common.IsInternalRequestHeader(fromHeader) {
+		return fmt.Errorf("%w: %s", errSourceHeaderNotFound, fromHeader)
+	}
+	if common.IsInternalRequestHeader(toHeader) {
+		return nil
 	}
 	value, exists := getHeaderValueFromContext(context, fromHeader)
 	if !exists {
@@ -1490,6 +1502,9 @@ func getHeaderValueFromContext(context map[string]interface{}, headerName string
 	if headerName == "" {
 		return "", false
 	}
+	if common.IsInternalRequestHeader(headerName) {
+		return "", false
+	}
 	for _, key := range []string{paramOverrideContextHeaderOverride, paramOverrideContextRequestHeaders} {
 		source := ensureMapKeyInContext(context, key)
 		raw, ok := source[headerName]
@@ -1517,6 +1532,9 @@ func buildRequestHeadersContext(headers map[string]string) map[string]interface{
 		normalized := normalizeHeaderContextKey(item.Key)
 		value := strings.TrimSpace(item.Value)
 		if normalized == "" || value == "" {
+			return lo.Entry[string, string]{}, false
+		}
+		if common.IsInternalRequestHeader(normalized) {
 			return lo.Entry[string, string]{}, false
 		}
 		return lo.Entry[string, string]{Key: normalized, Value: value}, true

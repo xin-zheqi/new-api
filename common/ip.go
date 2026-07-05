@@ -1,49 +1,49 @@
 package common
 
-import "net"
+import (
+	"net"
+	"net/netip"
+	"strings"
 
-func IsIP(s string) bool {
-	ip := net.ParseIP(s)
-	return ip != nil
+	"github.com/gin-gonic/gin"
+)
+
+const InternalRealIPHeader = "X-New-Api-Real-IP"
+
+func IsInternalRequestHeader(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), InternalRealIPHeader)
 }
 
-func ParseIP(s string) net.IP {
-	return net.ParseIP(s)
-}
-
-func IsPrivateIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
+func GetClientIP(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
 	}
-
-	private := []net.IPNet{
-		{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)},
-		{IP: net.IPv4(172, 16, 0, 0), Mask: net.CIDRMask(12, 32)},
-		{IP: net.IPv4(192, 168, 0, 0), Mask: net.CIDRMask(16, 32)},
-	}
-
-	for _, privateNet := range private {
-		if privateNet.Contains(ip) {
-			return true
+	if value := strings.TrimSpace(c.GetHeader(InternalRealIPHeader)); value != "" {
+		if _, err := netip.ParseAddr(value); err == nil {
+			return value
 		}
 	}
-	return false
+	return c.ClientIP()
 }
 
-func IsIpInCIDRList(ip net.IP, cidrList []string) bool {
-	for _, cidr := range cidrList {
-		_, network, err := net.ParseCIDR(cidr)
-		if err != nil {
-			// 尝试作为单个IP处理
-			if whitelistIP := net.ParseIP(cidr); whitelistIP != nil {
-				if ip.Equal(whitelistIP) {
-					return true
-				}
+func IsIpInCIDRList(ip net.IP, list []string) bool {
+	if ip == nil {
+		return false
+	}
+	for _, item := range list {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if strings.Contains(item, "/") {
+			_, network, err := net.ParseCIDR(item)
+			if err == nil && network != nil && network.Contains(ip) {
+				return true
 			}
 			continue
 		}
-
-		if network.Contains(ip) {
+		parsedIP := net.ParseIP(item)
+		if parsedIP != nil && parsedIP.Equal(ip) {
 			return true
 		}
 	}

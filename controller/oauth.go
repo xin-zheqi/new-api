@@ -342,6 +342,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		registerCommitted = true
 		user.FinalizeOAuthUserCreationWithRewardPolicy(inviterId, registerDecision.Policy)
 	}
+	recordUserRegistrationAudit(c, user.Id, "oauth:"+provider.GetName())
 
 	return user, nil
 }

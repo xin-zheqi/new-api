@@ -134,6 +134,26 @@ func RecordLog(userId int, logType int, content string) {
 	}
 }
 
+func RecordSystemLogWithRequestContext(c *gin.Context, userId int, content string, action string, params map[string]interface{}) {
+	username, _ := GetUsernameById(userId, false)
+	other := addLogRequestAdminInfo(c, nil)
+	if action != "" {
+		other["op"] = buildOpField(action, params)
+	}
+	log := &Log{
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      LogTypeSystem,
+		Content:   content,
+		Ip:        common.GetClientIP(c),
+		Other:     common.MapToJsonStr(other),
+	}
+	if err := createLog(log); err != nil {
+		common.SysLog("failed to record system log: " + err.Error())
+	}
+}
+
 // RecordLogWithAdminInfo 记录操作日志，并将管理员相关信息存入 Other.admin_info，
 func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo map[string]interface{}) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {

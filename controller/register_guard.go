@@ -26,6 +26,21 @@ func validateEmailPolicy(email string) error {
 	return nil
 }
 
+func recordUserRegistrationAudit(c *gin.Context, userId int, method string) {
+	if method == "" {
+		method = "password"
+	}
+	model.RecordSystemLogWithRequestContext(
+		c,
+		userId,
+		"用户注册成功",
+		"user.register",
+		map[string]interface{}{
+			"method": method,
+		},
+	)
+}
+
 func reserveRegistrationIP(c *gin.Context) (registrationIPDecision, func(), error) {
 	if c == nil || !common.RegisterIPLimitEnabled || !common.RedisEnabled || common.RDB == nil {
 		return registrationIPDecision{}, func() {}, nil

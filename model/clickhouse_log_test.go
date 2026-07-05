@@ -187,3 +187,37 @@ func TestRecordConsumeLogStoresRequestContextOnlyForAdminView(t *testing.T) {
 	assert.NotContains(t, userOther, "admin_info")
 	assert.Equal(t, "unit-test", userOther["source"])
 }
+
+func TestRecordSystemLogWithRequestContextStoresIPAndUserAgent(t *testing.T) {
+	truncateTables(t)
+	c := newLogRequestTestContext()
+	c.Request.Header.Set(common.InternalRealIPHeader, "198.51.100.77")
+
+	RecordSystemLogWithRequestContext(c, 42, "用户签到，获得额度 $1.00", "user.checkin", map[string]interface{}{
+		"quota": 500000,
+	})
+
+	var log Log
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", 42, LogTypeSystem).First(&log).Error)
+	assert.Equal(t, "198.51.100.77", log.Ip)
+
+	adminOther, err := common.StrToMap(log.Other)
+	require.NoError(t, err)
+	adminInfo, ok := adminOther["admin_info"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "198.51.100.77", adminInfo["request_ip"])
+	assert.Equal(t, "new-api-test", adminInfo["user_agent"])
+
+	op, ok := adminOther["op"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "user.checkin", op["action"])
+
+	userLogs, total, err := GetUserLogs(42, LogTypeSystem, 0, 0, "", "", 0, 10, "", "", "")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, userLogs, 1)
+	userOther, err := common.StrToMap(userLogs[0].Other)
+	require.NoError(t, err)
+	assert.NotContains(t, userOther, "admin_info")
+	assert.Contains(t, userOther, "op")
+}

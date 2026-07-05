@@ -283,6 +283,7 @@ func Register(c *gin.Context) {
 			return
 		}
 	}
+	recordUserRegistrationAudit(c, insertedUser.Id, "password")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

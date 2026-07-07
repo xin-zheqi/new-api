@@ -3026,6 +3026,64 @@ export function ChannelMutateDrawer({
                         title={t('Channel Extra Settings')}
                         icon={<Settings className='h-4 w-4' />}
                       />
+                      <div className='border-border/60 flex flex-col gap-3 border-y py-4'>
+                        <SubHeading
+                          title={t('Image generation controls')}
+                          icon={<SlidersHorizontal className='h-3.5 w-3.5' />}
+                        />
+
+                        <div className='divide-border space-y-0 divide-y border-y'>
+                          <FormField
+                            control={form.control}
+                            name='disable_image_generation'
+                            render={({ field }) => (
+                              <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                <div className='space-y-0.5'>
+                                  <FormLabel className='text-sm'>
+                                    {t('Disable image generation tools')}
+                                  </FormLabel>
+                                  <FormDescription>
+                                    {t(
+                                      'Reject requests that use image_generation tools or image generation endpoints'
+                                    )}
+                                  </FormDescription>
+                                </div>
+                                <FormControl>
+                                  <Switch
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name='strip_image_generation_tool'
+                            render={({ field }) => (
+                              <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                <div className='space-y-0.5'>
+                                  <FormLabel className='text-sm'>
+                                    {t('Strip image_generation tool')}
+                                  </FormLabel>
+                                  <FormDescription>
+                                    {t(
+                                      'When image generation is not blocked, remove explicit image_generation tools before relay'
+                                    )}
+                                  </FormDescription>
+                                </div>
+                                <FormControl>
+                                  <Switch
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
                       {(currentType === 1 || currentType === 14) && (
                         <div className='border-border/60 flex flex-col gap-3 border-y py-4'>
                           <SubHeading

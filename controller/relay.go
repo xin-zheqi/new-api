@@ -185,6 +185,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 
+		if policyErr := applyChannelImageGenerationPolicy(c, relayInfo, channel); policyErr != nil {
+			newAPIError = policyErr
+			break
+		}
+
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {

@@ -213,6 +213,8 @@ const EditChannelModal = (props) => {
     disable_store: false, // false = 允许透传（默认开启）
     allow_safety_identifier: false,
     allow_include_obfuscation: false,
+    disable_image_generation: false,
+    strip_image_generation_tool: false,
     allow_inference_geo: false,
     allow_speed: false,
     claude_beta_query: false,
@@ -925,6 +927,12 @@ const EditChannelModal = (props) => {
             parsedSettings.allow_safety_identifier || false;
           data.allow_include_obfuscation =
             parsedSettings.allow_include_obfuscation || false;
+          data.disable_image_generation =
+            parsedSettings.disable_image_generation || false;
+          data.strip_image_generation_tool =
+            parsedSettings.strip_image_generation_tool ||
+            parsedSettings.strip_codex_image_tool ||
+            false;
           data.allow_inference_geo =
             parsedSettings.allow_inference_geo || false;
           data.allow_speed = parsedSettings.allow_speed || false;
@@ -957,6 +965,8 @@ const EditChannelModal = (props) => {
           data.disable_store = false;
           data.allow_safety_identifier = false;
           data.allow_include_obfuscation = false;
+          data.disable_image_generation = false;
+          data.strip_image_generation_tool = false;
           data.allow_inference_geo = false;
           data.allow_speed = false;
           data.claude_beta_query = false;
@@ -976,6 +986,8 @@ const EditChannelModal = (props) => {
         data.disable_store = false;
         data.allow_safety_identifier = false;
         data.allow_include_obfuscation = false;
+        data.disable_image_generation = false;
+        data.strip_image_generation_tool = false;
         data.allow_inference_geo = false;
         data.allow_speed = false;
         data.claude_beta_query = false;
@@ -1833,6 +1845,12 @@ const EditChannelModal = (props) => {
       }
     }
 
+    settings.disable_image_generation =
+      localInputs.disable_image_generation === true;
+    settings.strip_image_generation_tool =
+      localInputs.strip_image_generation_tool === true;
+    delete settings.strip_codex_image_tool;
+
     settings.auto_test_enabled = localInputs.auto_test_enabled !== false;
 
     settings.upstream_model_update_check_enabled =
@@ -1879,6 +1897,8 @@ const EditChannelModal = (props) => {
     delete localInputs.disable_store;
     delete localInputs.allow_safety_identifier;
     delete localInputs.allow_include_obfuscation;
+    delete localInputs.disable_image_generation;
+    delete localInputs.strip_image_generation_tool;
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
     delete localInputs.claude_beta_query;
@@ -2538,6 +2558,12 @@ const EditChannelModal = (props) => {
                       />
                     </Col>
                   </Row>
+
+                  <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
+                    {t('生图工具控制')}
+                  </div>
+                  <Form.Switch field='disable_image_generation' label={t('禁用生图工具')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('disable_image_generation', value)} extraText={t('开启后，该渠道会拒绝 image_generation 工具或图片生成接口请求，并返回 403 错误')} />
+                  <Form.Switch field='strip_image_generation_tool' label={t('移除 image_generation 工具')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('strip_image_generation_tool', value)} extraText={t('未启用禁用生图时，移除请求中显式传入的 image_generation 工具和对应 tool_choice')} />
 
                   {inputs.type === 1 && (
                     <>

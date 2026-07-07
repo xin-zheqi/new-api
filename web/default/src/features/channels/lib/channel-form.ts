@@ -206,6 +206,8 @@ export const channelFormSchema = z
     disable_store: z.boolean().optional(), // OpenAI only
     allow_safety_identifier: z.boolean().optional(), // OpenAI only
     allow_include_obfuscation: z.boolean().optional(), // OpenAI: include usage obfuscation
+    disable_image_generation: z.boolean().optional(), // Channel-level image generation gate
+    strip_image_generation_tool: z.boolean().optional(), // Remove image_generation tools when not blocked
     allow_inference_geo: z.boolean().optional(), // OpenAI/Anthropic: inference geography
     allow_speed: z.boolean().optional(), // Anthropic: speed mode control
     claude_beta_query: z.boolean().optional(), // Anthropic: beta query passthrough
@@ -349,6 +351,8 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   disable_store: false,
   allow_safety_identifier: false,
   allow_include_obfuscation: false,
+  disable_image_generation: false,
+  strip_image_generation_tool: false,
   allow_inference_geo: false,
   allow_speed: false,
   claude_beta_query: false,
@@ -413,6 +417,8 @@ export function transformChannelToFormDefaults(
   let disableStore = false
   let allowSafetyIdentifier = false
   let allowIncludeObfuscation = false
+  let disableImageGeneration = false
+  let stripImageGenerationTool = false
   let allowInferenceGeo = false
   let allowSpeed = false
   let claudeBetaQuery = false
@@ -433,6 +439,10 @@ export function transformChannelToFormDefaults(
       disableStore = parsed.disable_store === true
       allowSafetyIdentifier = parsed.allow_safety_identifier === true
       allowIncludeObfuscation = parsed.allow_include_obfuscation === true
+      disableImageGeneration = parsed.disable_image_generation === true
+      stripImageGenerationTool =
+        parsed.strip_image_generation_tool === true ||
+        parsed.strip_codex_image_tool === true
       allowInferenceGeo = parsed.allow_inference_geo === true
       allowSpeed = parsed.allow_speed === true
       claudeBetaQuery = parsed.claude_beta_query === true
@@ -497,6 +507,8 @@ export function transformChannelToFormDefaults(
     claude_beta_query: claudeBetaQuery,
     auto_test_enabled: autoTestEnabled,
     allow_safety_identifier: allowSafetyIdentifier,
+    disable_image_generation: disableImageGeneration,
+    strip_image_generation_tool: stripImageGenerationTool,
     upstream_model_update_check_enabled: upstreamModelUpdateCheckEnabled,
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
     upstream_model_update_ignored_models: upstreamModelUpdateIgnoredModels,
@@ -593,6 +605,14 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       delete settingsObj.allow_include_obfuscation
     if (formData.type !== 14 && 'allow_inference_geo' in settingsObj)
       delete settingsObj.allow_inference_geo
+  }
+
+  settingsObj.disable_image_generation =
+    formData.disable_image_generation === true
+  settingsObj.strip_image_generation_tool =
+    formData.strip_image_generation_tool === true
+  if ('strip_codex_image_tool' in settingsObj) {
+    delete settingsObj.strip_codex_image_tool
   }
 
   // Anthropic (type 14): claude_beta_query, allow_inference_geo, allow_speed

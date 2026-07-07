@@ -16,13 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
 import { useLocation } from '@tanstack/react-router'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
-import { ROLE } from '@/lib/roles'
+
 import { resolveSidebarView } from '@/components/layout/lib/sidebar-view-registry'
 import type { NavGroup, ResolvedSidebarView } from '@/components/layout/types'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
 import { useSidebarConfig } from './use-sidebar-config'
 import { useSidebarData } from './use-sidebar-data'
 
@@ -50,7 +52,8 @@ export function useSidebarView(): ResolvedSidebarView {
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
-    const isAdmin = userRole !== undefined && userRole >= ROLE.ADMIN
+    const role = userRole ?? ROLE.GUEST
+    const isAdmin = role >= ROLE.ADMIN
     const filterByRole = (items: NavGroup['items']) =>
       items
         .map((item) => {
@@ -59,8 +62,8 @@ export function useSidebarView(): ResolvedSidebarView {
               ...item,
               items: item.items.filter(
                 (subItem) =>
-                  !subItem.minRole ||
-                  (userRole !== undefined && userRole >= subItem.minRole)
+                  subItem.requiredRole === undefined ||
+                  role >= subItem.requiredRole
               ),
             }
           }
@@ -68,17 +71,12 @@ export function useSidebarView(): ResolvedSidebarView {
         })
         .filter(
           (item) =>
-            (!item.minRole ||
-              (userRole !== undefined && userRole >= item.minRole)) &&
+            (item.requiredRole === undefined || role >= item.requiredRole) &&
             (!('items' in item) || !item.items || item.items.length > 0)
         )
-
     return configFilteredRoot
       .filter((group) => (group.id === 'admin' ? isAdmin : true))
-      .map((group) => ({
-        ...group,
-        items: filterByRole(group.items),
-      }))
+      .map((group) => ({ ...group, items: filterByRole(group.items) }))
       .filter((group) => group.items.length > 0)
   }, [configFilteredRoot, userRole])
 

@@ -28,6 +28,7 @@ import {
   ListTodo,
   MessageSquare,
   Radio,
+  ServerCog,
   Settings,
   Ticket,
   Trophy,
@@ -36,6 +37,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+
 import { type SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
 import { useStatus } from './use-status'
@@ -165,7 +167,13 @@ export function useSidebarData(): SidebarData {
             title: t('Subscription Management'),
             url: '/subscriptions/users',
             icon: CreditCard,
-            minRole: ROLE.SUPER_ADMIN,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
+            title: t('System Info'),
+            url: '/system-info',
+            icon: ServerCog,
+            requiredRole: ROLE.SUPER_ADMIN,
           },
           {
             title: t('System Settings'),

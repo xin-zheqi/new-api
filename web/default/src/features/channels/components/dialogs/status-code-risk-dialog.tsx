@@ -17,25 +17,28 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { AlertTriangle } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogMedia,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 
-type StatusCodeRiskDialogProps = {
+import { Dialog } from '@/components/dialog'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+
+interface StatusCodeRiskDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   detailItems: string[]
   onConfirm: () => void
 }
+
+const CHECKLIST_KEYS = [
+  'High-risk status code retry risk check 1',
+  'High-risk status code retry risk check 2',
+  'High-risk status code retry risk check 3',
+  'High-risk status code retry risk check 4',
+] as const
 
 export function StatusCodeRiskDialog({
   open,
@@ -44,37 +47,119 @@ export function StatusCodeRiskDialog({
   onConfirm,
 }: StatusCodeRiskDialogProps) {
   const { t } = useTranslation()
+  const [checkedItems, setCheckedItems] = useState<Set<number>>(new Set())
+  const [confirmText, setConfirmText] = useState('')
+
+  const requiredText = t('High-risk status code retry confirmation text')
+  const allChecked = checkedItems.size === CHECKLIST_KEYS.length
+  const textMatches = confirmText.trim() === requiredText.trim()
+  const canConfirm = allChecked && textMatches
+
+  const handleConfirm = () => {
+    if (!canConfirm) return
+    setCheckedItems(new Set())
+    setConfirmText('')
+    onConfirm()
+  }
+
+  const handleCancel = () => {
+    setCheckedItems(new Set())
+    setConfirmText('')
+    onOpenChange(false)
+  }
+
+  const toggleCheck = (idx: number) => {
+    setCheckedItems((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogMedia className='text-amber-600'>
-            <AlertTriangle />
-          </AlertDialogMedia>
-          <AlertDialogTitle>{t('Confirm status code mapping')}</AlertDialogTitle>
-          <AlertDialogDescription render={<div />}>
-            <div className='space-y-3'>
-              <p>
-                {t(
-                  'The following mappings convert upstream error status codes into non-error status codes. This can make failed upstream requests look successful to clients.'
-                )}
-              </p>
-              <ul className='bg-muted/40 max-h-40 list-disc space-y-1 overflow-auto rounded-md px-5 py-3 font-mono text-xs'>
-                {detailItems.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={
+        <>
+          <AlertTriangle className='h-5 w-5' />
+          {t('High-risk operation confirmation')}
+        </>
+      }
+      description={t('High-risk status code retry risk disclaimer')}
+      contentClassName='max-w-lg'
+      titleClassName='text-destructive flex items-center gap-2'
+      contentHeight='auto'
+      bodyClassName='space-y-4'
+      footer={
+        <>
+          <Button variant='outline' onClick={handleCancel}>
+            {t('Cancel')}
+          </Button>
+          <Button
+            variant='destructive'
+            disabled={!canConfirm}
+            onClick={handleConfirm}
+          >
+            {t('I confirm enabling high-risk retry')}
+          </Button>
+        </>
+      }
+    >
+      <div className='space-y-4'>
+        {detailItems.length > 0 && (
+          <div className='border-destructive/30 bg-destructive/5 rounded-lg border p-3'>
+            <p className='mb-2 text-sm font-medium'>
+              {t('Detected high-risk status code redirect rules')}
+            </p>
+            <ul className='list-inside list-disc text-sm'>
+              {detailItems.map((item) => (
+                <li key={item} className='font-mono text-xs'>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className='space-y-2'>
+          {CHECKLIST_KEYS.map((key, idx) => (
+            <div key={key} className='flex items-start gap-2'>
+              <Checkbox
+                id={`risk-check-${idx}`}
+                checked={checkedItems.has(idx)}
+                onCheckedChange={() => toggleCheck(idx)}
+              />
+              <Label
+                htmlFor={`risk-check-${idx}`}
+                className='text-sm leading-tight'
+              >
+                {t(key)}
+              </Label>
             </div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>
-            {t('Continue')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          ))}
+        </div>
+
+        <div className='space-y-1.5'>
+          <Label className='text-sm'>
+            {t('Action confirmation')}:{' '}
+            <code className='bg-muted rounded px-1 text-xs'>
+              {requiredText}
+            </code>
+          </Label>
+          <Input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={t('High-risk status code retry input placeholder')}
+          />
+          {confirmText && !textMatches && (
+            <p className='text-destructive text-xs'>
+              {t('High-risk status code retry input mismatch')}
+            </p>
+          )}
+        </div>
+      </div>
+    </Dialog>
   )
 }

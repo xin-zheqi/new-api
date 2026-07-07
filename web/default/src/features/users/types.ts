@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import type { AdminPermissionMatrix } from '@/lib/admin-permissions'
+
 // ============================================================================
 // User Schema & Types
 // ============================================================================
@@ -44,10 +46,6 @@ export const userSchema = z.object({
   used_quota: z.number(),
   request_count: z.number(),
   group: z.string(),
-  rate_limit_enabled: z.boolean().optional(),
-  rate_limit_duration_minutes: z.number().optional(),
-  rate_limit_total_count: z.number().optional(),
-  rate_limit_success_count: z.number().optional(),
   aff_code: z.string().optional(),
   aff_count: z.number().optional(),
   aff_quota: z.number().optional(),
@@ -61,6 +59,9 @@ export const userSchema = z.object({
   last_login_at: z.number().optional(),
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
+  admin_permissions: z
+    .record(z.string(), z.record(z.string(), z.boolean()))
+    .optional(),
 })
 export type User = z.infer<typeof userSchema>
 
@@ -110,10 +111,7 @@ export interface UserFormData {
   quota?: number // Only used when updating user
   group?: string // Only used when updating user
   remark?: string // Only used when updating user
-  rate_limit_enabled?: boolean
-  rate_limit_duration_minutes?: number
-  rate_limit_total_count?: number
-  rate_limit_success_count?: number
+  admin_permissions?: AdminPermissionMatrix
 }
 
 export type ManageUserAction =

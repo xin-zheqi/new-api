@@ -16,14 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type FormEvent, useCallback, useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { type FormEvent, useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
-import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
-import { addTimeToDate } from '@/lib/time'
+
+import { DateTimePicker } from '@/components/datetime-picker'
+import {
+  SideDrawerSection,
+  sideDrawerContentClassName,
+  sideDrawerFooterClassName,
+  sideDrawerFormClassName,
+  sideDrawerHeaderClassName,
+} from '@/components/drawer-layout'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -44,21 +50,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { DateTimePicker } from '@/components/datetime-picker'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  SideDrawerSection,
-  sideDrawerContentClassName,
-  sideDrawerFooterClassName,
-  sideDrawerFormClassName,
-  sideDrawerHeaderClassName,
-} from '@/components/drawer-layout'
+import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+import { addTimeToDate } from '@/lib/time'
+
 import { createRedemption, updateRedemption, getRedemption } from '../api'
 import { SUCCESS_MESSAGES } from '../constants'
 import {
@@ -70,9 +65,6 @@ import {
 } from '../lib'
 import { type Redemption } from '../types'
 import { useRedemptions } from './redemptions-provider'
-import { getAdminPlans } from '@/features/subscriptions/api'
-import type { PlanRecord } from '@/features/subscriptions/types'
-import { formatDuration } from '@/features/subscriptions/lib'
 
 type RedemptionsMutateDrawerProps = {
   open: boolean
@@ -89,48 +81,26 @@ export function RedemptionsMutateDrawer({
   const isUpdate = !!currentRow
   const { triggerRefresh } = useRedemptions()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isPlansLoading, setIsPlansLoading] = useState(false)
-  const [plans, setPlans] = useState<PlanRecord[]>([])
 
   const form = useForm<RedemptionFormValues>({
     resolver: zodResolver(getRedemptionFormSchema(t)),
     defaultValues: REDEMPTION_FORM_DEFAULT_VALUES,
   })
-  const redeemType = form.watch('redeem_type')
 
-  const loadPlans = useCallback(async () => {
-    setIsPlansLoading(true)
-    try {
-      const result = await getAdminPlans()
-      if (result.success && result.data) {
-        setPlans(result.data)
-      } else {
-        setPlans([])
-      }
-    } catch {
-      setPlans([])
-    } finally {
-      setIsPlansLoading(false)
-    }
-  }, [])
-
+  // Load existing data when updating
   useEffect(() => {
-    void loadPlans()
-  }, [loadPlans])
-
-  useEffect(() => {
-    if (!open) return
-    void loadPlans()
-    if (isUpdate && currentRow) {
+    if (open && isUpdate && currentRow) {
+      // For update, fetch fresh data
       getRedemption(currentRow.id).then((result) => {
         if (result.success && result.data) {
           form.reset(transformRedemptionToFormDefaults(result.data))
         }
       })
-      return
+    } else if (open && !isUpdate) {
+      // For create, reset to defaults
+      form.reset(REDEMPTION_FORM_DEFAULT_VALUES)
     }
-    form.reset(REDEMPTION_FORM_DEFAULT_VALUES)
-  }, [open, isUpdate, currentRow, form, loadPlans])
+  }, [open, isUpdate, currentRow, form])
 
   const onSubmit = async (data: RedemptionFormValues) => {
     setIsSubmitting(true)
@@ -192,21 +162,6 @@ export function RedemptionsMutateDrawer({
   const quotaPlaceholder = tokensOnly
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
-  const renderPlanMeta = (record: PlanRecord) => {
-    const { plan } = record
-    const price = `$${Number(plan.price_amount || 0).toFixed(2)}`
-    const duration = formatDuration(plan, t)
-    const quota =
-      Number(plan.total_amount || 0) > 0
-        ? formatQuota(Number(plan.total_amount || 0))
-        : t('Unlimited')
-    return {
-      price,
-      duration,
-      quota,
-      statusLabel: plan.enabled ? t('Enable') : t('Disable'),
-    }
-  }
 
   return (
     <Sheet
@@ -260,139 +215,32 @@ export function RedemptionsMutateDrawer({
 
               <FormField
                 control={form.control}
-                name='redeem_type'
+                name='quota_dollars'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Redemption Type')}</FormLabel>
+                    <FormLabel>{quotaLabel}</FormLabel>
                     <FormControl>
-                      <Select
-                        value={field.value}
-                        onValueChange={(value) =>
-                          field.onChange(value as 'quota' | 'subscription')
+                      <Input
+                        {...field}
+                        type='number'
+                        step={tokensOnly ? 1 : 0.01}
+                        placeholder={quotaPlaceholder}
+                        onChange={(e) =>
+                          field.onChange(parseFloat(e.target.value) || 0)
                         }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectItem value='quota'>
-                            {t('Quota Top-up')}
-                          </SelectItem>
-                          <SelectItem value='subscription'>
-                            {t('Subscription Activation')}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                      />
                     </FormControl>
                     <FormDescription>
-                      {t('Choose what this redemption code grants')}
+                      {tokensOnly
+                        ? t('Enter the quota amount in tokens')
+                        : t('Enter the quota amount in {{currency}}', {
+                            currency: currencyLabel,
+                          })}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
-              {redeemType === 'quota' ? (
-                <FormField
-                  control={form.control}
-                  name='quota_dollars'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{quotaLabel}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          step={tokensOnly ? 1 : 0.01}
-                          placeholder={quotaPlaceholder}
-                          onChange={(e) =>
-                            field.onChange(parseFloat(e.target.value) || 0)
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {tokensOnly
-                          ? t('Enter the quota amount in tokens')
-                          : t('Enter the quota amount in {{currency}}', {
-                              currency: currencyLabel,
-                            })}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              ) : (
-                <FormField
-                  control={form.control}
-                  name='subscription_plan_id'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Subscription Plan')}</FormLabel>
-                      <FormControl>
-                        <Select
-                          value={
-                            field.value && field.value > 0
-                              ? String(field.value)
-                              : undefined
-                          }
-                          disabled={isPlansLoading || plans.length === 0}
-                          onValueChange={(value) => {
-                            if (value) field.onChange(parseInt(value, 10))
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue
-                              placeholder={
-                                isPlansLoading
-                                  ? t('Loading...')
-                                  : plans.length === 0
-                                    ? t('No enabled subscription plans')
-                                    : t('Select subscription plan')
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent alignItemWithTrigger={false}>
-                            {plans.map((record) => {
-                              const meta = renderPlanMeta(record)
-                              const subtitle =
-                                record.plan.subtitle?.trim() ?? ''
-                              return (
-                                <SelectItem
-                                  key={record.plan.id}
-                                  value={String(record.plan.id)}
-                                >
-                                  <div className='flex min-w-0 flex-col py-1'>
-                                    <span className='truncate font-medium'>
-                                      {`ID ${record.plan.id} · ${record.plan.title}`}
-                                    </span>
-                                    <span className='text-muted-foreground truncate text-xs'>
-                                      {subtitle
-                                        ? `${subtitle} · ${t('Total Quota')}: ${meta.quota} · ${t('Validity')}: ${meta.duration} · ${meta.price} · ${meta.statusLabel}`
-                                        : `${t('Total Quota')}: ${meta.quota} · ${t('Validity')}: ${meta.duration} · ${meta.price} · ${meta.statusLabel}`}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                              )
-                            })}
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                      <FormDescription>
-                        {isPlansLoading
-                          ? t('Loading subscription plans...')
-                          : plans.length === 0
-                            ? t(
-                                'No enabled subscription plans found. Enable or create a subscription plan first.'
-                              )
-                            : t(
-                                'Users who redeem this code will activate the selected subscription plan'
-                              )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
 
               <FormField
                 control={form.control}

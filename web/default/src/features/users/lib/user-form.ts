@@ -18,7 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import {
+  type PermissionCatalog,
+  type AdminPermissionMatrix,
+  normalizeAdminPermissions,
+} from '@/lib/admin-permissions'
 import { quotaUnitsToDollars } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 
 import { DEFAULT_GROUP } from '../constants'
 import { type UserFormData, type User } from '../types'
@@ -35,10 +41,9 @@ export const userFormSchema = z.object({
   quota_dollars: z.number().min(0).optional(),
   group: z.string().optional(),
   remark: z.string().optional(),
-  rate_limit_enabled: z.boolean(),
-  rate_limit_duration_minutes: z.number().min(1),
-  rate_limit_total_count: z.number().min(0),
-  rate_limit_success_count: z.number().min(1),
+  admin_permissions: z
+    .record(z.string(), z.record(z.string(), z.boolean()))
+    .optional(),
 })
 
 export type UserFormValues = z.infer<typeof userFormSchema>
@@ -55,10 +60,8 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   quota_dollars: 0,
   group: DEFAULT_GROUP,
   remark: '',
-  rate_limit_enabled: false,
-  rate_limit_duration_minutes: 1,
-  rate_limit_total_count: 0,
-  rate_limit_success_count: 1000,
+  // Filled against the backend catalog at render time; see UsersMutateDrawer.
+  admin_permissions: {},
 }
 
 // ============================================================================
@@ -70,7 +73,8 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
  */
 export function transformFormDataToPayload(
   data: UserFormValues,
-  userId?: number
+  userId?: number,
+  catalog?: PermissionCatalog
 ): UserFormData & { id?: number } {
   const payload: UserFormData & { id?: number } = {
     username: data.username,
@@ -78,17 +82,25 @@ export function transformFormDataToPayload(
     password: data.password || undefined,
   }
 
+  const role = userId === undefined ? data.role || 1 : (data.role ?? 0)
+
+  // Only send the permission matrix when the target is an admin and the catalog
+  // is available; without the catalog we cannot build a full matrix, so we omit
+  // the field (the backend then leaves existing permissions untouched).
+  if (role >= ROLE.ADMIN && catalog) {
+    payload.admin_permissions = normalizeAdminPermissions(
+      data.admin_permissions as AdminPermissionMatrix | undefined,
+      catalog
+    )
+  }
+
   // For create: only send required fields
   if (userId === undefined) {
-    payload.role = data.role || 1 // Default to common user
+    payload.role = role
   } else {
     // For update: quota is adjusted atomically via /api/user/manage, not sent here
     payload.group = data.group
     payload.remark = data.remark || undefined
-    payload.rate_limit_enabled = data.rate_limit_enabled
-    payload.rate_limit_duration_minutes = data.rate_limit_duration_minutes
-    payload.rate_limit_total_count = data.rate_limit_total_count
-    payload.rate_limit_success_count = data.rate_limit_success_count
     payload.id = userId
   }
 
@@ -96,7 +108,9 @@ export function transformFormDataToPayload(
 }
 
 /**
- * Transform user data to form defaults
+ * Transform user data to form defaults. The admin permission matrix is passed
+ * through as-is (the backend already returns a full matrix); it is filled against
+ * the catalog at render time in UsersMutateDrawer.
  */
 export function transformUserToFormDefaults(user: User): UserFormValues {
   return {
@@ -107,9 +121,6 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     quota_dollars: quotaUnitsToDollars(user.quota),
     group: user.group || DEFAULT_GROUP,
     remark: user.remark || '',
-    rate_limit_enabled: user.rate_limit_enabled || false,
-    rate_limit_duration_minutes: user.rate_limit_duration_minutes || 1,
-    rate_limit_total_count: user.rate_limit_total_count || 0,
-    rate_limit_success_count: user.rate_limit_success_count || 1000,
+    admin_permissions: user.admin_permissions ?? {},
   }
 }

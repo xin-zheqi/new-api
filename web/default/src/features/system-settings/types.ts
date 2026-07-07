@@ -56,6 +56,53 @@ export type DeleteLogsResponse = {
   data?: number
 }
 
+export type SystemTaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'
+
+export type SystemTaskState = {
+  total?: number
+  processed?: number
+  progress?: number
+  remaining?: number
+  [key: string]: unknown
+}
+
+export type SystemTaskResult = {
+  deleted_count?: number
+  [key: string]: unknown
+}
+
+export type SystemTask = {
+  id?: number
+  task_id: string
+  type: string
+  status: SystemTaskStatus
+  active_key?: string
+  payload?: unknown
+  state?: SystemTaskState
+  result?: SystemTaskResult
+  error?: string
+  locked_by?: string
+  created_at: number
+  updated_at: number
+}
+
+export type LogCleanupTask = SystemTask & {
+  state?: SystemTaskState
+  result?: SystemTaskResult
+}
+
+export type SystemTaskResponse<T = SystemTask> = {
+  success: boolean
+  message: string
+  data?: T
+}
+
+export type SystemTaskListResponse = {
+  success: boolean
+  message: string
+  data?: SystemTask[]
+}
+
 export type SiteSettings = {
   'theme.frontend': string
   Notice: string
@@ -144,6 +191,16 @@ export type ContentSettings = {
 }
 
 export type ModelSettings = {
+  RetryTimes: number
+  ChannelDisableThreshold: string
+  AutomaticDisableChannelEnabled: boolean
+  AutomaticEnableChannelEnabled: boolean
+  AutomaticDisableKeywords: string
+  AutomaticDisableStatusCodes: string
+  AutomaticRetryStatusCodes: string
+  'monitor_setting.auto_test_channel_enabled': boolean
+  'monitor_setting.auto_test_channel_minutes': number
+  'monitor_setting.channel_test_mode': 'scheduled_all' | 'passive_recovery'
   'global.pass_through_request_enabled': boolean
   'global.thinking_model_blacklist': string
   'global.chat_completions_to_responses_policy': string
@@ -184,6 +241,7 @@ export type ModelSettings = {
   'group_ratio_setting.group_special_usable_group': string
   'channel_affinity_setting.enabled': boolean
   'channel_affinity_setting.switch_on_success': boolean
+  'channel_affinity_setting.keep_on_channel_disabled': boolean
   'channel_affinity_setting.max_entries': number
   'channel_affinity_setting.default_ttl_seconds': number
   'channel_affinity_setting.rules': string
@@ -299,6 +357,8 @@ export type OperationsSettings = {
   SMTPFrom: string
   SMTPToken: string
   SMTPSSLEnabled: boolean
+  SMTPStartTLSEnabled: boolean
+  SMTPInsecureSkipVerify: boolean
   SMTPForceAuthLogin: boolean
   WorkerUrl: string
   WorkerValidKey: string
@@ -336,6 +396,7 @@ export type SecuritySettings = {
   'fetch_setting.ip_list': string[]
   'fetch_setting.allowed_ports': number[]
   'fetch_setting.apply_ip_filter_for_domain': boolean
+  'token_setting.max_user_tokens': number
 }
 
 export type UpstreamChannel = {

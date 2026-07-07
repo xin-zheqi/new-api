@@ -18,21 +18,21 @@ const (
 )
 
 type Redemption struct {
-	Id                 int            `json:"id"`
-	UserId             int            `json:"user_id"`
-	Key                string         `json:"key" gorm:"type:char(32);uniqueIndex"`
-	Status             int            `json:"status" gorm:"default:1"`
-	Name               string         `json:"name" gorm:"index"`
-	Quota              int            `json:"quota" gorm:"default:100"`
-	RedeemType         string         `json:"redeem_type" gorm:"type:varchar(32);not null;default:'quota'"`
-	SubscriptionPlanId int            `json:"subscription_plan_id" gorm:"index;default:0"`
-	SubscriptionPlanTitle string      `json:"subscription_plan_title,omitempty" gorm:"-:all"`
-	CreatedTime        int64          `json:"created_time" gorm:"bigint"`
-	RedeemedTime       int64          `json:"redeemed_time" gorm:"bigint"`
-	Count              int            `json:"count" gorm:"-:all"` // only for api request
-	UsedUserId         int            `json:"used_user_id"`
-	DeletedAt          gorm.DeletedAt `gorm:"index"`
-	ExpiredTime        int64          `json:"expired_time" gorm:"bigint"` // 过期时间，0 表示不过期
+	Id                    int            `json:"id"`
+	UserId                int            `json:"user_id"`
+	Key                   string         `json:"key" gorm:"type:char(32);uniqueIndex"`
+	Status                int            `json:"status" gorm:"default:1"`
+	Name                  string         `json:"name" gorm:"index"`
+	Quota                 int            `json:"quota" gorm:"default:100"`
+	RedeemType            string         `json:"redeem_type" gorm:"type:varchar(32);not null;default:'quota'"`
+	SubscriptionPlanId    int            `json:"subscription_plan_id" gorm:"index;default:0"`
+	SubscriptionPlanTitle string         `json:"subscription_plan_title,omitempty" gorm:"-:all"`
+	CreatedTime           int64          `json:"created_time" gorm:"bigint"`
+	RedeemedTime          int64          `json:"redeemed_time" gorm:"bigint"`
+	Count                 int            `json:"count" gorm:"-:all"` // only for api request
+	UsedUserId            int            `json:"used_user_id"`
+	DeletedAt             gorm.DeletedAt `gorm:"index"`
+	ExpiredTime           int64          `json:"expired_time" gorm:"bigint"` // 过期时间，0 表示不过期
 }
 
 type subscriptionPlanTitleRow struct {
@@ -169,7 +169,7 @@ func GetAllRedemptions(startIdx int, num int) (redemptions []*Redemption, total 
 	return redemptions, total, nil
 }
 
-func SearchRedemptions(keyword string, startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
+func SearchRedemptions(keyword string, status string, startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
 		return nil, 0, tx.Error
@@ -180,14 +180,36 @@ func SearchRedemptions(keyword string, startIdx int, num int) (redemptions []*Re
 		}
 	}()
 
-	// Build query based on keyword type
 	query := tx.Model(&Redemption{})
 
-	// Only try to convert to ID if the string represents a valid integer
-	if id, err := strconv.Atoi(keyword); err == nil {
-		query = query.Where("id = ? OR name LIKE ?", id, keyword+"%")
-	} else {
-		query = query.Where("name LIKE ?", keyword+"%")
+	if keyword != "" {
+		if id, err := strconv.Atoi(keyword); err == nil {
+			query = query.Where("id = ? OR name LIKE ?", id, keyword+"%")
+		} else {
+			query = query.Where("name LIKE ?", keyword+"%")
+		}
+	}
+
+	if status != "" {
+		now := common.GetTimestamp()
+		switch status {
+		case "expired":
+			query = query.Where(
+				"status = ? AND expired_time != 0 AND expired_time < ?",
+				common.RedemptionCodeStatusEnabled,
+				now,
+			)
+		case strconv.Itoa(common.RedemptionCodeStatusEnabled):
+			query = query.Where(
+				"status = ? AND (expired_time = 0 OR expired_time >= ?)",
+				common.RedemptionCodeStatusEnabled,
+				now,
+			)
+		case strconv.Itoa(common.RedemptionCodeStatusDisabled):
+			query = query.Where("status = ?", common.RedemptionCodeStatusDisabled)
+		case strconv.Itoa(common.RedemptionCodeStatusUsed):
+			query = query.Where("status = ?", common.RedemptionCodeStatusUsed)
+		}
 	}
 
 	// Get total count
@@ -249,7 +271,7 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 	}
 	common.RandomSleep()
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(keyCol+" = ?", key).First(redemption).Error
+		err := lockForUpdate(tx).Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrRedemptionInvalid
@@ -262,11 +284,41 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
 			return ErrRedemptionExpired
 		}
+		var plan *SubscriptionPlan
 		switch redemption.RedeemType {
 		case RedemptionTypeQuota:
 			if redemption.Quota <= 0 {
 				return ErrRedemptionQuotaInvalid
 			}
+		case RedemptionTypeSubscription:
+			if redemption.SubscriptionPlanId <= 0 {
+				return ErrRedemptionPlanRequired
+			}
+			plan, err = getSubscriptionPlanByIdTx(tx, redemption.SubscriptionPlanId)
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrRedemptionPlanNotFound
+				}
+				return err
+			}
+		default:
+			return ErrRedemptionTypeInvalid
+		}
+		updateResult := tx.Model(&Redemption{}).
+			Where("id = ? AND status = ?", redemption.Id, common.RedemptionCodeStatusEnabled).
+			Updates(map[string]interface{}{
+				"redeemed_time": common.GetTimestamp(),
+				"status":        common.RedemptionCodeStatusUsed,
+				"used_user_id":  userId,
+			})
+		if updateResult.Error != nil {
+			return updateResult.Error
+		}
+		if updateResult.RowsAffected == 0 {
+			return ErrRedemptionUsed
+		}
+		switch redemption.RedeemType {
+		case RedemptionTypeQuota:
 			err = tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
 			if err != nil {
 				return err
@@ -275,16 +327,6 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 			redeemResult.Quota = redemption.Quota
 			logMessage = fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id)
 		case RedemptionTypeSubscription:
-			if redemption.SubscriptionPlanId <= 0 {
-				return ErrRedemptionPlanRequired
-			}
-			plan, err := getSubscriptionPlanByIdTx(tx, redemption.SubscriptionPlanId)
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return ErrRedemptionPlanNotFound
-				}
-				return err
-			}
 			subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption")
 			if err != nil {
 				return err
@@ -299,14 +341,8 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 				UpgradeGroup: upgradeGroup,
 			}
 			logMessage = fmt.Sprintf("通过兑换码开通订阅套餐 %s，兑换码ID %d", plan.Title, redemption.Id)
-		default:
-			return ErrRedemptionTypeInvalid
 		}
-		redemption.RedeemedTime = common.GetTimestamp()
-		redemption.Status = common.RedemptionCodeStatusUsed
-		redemption.UsedUserId = userId
-		err = tx.Save(redemption).Error
-		return err
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, ErrRedemptionInvalid) ||

@@ -26,9 +26,7 @@ import {
   Plus,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatCurrencyFromUSD } from '@/lib/currency'
-import { formatNumber } from '@/lib/format'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,6 +59,9 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/status-badge'
 import { useIsRoot } from '@/hooks/use-admin'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { formatCurrencyFromUSD } from '@/lib/currency'
+import { formatNumber } from '@/lib/format'
 import { useBillingHistory } from '../../hooks/use-billing-history'
 import {
   getStatusConfig,

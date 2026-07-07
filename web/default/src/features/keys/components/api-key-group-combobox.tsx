@@ -16,10 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ArrowDown, ArrowUp, Check, ChevronsUpDown, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Check, ChevronDown, ChevronUp, ChevronsUpDown, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { cn } from '@/lib/utils'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,6 +35,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 
 export type ApiKeyGroupOption = {
   value: string
@@ -224,120 +225,173 @@ export function ApiKeyGroupOrderSelector({
   disabled,
 }: ApiKeyGroupOrderSelectorProps) {
   const { t } = useTranslation()
-  const normalizedValues = values.filter(Boolean)
-  const selectedValues =
-    normalizedValues.length > 0
-      ? normalizedValues
-      : options[0]?.value
-        ? [options[0].value]
-        : []
-  const selectedSet = new Set(selectedValues)
-  const hasAuto = selectedSet.has('auto')
-  const selectedOptions = selectedValues
-    .map((value) => options.find((option) => option.value === value))
-    .filter((option): option is ApiKeyGroupOption => Boolean(option))
-  const selectableOptions = options.map((option) => ({
-    ...option,
-    disabled: hasAuto && option.value !== 'auto',
-  }))
+  const [open, setOpen] = useState(false)
+  const [searchValue, setSearchValue] = useState('')
+  const optionMap = useMemo(
+    () => new Map(options.map((option) => [option.value, option])),
+    [options]
+  )
+  const normalizedValues = values.filter((value) => optionMap.has(value))
+  const selected = normalizedValues.map((value) => optionMap.get(value)!)
+  const availableOptions = useMemo(() => {
+    const selectedValues = new Set(normalizedValues)
+    const search = searchValue.trim().toLowerCase()
+    return options.filter((option) => {
+      if (selectedValues.has(option.value)) return false
+      if (!search) return true
+      const ratioText = String(option.ratio ?? '').toLowerCase()
+      return (
+        option.value.toLowerCase().includes(search) ||
+        option.label.toLowerCase().includes(search) ||
+        option.desc?.toLowerCase().includes(search) ||
+        ratioText.includes(search)
+      )
+    })
+  }, [normalizedValues, options, searchValue])
 
-  const commit = (nextValues: string[]) => {
-    const uniqueValues = Array.from(new Set(nextValues.filter(Boolean)))
-    onValuesChange(uniqueValues)
+  const commitValues = (nextValues: string[]) => {
+    onValuesChange(nextValues.filter((value) => optionMap.has(value)))
   }
 
-  const handleSelect = (value: string) => {
-    if (value === 'auto') {
-      commit(['auto'])
-      return
-    }
-    if (selectedSet.has(value)) {
-      const nextValues = selectedValues.filter((item) => item !== value)
-      commit(nextValues.length > 0 ? nextValues : [value])
-      return
-    }
-    commit([...selectedValues.filter((item) => item !== 'auto'), value])
+  const addValue = (value: string) => {
+    if (normalizedValues.includes(value)) return
+    commitValues([...normalizedValues, value])
+    setOpen(false)
+    setSearchValue('')
   }
 
-  const move = (index: number, direction: -1 | 1) => {
-    const nextValues = [...selectedValues]
-    const target = index + direction
-    if (target < 0 || target >= nextValues.length) return
-    ;[nextValues[index], nextValues[target]] = [
-      nextValues[target],
-      nextValues[index],
-    ]
-    commit(nextValues)
+  const removeValue = (value: string) => {
+    commitValues(normalizedValues.filter((item) => item !== value))
   }
 
-  const remove = (value: string) => {
-    const nextValues = selectedValues.filter((item) => item !== value)
-    if (nextValues.length === 0) return
-    commit(nextValues)
+  const moveValue = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction
+    if (targetIndex < 0 || targetIndex >= normalizedValues.length) return
+    const nextValues = [...normalizedValues]
+    const [item] = nextValues.splice(index, 1)
+    nextValues.splice(targetIndex, 0, item)
+    commitValues(nextValues)
   }
 
   return (
-    <div className='space-y-1.5'>
-      <ApiKeyGroupCombobox
-        options={selectableOptions.filter((option) => !option.disabled)}
-        value=''
-        onValueChange={handleSelect}
-        placeholder={placeholder || t('Add a group')}
-        disabled={disabled}
-      />
-      <div className='space-y-1.5'>
-        {selectedOptions.map((option, index) => (
-          <div
-            key={option.value}
-            className='border-border bg-muted/30 flex min-h-12 items-center gap-2 rounded-lg border px-3 py-2'
-          >
-            <span className='text-muted-foreground w-5 shrink-0 text-xs'>
-              {index + 1}
-            </span>
-            <span className='min-w-0 flex-1'>
-              <span className='block truncate text-sm font-medium'>
-                {option.label}
+    <div className='space-y-3'>
+      {selected.length > 0 ? (
+        <div className='space-y-2'>
+          {selected.map((option, index) => (
+            <div
+              key={option.value}
+              className='bg-muted/30 flex items-center gap-2 rounded-lg border px-3 py-2'
+            >
+              <span className='bg-background text-muted-foreground inline-flex size-6 shrink-0 items-center justify-center rounded-md border text-xs font-medium tabular-nums'>
+                {index + 1}
               </span>
-              {option.desc && (
-                <span className='text-muted-foreground block truncate text-xs'>
-                  {option.desc}
+              <span className='min-w-0 flex-1'>
+                <span className='block truncate text-sm font-medium'>
+                  {option.label}
                 </span>
-              )}
-            </span>
-            <GroupRatioBadge ratio={option.ratio} />
+                {option.desc && (
+                  <span className='text-muted-foreground block truncate text-xs'>
+                    {option.desc}
+                  </span>
+                )}
+              </span>
+              <GroupRatioBadge ratio={option.ratio} />
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon'
+                className='size-8'
+                disabled={disabled || index === 0}
+                onClick={() => moveValue(index, -1)}
+                aria-label={t('Move up')}
+              >
+                <ArrowUp className='size-4' />
+              </Button>
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon'
+                className='size-8'
+                disabled={disabled || index === selected.length - 1}
+                onClick={() => moveValue(index, 1)}
+                aria-label={t('Move down')}
+              >
+                <ArrowDown className='size-4' />
+              </Button>
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon'
+                className='size-8'
+                disabled={disabled}
+                onClick={() => removeValue(option.value)}
+                aria-label={t('Remove')}
+              >
+                <X className='size-4' />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className='text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-center text-sm'>
+          {placeholder || t('Add a group')}
+        </div>
+      )}
+
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          render={
             <Button
               type='button'
-              variant='ghost'
-              size='icon-sm'
-              disabled={index === 0 || disabled}
-              onClick={() => move(index, -1)}
-              title={t('Move up')}
-            >
-              <ChevronUp className='size-4' />
-            </Button>
-            <Button
-              type='button'
-              variant='ghost'
-              size='icon-sm'
-              disabled={index === selectedOptions.length - 1 || disabled}
-              onClick={() => move(index, 1)}
-              title={t('Move down')}
-            >
-              <ChevronDown className='size-4' />
-            </Button>
-            <Button
-              type='button'
-              variant='ghost'
-              size='icon-sm'
-              disabled={selectedOptions.length <= 1 || disabled}
-              onClick={() => remove(option.value)}
-              title={t('Remove')}
-            >
-              <X className='size-4' />
-            </Button>
-          </div>
-        ))}
-      </div>
+              variant='outline'
+              className='w-full justify-between'
+              disabled={disabled || availableOptions.length === 0}
+            />
+          }
+        >
+          <span>{placeholder || t('Add a group')}</span>
+          <ChevronsUpDown className='size-4 opacity-50' />
+        </PopoverTrigger>
+        <PopoverContent
+          className='w-[var(--anchor-width)] overflow-hidden rounded-xl p-0 shadow-lg'
+          onWheel={(event) => event.stopPropagation()}
+          onTouchMove={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <Command shouldFilter={false}>
+            <CommandInput
+              placeholder={t('Search...')}
+              value={searchValue}
+              onValueChange={setSearchValue}
+            />
+            <CommandList className='max-h-[320px]'>
+              <CommandEmpty>{t('No group found.')}</CommandEmpty>
+              <CommandGroup>
+                {availableOptions.map((option) => (
+                  <CommandItem
+                    key={option.value}
+                    value={option.value}
+                    onSelect={() => addValue(option.value)}
+                    className='data-[selected=true]:bg-muted items-start gap-3 rounded-lg px-3 py-3 transition-colors'
+                  >
+                    <span className='min-w-0 flex-1'>
+                      <span className='block truncate font-medium'>
+                        {option.label}
+                      </span>
+                      {option.desc && (
+                        <span className='text-muted-foreground block truncate text-xs'>
+                          {option.desc}
+                        </span>
+                      )}
+                    </span>
+                    <GroupRatioBadge ratio={option.ratio} />
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }

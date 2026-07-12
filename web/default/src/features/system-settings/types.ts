@@ -133,6 +133,7 @@ export type AuthSettings = {
   RegisterIPLimitDisableInviteReward: boolean
   RegisterIPLimitDisableInitialQuota: boolean
   RegisterIPLimitBlockRegistration: boolean
+  ServerAddress: string
   GitHubOAuthEnabled: boolean
   GitHubClientId: string
   GitHubClientSecret: string

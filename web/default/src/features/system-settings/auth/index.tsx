@@ -38,6 +38,7 @@ const defaultAuthSettings: AuthSettings = {
   RegisterIPLimitDisableInviteReward: true,
   RegisterIPLimitDisableInitialQuota: false,
   RegisterIPLimitBlockRegistration: false,
+  ServerAddress: '',
   GitHubOAuthEnabled: false,
   GitHubClientId: '',
   GitHubClientSecret: '',

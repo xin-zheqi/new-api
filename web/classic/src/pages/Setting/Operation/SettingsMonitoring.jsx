@@ -43,6 +43,7 @@ export default function SettingsMonitoring(props) {
     AutomaticRetryStatusCodes: '100-199,300-399,401-407,409-499,500-599',
     'monitor_setting.auto_test_channel_enabled': false,
     'monitor_setting.auto_test_only_auto_disabled': false,
+    'monitor_setting.channel_test_mode': 'scheduled_all',
     'monitor_setting.auto_test_channel_minutes': 10,
     'monitor_setting.auto_test_channel_time_range': '00:00-23:59',
   });
@@ -126,6 +127,14 @@ export default function SettingsMonitoring(props) {
         currentInputs[key] = props.options[key];
       }
     }
+    const channelTestMode =
+      currentInputs['monitor_setting.channel_test_mode'] === 'passive_recovery' ||
+      currentInputs['monitor_setting.auto_test_only_auto_disabled'] === true
+        ? 'passive_recovery'
+        : 'scheduled_all';
+    currentInputs['monitor_setting.channel_test_mode'] = channelTestMode;
+    currentInputs['monitor_setting.auto_test_only_auto_disabled'] =
+      channelTestMode === 'passive_recovery';
     setInputs(currentInputs);
     setInputsRow(structuredClone(currentInputs));
     refForm.current.setValues(currentInputs);
@@ -202,6 +211,9 @@ export default function SettingsMonitoring(props) {
                     setInputs({
                       ...inputs,
                       'monitor_setting.auto_test_only_auto_disabled': value,
+                      'monitor_setting.channel_test_mode': value
+                        ? 'passive_recovery'
+                        : 'scheduled_all',
                     })
                   }
                 />

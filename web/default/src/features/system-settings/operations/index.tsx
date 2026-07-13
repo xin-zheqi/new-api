@@ -40,6 +40,7 @@ const defaultOperationsSettings: OperationsSettings = {
   AutomaticRetryStatusCodes: '100-199,300-399,401-407,409-499,500-599',
   'monitor_setting.auto_test_channel_enabled': false,
   'monitor_setting.auto_test_only_auto_disabled': false,
+  'monitor_setting.channel_test_mode': 'scheduled_all',
   'monitor_setting.auto_test_channel_minutes': 10,
   'monitor_setting.auto_test_channel_time_range': '00:00-23:59',
   SMTPServer: '',

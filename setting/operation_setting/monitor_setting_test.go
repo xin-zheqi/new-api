@@ -42,6 +42,38 @@ func TestGetMonitorSetting_ChannelTestEnabledEnvCanEnableDisabledConfig(t *testi
 	assert.Equal(t, float64(12), setting.AutoTestChannelMinutes)
 }
 
+func TestGetMonitorSetting_LegacyAutoDisabledFlagMapsToPassiveRecovery(t *testing.T) {
+	orig := monitorSetting
+	t.Cleanup(func() { monitorSetting = orig })
+
+	monitorSetting = MonitorSetting{
+		ChannelTestMode:          ChannelTestModeScheduledAll,
+		AutoTestOnlyAutoDisabled: true,
+	}
+
+	setting := GetMonitorSetting()
+
+	require.NotNil(t, setting)
+	assert.Equal(t, ChannelTestModePassiveRecovery, setting.ChannelTestMode)
+	assert.True(t, setting.AutoTestOnlyAutoDisabled)
+}
+
+func TestGetMonitorSetting_ChannelTestModeSyncsLegacyFlag(t *testing.T) {
+	orig := monitorSetting
+	t.Cleanup(func() { monitorSetting = orig })
+
+	monitorSetting = MonitorSetting{
+		ChannelTestMode:          ChannelTestModePassiveRecovery,
+		AutoTestOnlyAutoDisabled: false,
+	}
+
+	setting := GetMonitorSetting()
+
+	require.NotNil(t, setting)
+	assert.Equal(t, ChannelTestModePassiveRecovery, setting.ChannelTestMode)
+	assert.True(t, setting.AutoTestOnlyAutoDisabled)
+}
+
 func TestIsMinuteInAutoTestChannelTimeRange(t *testing.T) {
 	tests := []struct {
 		name   string

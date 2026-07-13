@@ -57,19 +57,25 @@ import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 
-const numericString = z.string().refine((value) => {
-  const trimmed = value.trim()
-  if (!trimmed) return true
-  return !Number.isNaN(Number(trimmed)) && Number(trimmed) >= 0
-}, 'Enter a non-negative number or leave empty')
+const createNumericString = (
+  t: (key: string, options?: Record<string, string>) => string
+) =>
+  z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return !Number.isNaN(Number(trimmed)) && Number(trimmed) >= 0
+  }, t('Enter a non-negative number or leave empty'))
 
 const channelTestModes = ['scheduled_all', 'passive_recovery'] as const
 type ChannelTestMode = (typeof channelTestModes)[number]
 
-const routingReliabilitySchema = z
+const createRoutingReliabilitySchema = (
+  t: (key: string, options?: Record<string, string>) => string
+) =>
+  z
   .object({
     RetryTimes: z.coerce.number().min(0).max(10),
-    ChannelDisableThreshold: numericString,
+    ChannelDisableThreshold: createNumericString(t),
     AutomaticDisableChannelEnabled: z.boolean(),
     AutomaticEnableChannelEnabled: z.boolean(),
     AutomaticDisableKeywords: z.string(),
@@ -80,7 +86,13 @@ const routingReliabilitySchema = z
       auto_test_channel_minutes: z.coerce
         .number()
         .int()
-        .min(1, 'Interval must be at least 1 minute'),
+        .min(1, t('Interval must be at least 1 minute')),
+      auto_test_channel_time_range: z
+        .string()
+        .regex(
+          /^([01]?\d|2[0-3]):[0-5]\d-([01]?\d|2[0-3]):[0-5]\d$/,
+          t('Use HH:MM-HH:MM format')
+        ),
       channel_test_mode: z.enum(channelTestModes),
     }),
   })
@@ -92,9 +104,9 @@ const routingReliabilitySchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['AutomaticDisableStatusCodes'],
-        message: `Invalid status code rules: ${disableParsed.invalidTokens.join(
-          ', '
-        )}`,
+        message: t('Invalid status code rules: {{rules}}', {
+          rules: disableParsed.invalidTokens.join(', '),
+        }),
       })
     }
 
@@ -105,15 +117,16 @@ const routingReliabilitySchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['AutomaticRetryStatusCodes'],
-        message: `Invalid status code rules: ${retryParsed.invalidTokens.join(
-          ', '
-        )}`,
+        message: t('Invalid status code rules: {{rules}}', {
+          rules: retryParsed.invalidTokens.join(', '),
+        }),
       })
     }
   })
 
-type RoutingReliabilityFormValues = z.output<typeof routingReliabilitySchema>
-type RoutingReliabilityFormInput = z.input<typeof routingReliabilitySchema>
+type RoutingReliabilitySchema = ReturnType<typeof createRoutingReliabilitySchema>
+type RoutingReliabilityFormValues = z.output<RoutingReliabilitySchema>
+type RoutingReliabilityFormInput = z.input<RoutingReliabilitySchema>
 
 type RoutingReliabilitySectionProps = {
   defaultValues: {
@@ -126,6 +139,8 @@ type RoutingReliabilitySectionProps = {
     AutomaticRetryStatusCodes: string
     'monitor_setting.auto_test_channel_enabled': boolean
     'monitor_setting.auto_test_channel_minutes': number
+    'monitor_setting.auto_test_channel_time_range': string
+    'monitor_setting.auto_test_only_auto_disabled'?: boolean
     'monitor_setting.channel_test_mode': ChannelTestMode
   }
 }
@@ -144,6 +159,8 @@ type NormalizedRoutingReliabilityValues = {
   AutomaticRetryStatusCodes: string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
+  'monitor_setting.auto_test_channel_time_range': string
+  'monitor_setting.auto_test_only_auto_disabled': boolean
   'monitor_setting.channel_test_mode': ChannelTestMode
 }
 
@@ -168,6 +185,8 @@ const buildFormDefaults = (
       defaults['monitor_setting.auto_test_channel_enabled'],
     auto_test_channel_minutes:
       defaults['monitor_setting.auto_test_channel_minutes'],
+    auto_test_channel_time_range:
+      defaults['monitor_setting.auto_test_channel_time_range'] || '00:00-23:59',
     channel_test_mode: normalizeChannelTestMode(
       defaults['monitor_setting.channel_test_mode']
     ),
@@ -194,9 +213,21 @@ const normalizeDefaults = (
     defaults['monitor_setting.auto_test_channel_enabled'],
   'monitor_setting.auto_test_channel_minutes':
     defaults['monitor_setting.auto_test_channel_minutes'],
+  'monitor_setting.auto_test_channel_time_range':
+    defaults['monitor_setting.auto_test_channel_time_range'] || '00:00-23:59',
   'monitor_setting.channel_test_mode': normalizeChannelTestMode(
-    defaults['monitor_setting.channel_test_mode']
+    defaults['monitor_setting.channel_test_mode'] ||
+      (defaults['monitor_setting.auto_test_only_auto_disabled']
+        ? 'passive_recovery'
+        : 'scheduled_all')
   ),
+  'monitor_setting.auto_test_only_auto_disabled':
+    normalizeChannelTestMode(
+      defaults['monitor_setting.channel_test_mode'] ||
+        (defaults['monitor_setting.auto_test_only_auto_disabled']
+          ? 'passive_recovery'
+          : 'scheduled_all')
+    ) === 'passive_recovery',
 })
 
 const normalizeFormValues = (
@@ -219,7 +250,11 @@ const normalizeFormValues = (
     values.monitor_setting.auto_test_channel_enabled,
   'monitor_setting.auto_test_channel_minutes':
     values.monitor_setting.auto_test_channel_minutes,
+  'monitor_setting.auto_test_channel_time_range':
+    values.monitor_setting.auto_test_channel_time_range.trim(),
   'monitor_setting.channel_test_mode': values.monitor_setting.channel_test_mode,
+  'monitor_setting.auto_test_only_auto_disabled':
+    values.monitor_setting.channel_test_mode === 'passive_recovery',
 })
 
 export function RoutingReliabilitySection({
@@ -234,6 +269,10 @@ export function RoutingReliabilitySection({
   const formDefaults = useMemo(
     () => buildFormDefaults(defaultValues),
     [defaultValues]
+  )
+  const routingReliabilitySchema = useMemo(
+    () => createRoutingReliabilitySchema(t),
+    [t]
   )
 
   const form = useForm<
@@ -447,6 +486,29 @@ export function RoutingReliabilitySection({
                             'How frequently the system checks auto-disabled channels for recovery'
                           )
                         : t('How frequently the system tests all channels')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.auto_test_channel_time_range'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Scheduled test time range')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='08:00-23:59'
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Scheduled channel tests only run during this server-local time range.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

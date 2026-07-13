@@ -313,6 +313,23 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "monitor_setting.channel_test_mode":
+		value := strings.TrimSpace(option.Value.(string))
+		if value != operation_setting.ChannelTestModeScheduledAll && value != operation_setting.ChannelTestModePassiveRecovery {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "通道测试模式不正确",
+			})
+			return
+		}
+	case "monitor_setting.auto_test_only_auto_disabled":
+		if _, err = strconv.ParseBool(option.Value.(string)); err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "仅测试自动禁用渠道设置格式不正确",
+			})
+			return
+		}
 	case "console_setting.api_info":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ApiInfo")
 		if err != nil {
@@ -354,6 +371,24 @@ func UpdateOption(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	switch option.Key {
+	case "monitor_setting.channel_test_mode":
+		legacyValue := strconv.FormatBool(option.Value.(string) == operation_setting.ChannelTestModePassiveRecovery)
+		if err = model.UpdateOption("monitor_setting.auto_test_only_auto_disabled", legacyValue); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	case "monitor_setting.auto_test_only_auto_disabled":
+		onlyAutoDisabled, _ := strconv.ParseBool(option.Value.(string))
+		mode := operation_setting.ChannelTestModeScheduledAll
+		if onlyAutoDisabled {
+			mode = operation_setting.ChannelTestModePassiveRecovery
+		}
+		if err = model.UpdateOption("monitor_setting.channel_test_mode", mode); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	// 出于安全考虑只记录被修改的配置项名称，不记录配置值（可能含密钥等敏感信息）。
 	recordManageAudit(c, "option.update", map[string]interface{}{

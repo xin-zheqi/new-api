@@ -632,7 +632,6 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
   }
 
   settingsObj.auto_test_enabled = formData.auto_test_enabled !== false
-  settingsObj.auto_test_enabled = formData.auto_test_enabled !== false
   settingsObj.disable_task_polling_sleep =
     formData.disable_task_polling_sleep === true
 

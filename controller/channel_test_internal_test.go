@@ -111,6 +111,34 @@ func TestSelectChannelsForAutomaticTestScheduledSkipsManualDisabled(t *testing.T
 	require.Equal(t, 2, selected[1].Id)
 }
 
+func TestSelectChannelsForAutomaticTestSkipsChannelsWithAutoTestDisabled(t *testing.T) {
+	disabled := false
+	channels := []*model.Channel{
+		{Id: 1, Status: common.ChannelStatusEnabled},
+		{
+			Id:     2,
+			Status: common.ChannelStatusEnabled,
+			OtherSettings: string(mustMarshalForChannelTest(t, dto.ChannelOtherSettings{
+				AutoTestEnabled: &disabled,
+			})),
+		},
+		{Id: 3, Status: common.ChannelStatusAutoDisabled},
+	}
+
+	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModeScheduledAll)
+
+	require.Len(t, selected, 2)
+	require.Equal(t, 1, selected[0].Id)
+	require.Equal(t, 3, selected[1].Id)
+}
+
+func mustMarshalForChannelTest(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := common.Marshal(value)
+	require.NoError(t, err)
+	return data
+}
+
 func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.SystemTaskLock{}))

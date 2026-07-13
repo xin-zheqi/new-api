@@ -201,6 +201,8 @@ export type ModelSettings = {
   AutomaticRetryStatusCodes: string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
+  'monitor_setting.auto_test_channel_time_range': string
+  'monitor_setting.auto_test_only_auto_disabled': boolean
   'monitor_setting.channel_test_mode': 'scheduled_all' | 'passive_recovery'
   'global.pass_through_request_enabled': boolean
   'global.thinking_model_blacklist': string
@@ -350,6 +352,7 @@ export type OperationsSettings = {
   AutomaticRetryStatusCodes: string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_only_auto_disabled': boolean
+  'monitor_setting.channel_test_mode': 'scheduled_all' | 'passive_recovery'
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.auto_test_channel_time_range': string
   SMTPServer: string

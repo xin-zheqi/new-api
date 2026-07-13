@@ -44,6 +44,7 @@ func GetMonitorSetting() *MonitorSetting {
 			monitorSetting.AutoTestChannelEnabled = true
 			monitorSetting.AutoTestChannelMinutes = float64(frequency)
 			monitorSetting.ChannelTestMode = ChannelTestModeScheduledAll
+			monitorSetting.AutoTestOnlyAutoDisabled = false
 		}
 	}
 	if enabled, ok := os.LookupEnv("CHANNEL_TEST_ENABLED"); ok {
@@ -52,10 +53,19 @@ func GetMonitorSetting() *MonitorSetting {
 			monitorSetting.AutoTestChannelEnabled = parsed
 		}
 	}
-	if monitorSetting.ChannelTestMode != ChannelTestModePassiveRecovery {
-		monitorSetting.ChannelTestMode = ChannelTestModeScheduledAll
-	}
+	monitorSetting.ChannelTestMode = EffectiveChannelTestMode(&monitorSetting)
+	monitorSetting.AutoTestOnlyAutoDisabled = monitorSetting.ChannelTestMode == ChannelTestModePassiveRecovery
 	return &monitorSetting
+}
+
+func EffectiveChannelTestMode(setting *MonitorSetting) string {
+	if setting == nil {
+		return ChannelTestModeScheduledAll
+	}
+	if setting.ChannelTestMode == ChannelTestModePassiveRecovery || setting.AutoTestOnlyAutoDisabled {
+		return ChannelTestModePassiveRecovery
+	}
+	return ChannelTestModeScheduledAll
 }
 
 func parseClockMinute(value string) (int, error) {

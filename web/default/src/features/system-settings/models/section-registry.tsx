@@ -83,6 +83,10 @@ const MODELS_SECTIONS = [
             settings['monitor_setting.auto_test_channel_enabled'],
           'monitor_setting.auto_test_channel_minutes':
             settings['monitor_setting.auto_test_channel_minutes'],
+          'monitor_setting.auto_test_channel_time_range':
+            settings['monitor_setting.auto_test_channel_time_range'],
+          'monitor_setting.auto_test_only_auto_disabled':
+            settings['monitor_setting.auto_test_only_auto_disabled'],
           'monitor_setting.channel_test_mode':
             settings['monitor_setting.channel_test_mode'],
         }}

@@ -1004,7 +1004,7 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 		return channelTestSummary{}, err
 	}
 	if strings.TrimSpace(mode) == "" {
-		mode = operation_setting.GetMonitorSetting().ChannelTestMode
+		mode = operation_setting.EffectiveChannelTestMode(operation_setting.GetMonitorSetting())
 	}
 	selected := selectChannelsForAutomaticTest(channels, mode)
 	allowDisable := mode != operation_setting.ChannelTestModePassiveRecovery
@@ -1019,6 +1019,9 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 	selected := make([]*model.Channel, 0, len(channels))
 	for _, channel := range channels {
 		if channel.Status == common.ChannelStatusManuallyDisabled {
+			continue
+		}
+		if !channel.GetOtherSettings().IsAutoTestEnabled() {
 			continue
 		}
 		if mode == operation_setting.ChannelTestModePassiveRecovery && channel.Status != common.ChannelStatusAutoDisabled {

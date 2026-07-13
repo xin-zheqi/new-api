@@ -737,6 +737,9 @@ func UpdateUser(c *gin.Context) {
 	if err := model.InvalidateUserCache(updatedUser.Id); err != nil {
 		common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", updatedUser.Id, err.Error()))
 	}
+	if err := model.InvalidateUserRateLimitCache(updatedUser.Id); err != nil {
+		common.SysLog(fmt.Sprintf("failed to invalidate user rate limit cache for user %d: %s", updatedUser.Id, err.Error()))
+	}
 	recordManageAuditFor(c, updatedUser.Id, "user.update", map[string]interface{}{
 		"username": originUser.Username,
 		"id":       updatedUser.Id,

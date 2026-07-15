@@ -449,11 +449,15 @@ export const useChannelsData = () => {
         break;
       case 'enable':
         data.status = 1;
-        res = await API.put('/api/channel/', data);
+        res = await API.post(`/api/channel/${id}/status`, {
+          status: data.status,
+        });
         break;
       case 'disable':
         data.status = 2;
-        res = await API.put('/api/channel/', data);
+        res = await API.post(`/api/channel/${id}/status`, {
+          status: data.status,
+        });
         break;
       case 'priority':
         if (value === '') return;
@@ -478,7 +482,11 @@ export const useChannelsData = () => {
       let channel = res.data.data;
       let newChannels = [...channels];
       if (action !== 'delete') {
-        record.status = channel.status;
+        if (action === 'enable' || action === 'disable') {
+          record.status = data.status;
+        } else {
+          record.status = channel.status;
+        }
       }
       setChannels(newChannels);
     } else {

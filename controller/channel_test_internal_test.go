@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -130,6 +132,41 @@ func TestSelectChannelsForAutomaticTestSkipsChannelsWithAutoTestDisabled(t *test
 	require.Len(t, selected, 2)
 	require.Equal(t, 1, selected[0].Id)
 	require.Equal(t, 3, selected[1].Id)
+}
+
+func TestChannelTestResponseTimeThresholdUsesAutomaticDisableSetting(t *testing.T) {
+	originalEnabled := common.AutomaticDisableChannelEnabled
+	originalThreshold := common.ChannelDisableThreshold
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = originalEnabled
+		common.ChannelDisableThreshold = originalThreshold
+	})
+
+	common.AutomaticDisableChannelEnabled = false
+	common.ChannelDisableThreshold = 0.01
+	require.Equal(t, time.Duration(0), channelTestResponseTimeThreshold())
+
+	common.AutomaticDisableChannelEnabled = true
+	common.ChannelDisableThreshold = 0
+	require.Equal(t, time.Duration(0), channelTestResponseTimeThreshold())
+
+	common.ChannelDisableThreshold = 0.01
+	require.Equal(t, 10*time.Millisecond, channelTestResponseTimeThreshold())
+}
+
+func TestChannelTestContextAppliesDeadline(t *testing.T) {
+	ctx, cancel := channelTestContext(context.Background(), 5*time.Millisecond)
+	defer cancel()
+
+	_, hasDeadline := ctx.Deadline()
+	require.True(t, hasDeadline)
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("channel test context did not expire")
+	}
+	require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
 }
 
 func mustMarshalForChannelTest(t *testing.T, value any) []byte {

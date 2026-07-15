@@ -857,7 +857,23 @@ func TestChannel(c *gin.Context) {
 	if c.Request != nil {
 		requestCtx = c.Request.Context()
 	}
-	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
+	testTimeout := channelTestResponseTimeThreshold()
+	testCtx, cancel := channelTestContext(requestCtx, testTimeout)
+	result := testChannel(testCtx, channel, testUserID, testModel, endpointType, isStream)
+	testTimedOut := testTimeout > 0 && errors.Is(testCtx.Err(), context.DeadlineExceeded)
+	cancel()
+	tok := time.Now()
+	milliseconds := tok.Sub(tik).Milliseconds()
+	consumedTime := float64(milliseconds) / 1000.0
+	if testTimedOut {
+		c.JSON(http.StatusOK, gin.H{
+			"success":    false,
+			"message":    fmt.Sprintf("响应时间 %.2fs 超过阈值 %.2fs，已取消上游请求", consumedTime, testTimeout.Seconds()),
+			"time":       consumedTime,
+			"error_code": types.ErrorCodeChannelResponseTimeExceeded,
+		})
+		return
+	}
 	if result.localErr != nil {
 		resp := gin.H{
 			"success": false,
@@ -870,10 +886,7 @@ func TestChannel(c *gin.Context) {
 		c.JSON(http.StatusOK, resp)
 		return
 	}
-	tok := time.Now()
-	milliseconds := tok.Sub(tik).Milliseconds()
 	go channel.UpdateResponseTime(milliseconds)
-	consumedTime := float64(milliseconds) / 1000.0
 	if result.newAPIError != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success":    false,
@@ -906,10 +919,7 @@ type channelTestSummary struct {
 // the system task can surface progress.
 func performChannelTests(ctx context.Context, channels []*model.Channel, testUserID int, allowDisable bool, report func(processed, total int)) channelTestSummary {
 	summary := channelTestSummary{}
-	var disableThreshold = int64(common.ChannelDisableThreshold * 1000)
-	if disableThreshold == 0 {
-		disableThreshold = 10000000 // a impossible value
-	}
+	disableThreshold := channelTestResponseTimeThreshold()
 
 	total := len(channels)
 	for index, channel := range channels {
@@ -924,7 +934,10 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 		}
 		isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 		tik := time.Now()
-		result := testChannel(ctx, channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+		testCtx, cancel := channelTestContext(ctx, disableThreshold)
+		result := testChannel(testCtx, channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+		testTimedOut := errors.Is(testCtx.Err(), context.DeadlineExceeded)
+		cancel()
 		tok := time.Now()
 		milliseconds := tok.Sub(tik).Milliseconds()
 		if ctx != nil && ctx.Err() != nil {
@@ -936,14 +949,18 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 		shouldBanChannel := false
 		newAPIError := result.newAPIError
 		// request error disables the channel
-		if newAPIError != nil {
+		if testTimedOut {
+			err := fmt.Errorf("响应时间 %.2fs 超过阈值 %.2fs，已取消上游请求", float64(milliseconds)/1000.0, disableThreshold.Seconds())
+			newAPIError = types.NewOpenAIError(err, types.ErrorCodeChannelResponseTimeExceeded, http.StatusRequestTimeout)
+			shouldBanChannel = true
+		} else if newAPIError != nil {
 			shouldBanChannel = service.ShouldDisableChannel(result.newAPIError)
 		}
 
 		// 当错误检查通过，才检查响应时间
 		if common.AutomaticDisableChannelEnabled && !shouldBanChannel {
-			if milliseconds > disableThreshold {
-				err := fmt.Errorf("响应时间 %.2fs 超过阈值 %.2fs", float64(milliseconds)/1000.0, float64(disableThreshold)/1000.0)
+			if disableThreshold > 0 && time.Duration(milliseconds)*time.Millisecond > disableThreshold {
+				err := fmt.Errorf("响应时间 %.2fs 超过阈值 %.2fs", float64(milliseconds)/1000.0, disableThreshold.Seconds())
 				newAPIError = types.NewOpenAIError(err, types.ErrorCodeChannelResponseTimeExceeded, http.StatusRequestTimeout)
 				shouldBanChannel = true
 			}
@@ -984,6 +1001,23 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 		report(total, total) // mark complete only when the full set was tested
 	}
 	return summary
+}
+
+func channelTestResponseTimeThreshold() time.Duration {
+	if !common.AutomaticDisableChannelEnabled || common.ChannelDisableThreshold <= 0 {
+		return 0
+	}
+	return time.Duration(common.ChannelDisableThreshold * float64(time.Second))
+}
+
+func channelTestContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	if timeout <= 0 {
+		return parent, func() {}
+	}
+	return context.WithTimeout(parent, timeout)
 }
 
 // runChannelTestTask runs one synchronous channel test cycle for the system task

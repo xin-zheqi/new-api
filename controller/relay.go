@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -88,6 +89,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	defer func() {
 		if newAPIError != nil {
+			if isClientCanceledRelayError(newAPIError) {
+				logger.LogDebug(c, "relay canceled by client: %s", newAPIError.Error())
+				return
+			}
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			writeRelayErrorResponse(c, relayFormat, ws, newAPIError)
@@ -177,6 +182,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.LastError = nil
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+		if clientCanceledRelay(c) {
+			newAPIError = newClientCanceledRelayError(c)
+			break
+		}
+
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
@@ -221,6 +231,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
+
+		if clientCanceledRelay(c) {
+			newAPIError = newClientCanceledRelayError(c)
+			break
+		}
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
@@ -353,8 +368,36 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	return channel, nil
 }
 
+const statusClientClosedRequest = 499
+
+func clientCanceledRelay(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	err := c.Request.Context().Err()
+	return errors.Is(err, context.Canceled)
+}
+
+func newClientCanceledRelayError(c *gin.Context) *types.NewAPIError {
+	err := context.Canceled
+	if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
+		err = c.Request.Context().Err()
+	}
+	return types.NewErrorWithStatusCode(err, types.ErrorCodeClientRequestCanceled, statusClientClosedRequest, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+}
+
+func isClientCanceledRelayError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	return err.GetErrorCode() == types.ErrorCodeClientRequestCanceled || errors.Is(err, context.Canceled)
+}
+
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
 	if openaiErr == nil {
+		return false
+	}
+	if clientCanceledRelay(c) || isClientCanceledRelayError(openaiErr) {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
@@ -579,6 +622,11 @@ func RelayTask(c *gin.Context) {
 	}
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+		if clientCanceledRelay(c) {
+			taskErr = service.TaskErrorWrapperLocal(c.Request.Context().Err(), string(types.ErrorCodeClientRequestCanceled), statusClientClosedRequest)
+			break
+		}
+
 		var channel *model.Channel
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
@@ -613,6 +661,11 @@ func RelayTask(c *gin.Context) {
 
 		result, taskErr = relay.RelayTaskSubmit(c, relayInfo)
 		if taskErr == nil {
+			break
+		}
+
+		if clientCanceledRelay(c) {
+			taskErr = service.TaskErrorWrapperLocal(c.Request.Context().Err(), string(types.ErrorCodeClientRequestCanceled), statusClientClosedRequest)
 			break
 		}
 
@@ -664,6 +717,10 @@ func RelayTask(c *gin.Context) {
 	}
 
 	if taskErr != nil {
+		if errors.Is(taskErr.Error, context.Canceled) {
+			logger.LogDebug(c, "task relay canceled by client: %s", taskErr.Error.Error())
+			return
+		}
 		respondTaskError(c, taskErr)
 	}
 }
@@ -679,6 +736,9 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError, retryTimes int) bool {
 	if taskErr == nil {
+		return false
+	}
+	if clientCanceledRelay(c) || errors.Is(taskErr.Error, context.Canceled) {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {

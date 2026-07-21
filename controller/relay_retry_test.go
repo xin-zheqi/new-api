@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"net/http/httptest"
 	"strings"
@@ -65,6 +66,30 @@ func TestShouldRetry_RetriesFirstResponseTimeout(t *testing.T) {
 	)
 
 	require.True(t, shouldRetry(c, err, 1))
+}
+
+func TestShouldRetry_DoesNotRetryAfterClientCancel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil).WithContext(ctx)
+
+	err := types.NewOpenAIError(
+		errors.New("upstream error: do request failed"),
+		types.ErrorCodeDoRequestFailed,
+		500,
+	)
+
+	require.False(t, shouldRetry(c, err, 1))
+	require.False(t, shouldRetry(c, newClientCanceledRelayError(c), 1))
+}
+
+func TestIsClientCanceledRelayError(t *testing.T) {
+	require.True(t, isClientCanceledRelayError(newClientCanceledRelayError(nil)))
+	require.True(t, isClientCanceledRelayError(types.NewError(context.Canceled, types.ErrorCodeDoRequestFailed)))
+	require.False(t, isClientCanceledRelayError(types.NewOpenAIError(errors.New("bad gateway"), types.ErrorCodeBadResponseStatusCode, 502)))
+	require.False(t, isClientCanceledRelayError(nil))
 }
 
 func TestShouldRetryTaskRelay_UsesConfiguredStatusCodes(t *testing.T) {

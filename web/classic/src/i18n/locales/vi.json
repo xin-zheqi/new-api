@@ -2652,6 +2652,8 @@
     "手动禁用": "Vô hiệu hóa thủ công",
     "手动输入": "Nhập thủ công",
     "首包超时自动禁用": "Tự động vô hiệu hóa khi timeout phản hồi đầu tiên",
+    "将空回复视为错误": "Coi phản hồi trống là lỗi",
+    "文本响应没有有效内容且上游报告 Token 用量全为 0 时，按错误切换渠道重试；OpenAI cyber_policy 拦截只记录日志，不重试。": "Thử lại qua kênh khác khi phản hồi văn bản không có nội dung hữu ích và thượng nguồn báo mức sử dụng token bằng 0. Các chặn OpenAI cyber_policy được ghi nhật ký và không thử lại.",
     "首尾生视频": "Video tạo đầu-đuôi",
     "首页": "Trang chủ",
     "首页内容": "Nội dung trang chủ",
@@ -4300,6 +4302,9 @@
     "Well-Known URL 必须以 http:// 或 https:// 开头": "Well-Known URL phải bắt đầu bằng http:// hoặc https://",
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Khóa chữ ký Webhook cho whsec_xxx, thông tin nhạy cảm không được hiển thị",
     "Worker地址": "Địa chỉ Worker",
-    "Worker密钥": "Khóa Worker"
+    "Worker密钥": "Khóa Worker",
+    "响应类型": "Loại phản hồi",
+    "错误代码": "Mã lỗi",
+    "错误类型": "Loại lỗi"
   }
 }

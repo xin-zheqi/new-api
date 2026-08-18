@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -31,7 +32,6 @@ import {
   Info,
   LogIn,
 } from 'lucide-react'
-import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
@@ -179,7 +179,9 @@ function getUsageBillingPathLabel(
   }
 }
 
-function isUsageBillingPathLocal(adminInfo: LogOtherData['admin_info']): boolean {
+function isUsageBillingPathLocal(
+  adminInfo: LogOtherData['admin_info']
+): boolean {
   if (adminInfo?.usage_billing_path) {
     return adminInfo.usage_billing_path === USAGE_BILLING_PATH.LOCAL
   }
@@ -468,6 +470,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isConsume = props.log.type === 2
   const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
+  const isError = props.log.type === 5
   const isSubscription = other?.billing_source === 'subscription'
   const isTieredBilling =
     isConsume &&
@@ -580,6 +583,16 @@ export function DetailsDialog(props: DetailsDialogProps) {
     props.isAdmin &&
     props.log.type !== 6 &&
     (other?.request_path || conversionChain.length > 0)
+  const showErrorDetails =
+    props.isAdmin &&
+    isError &&
+    !!other &&
+    !!(
+      other.response_type ||
+      other.error_code ||
+      other.error_type ||
+      other.status_code != null
+    )
 
   const useChannel = other?.admin_info?.use_channel
   const channelChain =
@@ -719,6 +732,43 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
         </div>
+
+        {showErrorDetails && other && (
+          <DetailSection
+            icon={<AlertTriangle className='size-3.5' aria-hidden='true' />}
+            label={t('Error Details')}
+            variant='danger'
+          >
+            {other.response_type && (
+              <DetailRow
+                label={t('Response Type')}
+                value={other.response_type}
+                mono
+              />
+            )}
+            {other.error_code && (
+              <DetailRow
+                label={t('Error Code')}
+                value={other.error_code}
+                mono
+              />
+            )}
+            {other.error_type && (
+              <DetailRow
+                label={t('Error Type')}
+                value={other.error_type}
+                mono
+              />
+            )}
+            {other.status_code != null && (
+              <DetailRow
+                label={t('Status Code')}
+                value={String(other.status_code)}
+                mono
+              />
+            )}
+          </DetailSection>
+        )}
 
         {/* Request conversion (admin only, not for refund) */}
         {showConversion && (

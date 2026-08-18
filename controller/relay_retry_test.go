@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -66,6 +67,33 @@ func TestShouldRetry_RetriesFirstResponseTimeout(t *testing.T) {
 	)
 
 	require.True(t, shouldRetry(c, err, 1))
+}
+
+func TestShouldRetry_DoesNotRetryCyberPolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	err := types.NewOpenAIError(
+		errors.New("blocked by network policy"),
+		types.ErrorCodeCyberPolicy,
+		http.StatusInternalServerError,
+	)
+
+	require.False(t, shouldRetry(c, err, 1))
+}
+
+func TestShouldRetry_RetriesEmptyResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	err := types.NewOpenAIError(
+		errors.New("empty upstream response"),
+		types.ErrorCodeEmptyResponse,
+		http.StatusBadGateway,
+	)
+
+	require.True(t, shouldRetry(c, err, 1))
+	require.False(t, shouldRetry(c, err, 0))
 }
 
 func TestShouldRetry_DoesNotRetryAfterClientCancel(t *testing.T) {

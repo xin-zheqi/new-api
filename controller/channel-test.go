@@ -458,6 +458,13 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			}
 		}
 	}
+	if validationErr := helper.ValidateUpstreamTextResponse(httpResp, info); validationErr != nil {
+		return testResult{
+			context:     c,
+			localErr:    validationErr,
+			newAPIError: validationErr,
+		}
+	}
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
 	if respErr != nil {
 		return testResult{

@@ -4,7 +4,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -14,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/samber/lo"
@@ -128,27 +128,44 @@ func buildXunfeiAuthUrl(hostUrl string, apiKey, apiSecret string) string {
 	return callUrl
 }
 
-func xunfeiStreamHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, appId string, apiSecret string, apiKey string) (*dto.Usage, *types.NewAPIError) {
+func xunfeiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, textRequest dto.GeneralOpenAIRequest, appId string, apiSecret string, apiKey string) (*dto.Usage, *types.NewAPIError) {
 	domain, authUrl := getXunfeiAuthUrl(c, apiKey, apiSecret, textRequest.Model)
 	dataChan, stopChan, err := xunfeiMakeRequest(textRequest, domain, authUrl, appId)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed)
 	}
+
+	pendingResponses := make([]XunfeiChatResponse, 0)
+	if info.ChannelSetting.RejectEmptyResponse {
+		waitingForOutput := true
+		for waitingForOutput {
+			select {
+			case response := <-dataChan:
+				pendingResponses = append(pendingResponses, response)
+				waitingForOutput = !xunfeiResponseHasOutputOrUsage(response)
+			case <-stopChan:
+				return nil, helper.NewEmptyUpstreamResponseError()
+			case <-c.Request.Context().Done():
+				return nil, types.NewError(c.Request.Context().Err(), types.ErrorCodeDoRequestFailed)
+			}
+		}
+	}
+
 	helper.SetEventStreamHeaders(c)
 	var usage dto.Usage
+	pendingIndex := 0
 	c.Stream(func(w io.Writer) bool {
+		if pendingIndex < len(pendingResponses) {
+			xunfeiResponse := pendingResponses[pendingIndex]
+			pendingIndex++
+			accumulateXunfeiUsage(&usage, xunfeiResponse)
+			writeXunfeiStreamResponse(c, xunfeiResponse)
+			return true
+		}
 		select {
 		case xunfeiResponse := <-dataChan:
-			usage.PromptTokens += xunfeiResponse.Payload.Usage.Text.PromptTokens
-			usage.CompletionTokens += xunfeiResponse.Payload.Usage.Text.CompletionTokens
-			usage.TotalTokens += xunfeiResponse.Payload.Usage.Text.TotalTokens
-			response := streamResponseXunfei2OpenAI(&xunfeiResponse)
-			jsonResponse, err := json.Marshal(response)
-			if err != nil {
-				common.SysLog("error marshalling stream response: " + err.Error())
-				return true
-			}
-			c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonResponse)})
+			accumulateXunfeiUsage(&usage, xunfeiResponse)
+			writeXunfeiStreamResponse(c, xunfeiResponse)
 			return true
 		case <-stopChan:
 			c.Render(-1, common.CustomEvent{Data: "data: [DONE]"})
@@ -158,7 +175,7 @@ func xunfeiStreamHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, a
 	return &usage, nil
 }
 
-func xunfeiHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, appId string, apiSecret string, apiKey string) (*dto.Usage, *types.NewAPIError) {
+func xunfeiHandler(c *gin.Context, info *relaycommon.RelayInfo, textRequest dto.GeneralOpenAIRequest, appId string, apiSecret string, apiKey string) (*dto.Usage, *types.NewAPIError) {
 	domain, authUrl := getXunfeiAuthUrl(c, apiKey, apiSecret, textRequest.Model)
 	dataChan, stopChan, err := xunfeiMakeRequest(textRequest, domain, authUrl, appId)
 	if err != nil {
@@ -171,15 +188,18 @@ func xunfeiHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, appId s
 	for !stop {
 		select {
 		case xunfeiResponse = <-dataChan:
+			if info.ChannelSetting.RejectEmptyResponse || len(xunfeiResponse.Payload.Choices.Text) > 0 {
+				accumulateXunfeiUsage(&usage, xunfeiResponse)
+			}
 			if len(xunfeiResponse.Payload.Choices.Text) == 0 {
 				continue
 			}
 			content += xunfeiResponse.Payload.Choices.Text[0].Content
-			usage.PromptTokens += xunfeiResponse.Payload.Usage.Text.PromptTokens
-			usage.CompletionTokens += xunfeiResponse.Payload.Usage.Text.CompletionTokens
-			usage.TotalTokens += xunfeiResponse.Payload.Usage.Text.TotalTokens
 		case stop = <-stopChan:
 		}
+	}
+	if info.ChannelSetting.RejectEmptyResponse && strings.TrimSpace(content) == "" && !xunfeiUsageIsNonZero(usage) {
+		return nil, helper.NewEmptyUpstreamResponseError()
 	}
 	if len(xunfeiResponse.Payload.Choices.Text) == 0 {
 		xunfeiResponse.Payload.Choices.Text = []XunfeiChatResponseTextItem{
@@ -191,13 +211,42 @@ func xunfeiHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, appId s
 	xunfeiResponse.Payload.Choices.Text[0].Content = content
 
 	response := responseXunfei2OpenAI(&xunfeiResponse)
-	jsonResponse, err := json.Marshal(response)
+	jsonResponse, err := common.Marshal(response)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
 	c.Writer.Header().Set("Content-Type", "application/json")
 	_, _ = c.Writer.Write(jsonResponse)
 	return &usage, nil
+}
+
+func xunfeiResponseHasOutputOrUsage(response XunfeiChatResponse) bool {
+	for _, item := range response.Payload.Choices.Text {
+		if strings.TrimSpace(item.Content) != "" {
+			return true
+		}
+	}
+	return xunfeiUsageIsNonZero(response.Payload.Usage.Text)
+}
+
+func xunfeiUsageIsNonZero(usage dto.Usage) bool {
+	return usage.PromptTokens != 0 || usage.CompletionTokens != 0 || usage.TotalTokens != 0
+}
+
+func accumulateXunfeiUsage(usage *dto.Usage, response XunfeiChatResponse) {
+	usage.PromptTokens += response.Payload.Usage.Text.PromptTokens
+	usage.CompletionTokens += response.Payload.Usage.Text.CompletionTokens
+	usage.TotalTokens += response.Payload.Usage.Text.TotalTokens
+}
+
+func writeXunfeiStreamResponse(c *gin.Context, xunfeiResponse XunfeiChatResponse) {
+	response := streamResponseXunfei2OpenAI(&xunfeiResponse)
+	jsonResponse, err := common.Marshal(response)
+	if err != nil {
+		common.SysLog("error marshalling stream response: " + err.Error())
+		return
+	}
+	c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonResponse)})
 }
 
 func xunfeiMakeRequest(textRequest dto.GeneralOpenAIRequest, domain, authUrl, appId string) (chan XunfeiChatResponse, chan bool, error) {
@@ -228,7 +277,7 @@ func xunfeiMakeRequest(textRequest dto.GeneralOpenAIRequest, domain, authUrl, ap
 				break
 			}
 			var response XunfeiChatResponse
-			err = json.Unmarshal(msg, &response)
+			err = common.Unmarshal(msg, &response)
 			if err != nil {
 				common.SysLog("error unmarshalling stream response: " + err.Error())
 				break

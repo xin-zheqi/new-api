@@ -107,6 +107,10 @@ export type UsageBillingPath =
   (typeof USAGE_BILLING_PATH)[keyof typeof USAGE_BILLING_PATH]
 
 export interface LogOtherData {
+  error_type?: string
+  error_code?: string
+  status_code?: number
+  response_type?: string
   original_status_code?: number
   final_status_code?: number
   original_error_message?: string

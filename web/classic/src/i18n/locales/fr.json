@@ -3765,6 +3765,11 @@
     "Well-Known URL 必须以 http:// 或 https:// 开头": "L'URL bien connue doit commencer par http:// ou https://",
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Clé de signature Webhook whsec_xxx, les informations sensibles ne sont pas affichées",
     "Worker地址": "Adresse du Worker",
-    "Worker密钥": "Clé du Worker"
+    "Worker密钥": "Clé du Worker",
+    "将空回复视为错误": "Traiter les réponses vides comme des erreurs",
+    "文本响应没有有效内容且上游报告 Token 用量全为 0 时，按错误切换渠道重试；OpenAI cyber_policy 拦截只记录日志，不重试。": "Réessaie un autre canal lorsqu’une réponse texte ne contient aucun contenu utile et que l’amont indique zéro jeton. Les blocages OpenAI cyber_policy sont journalisés sans nouvelle tentative.",
+    "响应类型": "Type de réponse",
+    "错误代码": "Code d'erreur",
+    "错误类型": "Type d'erreur"
   }
 }

@@ -197,6 +197,7 @@ export const channelFormSchema = z
     system_prompt_override: z.boolean().optional(),
     first_response_timeout_seconds: z.number().min(0).optional(),
     first_response_timeout_auto_ban: z.boolean().optional(),
+    reject_empty_response: z.boolean().optional(),
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
@@ -343,6 +344,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   system_prompt_override: false,
   first_response_timeout_seconds: 30,
   first_response_timeout_auto_ban: false,
+  reject_empty_response: false,
   // Type-specific settings
   is_enterprise_account: false,
   vertex_key_type: 'json',
@@ -386,6 +388,7 @@ export function transformChannelToFormDefaults(
     system_prompt_override: false,
     first_response_timeout_seconds: 0,
     first_response_timeout_auto_ban: false,
+    reject_empty_response: false,
   }
 
   if (channel.setting) {
@@ -404,6 +407,7 @@ export function transformChannelToFormDefaults(
             : 0,
         first_response_timeout_auto_ban:
           parsed.first_response_timeout_auto_ban === true,
+        reject_empty_response: parsed.reject_empty_response === true,
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -539,6 +543,7 @@ function buildSettingJSON(formData: ChannelFormValues): string {
     ),
     first_response_timeout_auto_ban:
       formData.first_response_timeout_auto_ban === true,
+    reject_empty_response: formData.reject_empty_response === true,
   }
   return JSON.stringify(settingObj)
 }
@@ -605,12 +610,15 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.allow_inference_geo = formData.allow_inference_geo === true
   } else {
     if ('disable_store' in settingsObj) delete settingsObj.disable_store
-    if ('allow_safety_identifier' in settingsObj)
+    if ('allow_safety_identifier' in settingsObj) {
       delete settingsObj.allow_safety_identifier
-    if ('allow_include_obfuscation' in settingsObj)
+    }
+    if ('allow_include_obfuscation' in settingsObj) {
       delete settingsObj.allow_include_obfuscation
-    if (formData.type !== 14 && 'allow_inference_geo' in settingsObj)
+    }
+    if (formData.type !== 14 && 'allow_inference_geo' in settingsObj) {
       delete settingsObj.allow_inference_geo
+    }
   }
 
   settingsObj.disable_image_generation =
@@ -642,14 +650,14 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.upstream_model_update_auto_sync_enabled =
       settingsObj.upstream_model_update_check_enabled === true &&
       formData.upstream_model_update_auto_sync_enabled === true
-    settingsObj.upstream_model_update_ignored_models = Array.from(
-      new Set(
+    settingsObj.upstream_model_update_ignored_models = [
+      ...new Set(
         String(formData.upstream_model_update_ignored_models || '')
           .split(',')
           .map((model) => model.trim())
           .filter(Boolean)
-      )
-    )
+      ),
+    ]
     if (
       !Array.isArray(settingsObj.upstream_model_update_last_detected_models) ||
       settingsObj.upstream_model_update_check_enabled !== true

@@ -13,6 +13,7 @@ import (
 	openaichannel "github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 
@@ -157,6 +158,10 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 		newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
 		common.SetContextKey(c, constant.ContextKeyChannelErrorOverrideSummary, service.ApplyChannelErrorOverrides(newApiErr, statusCodeMappingStr, errorMessageMappingStr))
 		return nil, newApiErr
+	}
+	if validationErr := helper.ValidateUpstreamTextResponse(httpResp, info); validationErr != nil {
+		common.SetContextKey(c, constant.ContextKeyChannelErrorOverrideSummary, service.ApplyChannelErrorOverrides(validationErr, statusCodeMappingStr, errorMessageMappingStr))
+		return nil, validationErr
 	}
 
 	if upstreamStream && clientStream {

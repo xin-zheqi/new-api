@@ -22,6 +22,9 @@ type ChannelSettings struct {
 	// to participate in auto-disable decisions; it does not override other
 	// disable rules.
 	FirstResponseTimeoutAutoBan bool `json:"first_response_timeout_auto_ban,omitempty"`
+	// RejectEmptyResponse treats text-generation responses with no substantive
+	// output and zero upstream token usage as retryable upstream failures.
+	RejectEmptyResponse bool `json:"reject_empty_response,omitempty"`
 }
 
 type VertexKeyType string

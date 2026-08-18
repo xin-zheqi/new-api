@@ -512,6 +512,30 @@ export const useLogsData = () => {
         }
       }
       if (isAdminUser && logs[i].type === 5) {
+        if (other?.response_type) {
+          expandDataLocal.push({
+            key: t('响应类型'),
+            value: other.response_type,
+          });
+        }
+        if (other?.error_code) {
+          expandDataLocal.push({
+            key: t('错误代码'),
+            value: other.error_code,
+          });
+        }
+        if (other?.error_type) {
+          expandDataLocal.push({
+            key: t('错误类型'),
+            value: other.error_type,
+          });
+        }
+        if (other?.status_code !== undefined) {
+          expandDataLocal.push({
+            key: t('状态码'),
+            value: String(other.status_code),
+          });
+        }
         const hasErrorOverrideDetails =
           other?.original_status_code !== undefined ||
           other?.final_status_code !== undefined ||

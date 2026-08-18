@@ -169,6 +169,20 @@ func TestRelayErrorHandlerKeepsOpenAIErrorMessage(t *testing.T) {
 	require.Equal(t, message, newAPIError.Error())
 }
 
+func TestRelayErrorHandlerMarksCyberPolicyAsNonRetryable(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"cyber_policy","message":"blocked by network policy"}}`)),
+	}
+
+	newAPIError := RelayErrorHandler(context.Background(), resp, false)
+
+	require.NotNil(t, newAPIError)
+	require.Equal(t, types.ErrorCodeCyberPolicy, newAPIError.GetErrorCode())
+	require.Equal(t, "blocked by network policy", newAPIError.Error())
+	require.True(t, types.IsSkipRetryError(newAPIError))
+}
+
 func TestRelayErrorHandlerKeepsInvalidJSONBodyInDebugLog(t *testing.T) {
 	withDebugEnabled(t, true)
 

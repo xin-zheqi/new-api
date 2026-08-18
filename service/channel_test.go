@@ -36,6 +36,21 @@ func TestShouldDisableChannelIgnoresFirstResponseTimeoutByDefault(t *testing.T) 
 	require.True(t, ShouldDisableChannel(invalidKey))
 }
 
+func TestShouldDisableChannelIgnoresCyberPolicy(t *testing.T) {
+	originalAutomaticDisable := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = originalAutomaticDisable
+	})
+
+	cyberPolicy := types.NewOpenAIError(
+		errors.New("blocked by network policy"),
+		types.ErrorCodeCyberPolicy,
+		http.StatusBadRequest,
+	)
+	require.False(t, ShouldDisableChannel(cyberPolicy))
+}
+
 func TestShouldDisableFirstResponseTimeoutChannelRequiresChannelSettingFlag(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalAutomaticDisable := common.AutomaticDisableChannelEnabled

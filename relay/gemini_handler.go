@@ -194,8 +194,12 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			return newAPIError
 		}
 	}
+	if validationErr := helper.ValidateUpstreamTextResponse(httpResp, info); validationErr != nil {
+		common.SetContextKey(c, constant.ContextKeyChannelErrorOverrideSummary, service.ApplyChannelErrorOverrides(validationErr, statusCodeMappingStr, errorMessageMappingStr))
+		return validationErr
+	}
 
-	usage, openaiErr := adaptor.DoResponse(c, resp.(*http.Response), info)
+	usage, openaiErr := adaptor.DoResponse(c, httpResp, info)
 	if openaiErr != nil {
 		common.SetContextKey(c, constant.ContextKeyChannelErrorOverrideSummary, service.ApplyChannelErrorOverrides(openaiErr, statusCodeMappingStr, errorMessageMappingStr))
 		return openaiErr

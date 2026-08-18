@@ -744,6 +744,7 @@ export function ChannelMutateDrawer({
   const currentForceFormat = form.watch('force_format')
   const currentThinkingToContent = form.watch('thinking_to_content')
   const currentPassThroughBodyEnabled = form.watch('pass_through_body_enabled')
+  const currentRejectEmptyResponse = form.watch('reject_empty_response')
   const currentDisableTaskPollingSleep = form.watch(
     'disable_task_polling_sleep'
   )
@@ -1015,6 +1016,7 @@ export function ChannelMutateDrawer({
     currentForceFormat ||
     currentThinkingToContent ||
     currentPassThroughBodyEnabled ||
+    currentRejectEmptyResponse ||
     currentDisableTaskPollingSleep ||
     currentDisableImageGeneration ||
     currentStripImageGenerationTool ||
@@ -4129,6 +4131,31 @@ export function ChannelMutateDrawer({
                                       <FormDescription>
                                         {t(
                                           'Pass request body directly to upstream'
+                                        )}
+                                      </FormDescription>
+                                    </div>
+                                    <FormControl>
+                                      <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
+                                name='reject_empty_response'
+                                render={({ field }) => (
+                                  <FormItem className='flex items-center justify-between gap-4 px-4 py-3'>
+                                    <div className='space-y-0.5'>
+                                      <FormLabel>
+                                        {t('Treat empty responses as errors')}
+                                      </FormLabel>
+                                      <FormDescription>
+                                        {t(
+                                          'Retry another channel when a text response has no content and reports zero token usage. OpenAI cyber_policy blocks are logged and never retried.'
                                         )}
                                       </FormDescription>
                                     </div>

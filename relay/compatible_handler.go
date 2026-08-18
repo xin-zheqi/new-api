@@ -203,6 +203,10 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			return newApiErr
 		}
 	}
+	if validationErr := helper.ValidateUpstreamTextResponse(httpResp, info); validationErr != nil {
+		common.SetContextKey(c, constant.ContextKeyChannelErrorOverrideSummary, service.ApplyChannelErrorOverrides(validationErr, statusCodeMappingStr, errorMessageMappingStr))
+		return validationErr
+	}
 
 	usage, newApiErr := adaptor.DoResponse(c, httpResp, info)
 	if newApiErr != nil {

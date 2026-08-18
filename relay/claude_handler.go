@@ -215,6 +215,10 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			return newAPIError
 		}
 	}
+	if validationErr := helper.ValidateUpstreamTextResponse(httpResp, info); validationErr != nil {
+		common.SetContextKey(c, constant.ContextKeyChannelErrorOverrideSummary, service.ApplyChannelErrorOverrides(validationErr, statusCodeMappingStr, errorMessageMappingStr))
+		return validationErr
+	}
 
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
 	if newAPIError != nil {

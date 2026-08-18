@@ -400,6 +400,9 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if clientCanceledRelay(c) || isClientCanceledRelayError(openaiErr) {
 		return false
 	}
+	if openaiErr.GetErrorCode() == types.ErrorCodeCyberPolicy {
+		return false
+	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
@@ -474,6 +477,9 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		other["error_type"] = err.GetErrorType()
 		other["error_code"] = err.GetErrorCode()
 		other["status_code"] = err.StatusCode
+		if code := err.GetErrorCode(); code == types.ErrorCodeEmptyResponse || code == types.ErrorCodeCyberPolicy {
+			other["response_type"] = code
+		}
 		if overrideSummary, ok := c.Get(string(constant.ContextKeyChannelErrorOverrideSummary)); ok {
 			if summary, ok := overrideSummary.(*service.ChannelErrorOverrideSummary); ok && summary != nil {
 				other["original_status_code"] = summary.OriginalStatusCode

@@ -55,6 +55,9 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	if err.GetErrorCode() == types.ErrorCodeChannelFirstResponseTimeout {
 		return false
 	}
+	if err.GetErrorCode() == types.ErrorCodeCyberPolicy {
+		return false
+	}
 	if types.IsChannelError(err) {
 		return true
 	}

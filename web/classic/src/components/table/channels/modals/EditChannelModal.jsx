@@ -198,6 +198,7 @@ const EditChannelModal = (props) => {
     proxy: '',
     first_response_timeout_seconds: 30,
     first_response_timeout_auto_ban: false,
+    reject_empty_response: false,
     pass_through_body_enabled: false,
     system_prompt: '',
     system_prompt_override: false,
@@ -525,6 +526,7 @@ const EditChannelModal = (props) => {
     proxy: '',
     first_response_timeout_seconds: 30,
     first_response_timeout_auto_ban: false,
+    reject_empty_response: false,
     pass_through_body_enabled: false,
     system_prompt: '',
   });
@@ -881,6 +883,8 @@ const EditChannelModal = (props) => {
               : 0;
           data.first_response_timeout_auto_ban =
             parsedSettings.first_response_timeout_auto_ban === true;
+          data.reject_empty_response =
+            parsedSettings.reject_empty_response === true;
           data.pass_through_body_enabled =
             parsedSettings.pass_through_body_enabled || false;
           data.system_prompt = parsedSettings.system_prompt || '';
@@ -893,6 +897,7 @@ const EditChannelModal = (props) => {
           data.proxy = '';
           data.first_response_timeout_seconds = 0;
           data.first_response_timeout_auto_ban = false;
+          data.reject_empty_response = false;
           data.pass_through_body_enabled = false;
           data.system_prompt = '';
           data.system_prompt_override = false;
@@ -903,6 +908,7 @@ const EditChannelModal = (props) => {
         data.proxy = '';
         data.first_response_timeout_seconds = 0;
         data.first_response_timeout_auto_ban = false;
+        data.reject_empty_response = false;
         data.pass_through_body_enabled = false;
         data.system_prompt = '';
         data.system_prompt_override = false;
@@ -1028,6 +1034,7 @@ const EditChannelModal = (props) => {
         first_response_timeout_seconds: data.first_response_timeout_seconds,
         first_response_timeout_auto_ban:
           data.first_response_timeout_auto_ban === true,
+        reject_empty_response: data.reject_empty_response === true,
         pass_through_body_enabled: data.pass_through_body_enabled,
         system_prompt: data.system_prompt,
         system_prompt_override: data.system_prompt_override || false,
@@ -1072,6 +1079,7 @@ const EditChannelModal = (props) => {
         (data.first_response_timeout_seconds &&
           data.first_response_timeout_seconds > 0) ||
         data.first_response_timeout_auto_ban ||
+        data.reject_empty_response ||
         (data.system_prompt && data.system_prompt.trim()) ||
         data.thinking_to_content ||
         data.pass_through_body_enabled ||
@@ -1417,6 +1425,7 @@ const EditChannelModal = (props) => {
       thinking_to_content: false,
       proxy: '',
       first_response_timeout_seconds: 30,
+      reject_empty_response: false,
       pass_through_body_enabled: false,
       system_prompt: '',
       system_prompt_override: false,
@@ -1793,6 +1802,7 @@ const EditChannelModal = (props) => {
       ),
       first_response_timeout_auto_ban:
         localInputs.first_response_timeout_auto_ban === true,
+      reject_empty_response: localInputs.reject_empty_response === true,
       pass_through_body_enabled: localInputs.pass_through_body_enabled || false,
       system_prompt: localInputs.system_prompt || '',
       system_prompt_override: localInputs.system_prompt_override || false,
@@ -1884,6 +1894,7 @@ const EditChannelModal = (props) => {
     delete localInputs.proxy;
     delete localInputs.first_response_timeout_seconds;
     delete localInputs.first_response_timeout_auto_ban;
+    delete localInputs.reject_empty_response;
     delete localInputs.pass_through_body_enabled;
     delete localInputs.system_prompt;
     delete localInputs.system_prompt_override;
@@ -2609,6 +2620,7 @@ const EditChannelModal = (props) => {
                   <Form.Input field='proxy' label={t('代理地址')} placeholder={t('例如: socks5://user:pass@host:port')} onChange={(value) => handleChannelSettingsChange('proxy', value)} showClear extraText={t('用于配置网络代理，支持 socks5 协议')} />
                   <Form.InputNumber field='first_response_timeout_seconds' label={t('首包超时时间（秒）')} placeholder='30' min={0} step={1} onNumberChange={(value) => handleChannelSettingsChange('first_response_timeout_seconds', Math.max(0, Number(value) || 0))} style={{ width: '100%' }} extraText={t('仅对流式请求生效；超过该秒数仍未收到上游首个有效内容时取消本次请求并按重试规则切换渠道，0 表示关闭')} />
                   <Form.Switch field='first_response_timeout_auto_ban' label={t('首包超时自动禁用')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('first_response_timeout_auto_ban', value)} extraText={t('开启后，首包超时才会参与自动禁用；关闭后行为与之前一致，不会自动禁用该渠道')} />
+                  <Form.Switch field='reject_empty_response' label={t('将空回复视为错误')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('reject_empty_response', value)} extraText={t('文本响应没有有效内容且上游报告 Token 用量全为 0 时，按错误切换渠道重试；OpenAI cyber_policy 拦截只记录日志，不重试。')} />
 
                   <Form.TextArea field='system_prompt' label={t('系统提示词')} placeholder={t('输入系统提示词，用户的系统提示词将优先于此设置')} onChange={(value) => handleChannelSettingsChange('system_prompt', value)} autosize showClear extraText={t('用户优先：如果用户在请求中指定了系统提示词，将优先使用用户的设置')} />
                   <Form.Switch field='system_prompt_override' label={t('系统提示词拼接')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('system_prompt_override', value)} extraText={t('如果用户请求中包含系统提示词，则使用此设置拼接到用户的系统提示词前面')} />

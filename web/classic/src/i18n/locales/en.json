@@ -2404,6 +2404,8 @@
     "手动禁用": "Manually disabled",
     "手动输入": "Manual input",
     "首包超时自动禁用": "Auto-disable on first response timeout",
+    "将空回复视为错误": "Treat empty responses as errors",
+    "文本响应没有有效内容且上游报告 Token 用量全为 0 时，按错误切换渠道重试；OpenAI cyber_policy 拦截只记录日志，不重试。": "Retry another channel when a text response has no substantive content and the upstream reports zero token usage. OpenAI cyber_policy blocks are logged and never retried.",
     "首尾生视频": "Head-tail generated video",
     "首页": "Home",
     "首页内容": "Home Page Content",
@@ -3925,6 +3927,9 @@
     "Well-Known URL 必须以 http:// 或 https:// 开头": "Well-Known URL must start with http:// or https://",
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Webhook signature key for whsec_xxx, sensitive information not displayed",
     "Worker地址": "Worker Address",
-    "Worker密钥": "Worker Key"
+    "Worker密钥": "Worker Key",
+    "响应类型": "Response Type",
+    "错误代码": "Error Code",
+    "错误类型": "Error Type"
   }
 }

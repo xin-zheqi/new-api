@@ -8,11 +8,14 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -167,6 +170,73 @@ func TestChannelTestContextAppliesDeadline(t *testing.T) {
 		t.Fatal("channel test context did not expire")
 	}
 	require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
+}
+
+func TestChannelTestRejectsEmptyResponseWhenEnabled(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	service.InitHttpClient()
+	originalModelRatio := ratio_setting.ModelRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(originalModelRatio))
+	})
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"gpt-4o-mini":0.075}`))
+
+	require.NoError(t, db.Create(&model.User{
+		Id:       1003,
+		Username: "empty-response-test-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+
+	requestPaths := make(chan string, 2)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPaths <- r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/responses" {
+			_, _ = w.Write([]byte(`{"id":"resp-empty","object":"response","status":"completed","output":[],"usage":{"input_tokens":0,"input_tokens_details":{"cached_tokens":0},"output_tokens":0,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":0}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":""}}],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	channel := &model.Channel{
+		Id:      99,
+		Type:    constant.ChannelTypeOpenAI,
+		Key:     "test-key",
+		Status:  common.ChannelStatusEnabled,
+		Name:    "empty-response-channel",
+		BaseURL: common.GetPointer(upstream.URL),
+		Models:  "gpt-4o-mini",
+		Group:   "default",
+	}
+	channel.SetSetting(dto.ChannelSettings{RejectEmptyResponse: true})
+
+	tests := []struct {
+		name         string
+		endpointType constant.EndpointType
+		wantPath     string
+	}{
+		{name: "chat completions", endpointType: constant.EndpointTypeOpenAI, wantPath: "/v1/chat/completions"},
+		{name: "responses", endpointType: constant.EndpointTypeOpenAIResponse, wantPath: "/v1/responses"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := testChannel(context.Background(), channel, 1003, "gpt-4o-mini", string(test.endpointType), false)
+
+			require.Error(t, result.localErr)
+			require.NotNil(t, result.newAPIError)
+			require.Equal(t, types.ErrorCodeEmptyResponse, result.newAPIError.GetErrorCode())
+			require.False(t, types.IsSkipRetryError(result.newAPIError))
+			select {
+			case gotPath := <-requestPaths:
+				require.Equal(t, test.wantPath, gotPath)
+			default:
+				t.Fatal("upstream did not receive the channel test request")
+			}
+		})
+	}
 }
 
 func mustMarshalForChannelTest(t *testing.T, value any) []byte {

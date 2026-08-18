@@ -103,6 +103,17 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	var errResponse dto.GeneralErrorResponse
 	responseBodyText := string(responseBody)
 	responseBodyPreview := common.LocalLogPreview(responseBodyText)
+	if cyberPolicy, message := DetectOpenAICyberPolicy(responseBody); cyberPolicy {
+		if message == "" {
+			message = "request blocked by upstream cyber policy"
+		}
+		return types.NewOpenAIError(
+			errors.New(message),
+			types.ErrorCodeCyberPolicy,
+			resp.StatusCode,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
 	buildErrWithBody := func(message string) error {
 		if message == "" {
 			return fmt.Errorf("bad response status code %d, body: %s", resp.StatusCode, responseBodyText)

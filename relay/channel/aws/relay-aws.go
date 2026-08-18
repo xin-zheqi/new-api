@@ -254,6 +254,11 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types
 		return types.NewOpenAIError(errors.Wrap(err, "InvokeModel"), types.ErrorCodeAwsInvokeError, statusCode), nil
 	}
 	info.SetFirstResponseTime()
+	if info.ChannelSetting.RejectEmptyResponse {
+		if validationErr := helper.ValidateUpstreamTextPayload(awsResp.Body); validationErr != nil {
+			return validationErr, nil
+		}
+	}
 
 	claudeInfo := &claude.ClaudeResponseInfo{
 		ResponseId:   helper.GetResponseID(c),
@@ -297,13 +302,36 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 		ResponseText: strings.Builder{},
 		Usage:        &dto.Usage{},
 	}
+	waitingForOutput := info.ChannelSetting.RejectEmptyResponse
+	bufferedEvents := make([][]byte, 0)
 
 	for event := range stream.Events() {
 		switch v := event.(type) {
 		case *bedrockruntimeTypes.ResponseStreamMemberChunk:
+			if waitingForOutput {
+				info.MarkFirstResponseContent()
+				bufferedEvents = append(bufferedEvents, append([]byte(nil), v.Value.Bytes...))
+				validationErr := helper.ValidateUpstreamTextPayload(v.Value.Bytes)
+				if validationErr != nil {
+					if validationErr.GetErrorCode() == types.ErrorCodeEmptyResponse {
+						continue
+					}
+					return validationErr, nil
+				}
+
+				waitingForOutput = false
+				info.SetFirstResponseTime()
+				for _, bufferedEvent := range bufferedEvents {
+					if respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(bufferedEvent)); respErr != nil {
+						return respErr, nil
+					}
+				}
+				bufferedEvents = nil
+				continue
+			}
+
 			info.SetFirstResponseTime()
-			respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(v.Value.Bytes))
-			if respErr != nil {
+			if respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(v.Value.Bytes)); respErr != nil {
 				return respErr, nil
 			}
 		case *bedrockruntimeTypes.UnknownUnionMember:
@@ -317,6 +345,9 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 	if info.ShouldFailFirstResponseTimeout() {
 		info.CancelFirstResponseTimeoutGuard()
 		return relaycommon.NewFirstResponseTimeoutError(info), nil
+	}
+	if waitingForOutput {
+		return helper.NewEmptyUpstreamResponseError(), nil
 	}
 
 	claude.HandleStreamFinalResponse(c, info, claudeInfo)
@@ -338,6 +369,11 @@ func handleNovaRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) 
 		return types.NewOpenAIError(errors.Wrap(err, "InvokeModel"), types.ErrorCodeAwsInvokeError, statusCode), nil
 	}
 	info.SetFirstResponseTime()
+	if info.ChannelSetting.RejectEmptyResponse {
+		if validationErr := helper.ValidateUpstreamTextPayload(awsResp.Body); validationErr != nil {
+			return validationErr, nil
+		}
+	}
 
 	// 解析Nova响应
 	var novaResp struct {
@@ -359,6 +395,11 @@ func handleNovaRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) 
 		return types.NewError(errors.Wrap(err, "unmarshal nova response"), types.ErrorCodeBadResponseBody), nil
 	}
 
+	content := ""
+	if len(novaResp.Output.Message.Content) > 0 {
+		content = novaResp.Output.Message.Content[0].Text
+	}
+
 	// 构造OpenAI格式响应
 	response := dto.OpenAITextResponse{
 		Id:      helper.GetResponseID(c),
@@ -369,7 +410,7 @@ func handleNovaRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) 
 			Index: 0,
 			Message: dto.Message{
 				Role:    "assistant",
-				Content: novaResp.Output.Message.Content[0].Text,
+				Content: content,
 			},
 			FinishReason: "stop",
 		}},

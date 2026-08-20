@@ -3576,6 +3576,7 @@
     "API信息管理，可以配置多个API地址用于状态展示和负载均衡（最多50个）": "API情報管理：ステータス表示とロードバランシング用に、複数のベースURL（最大50個）を設定できます",
     "Application day of each month": "毎月の申請日",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "過去90日間の対象サブスクリプションは毎月{{day}}日に申請できます。",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "過去{{days}}日間の対象サブスクリプションは毎月{{day}}日に申請できます。",
     "Applications per user per month": "ユーザーごとの月間申請数",
     "Apply for invoice": "請求書を申請",
     "Authorization callback URL 填": "Authorization callback URLを入力してください",

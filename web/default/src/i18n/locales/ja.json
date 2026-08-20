@@ -435,6 +435,7 @@
     "Application": "アプリケーション",
     "Application day of each month": "毎月の申請日",
     "Application submitted this month": "今月は申請済み",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "過去{{days}}日間の対象サブスクリプションは毎月{{day}}日に申請できます。",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "過去90日間の対象サブスクリプションは毎月{{day}}日に申請できます。",
     "Applications per user per month": "ユーザーごとの月間申請数",
     "Applied {{name}} pricing to {{count}} models": "{{name}} の料金を {{count}} 個のモデルに適用しました",

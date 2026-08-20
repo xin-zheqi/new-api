@@ -2614,6 +2614,7 @@
     "API信息管理，可以配置多个API地址用于状态展示和负载均衡（最多50个）": "API信息管理，可以配置多个API地址用于状态展示和负载均衡（最多50个）",
     "Application day of each month": "每月申请日期",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "每月{{day}}日可申请过去90天内符合条件的订阅发票。",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "每月{{day}}日可申请过去{{days}}天内符合条件的订阅发票。",
     "Applications per user per month": "每人每月申请次数",
     "Apply for invoice": "申请开票",
     "Authorization callback URL 填": "Authorization callback URL 填",

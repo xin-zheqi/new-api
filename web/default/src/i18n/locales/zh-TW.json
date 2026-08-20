@@ -435,6 +435,7 @@
     "Application": "套用程式",
     "Application day of each month": "Application day of each month",
     "Application submitted this month": "Application submitted this month",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "每月{{day}}日可申請過去{{days}}天內符合條件的訂閱發票。",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "每月{{day}}日可申請過去90天內符合條件的訂閱發票。",
     "Applications per user per month": "Applications per user per month",
     "Applied {{name}} pricing to {{count}} models": "已將 {{name}} 的定價套用到 {{count}} 個模型",

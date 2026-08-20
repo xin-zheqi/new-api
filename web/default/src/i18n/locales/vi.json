@@ -435,6 +435,7 @@
     "Application": "Ứng dụng",
     "Application day of each month": "Ngày yêu cầu hằng tháng",
     "Application submitted this month": "Đã gửi yêu cầu tháng này",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "Có thể nộp hóa đơn cho các gói đủ điều kiện trong {{days}} ngày qua vào ngày {{day}} hàng tháng.",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "Có thể nộp hóa đơn cho các gói đủ điều kiện trong 90 ngày qua vào ngày {{day}} hàng tháng.",
     "Applications per user per month": "Yêu cầu mỗi người mỗi tháng",
     "Applied {{name}} pricing to {{count}} models": "Đã áp dụng giá của {{name}} cho {{count}} mô hình",

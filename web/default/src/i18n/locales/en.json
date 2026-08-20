@@ -435,6 +435,7 @@
     "Application": "Application",
     "Application day of each month": "Application day of each month",
     "Application submitted this month": "Application submitted this month",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.",
     "Applications per user per month": "Applications per user per month",
     "Applied {{name}} pricing to {{count}} models": "Applied {{name}} pricing to {{count}} models",

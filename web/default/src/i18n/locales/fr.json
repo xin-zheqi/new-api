@@ -435,6 +435,7 @@
     "Application": "Application",
     "Application day of each month": "Jour de demande mensuel",
     "Application submitted this month": "Demande envoyée ce mois-ci",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "Les demandes sont ouvertes le {{day}} de chaque mois pour les abonnements éligibles des {{days}} derniers jours.",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "Les demandes sont ouvertes le {{day}} de chaque mois pour les abonnements éligibles des 90 derniers jours.",
     "Applications per user per month": "Demandes mensuelles par utilisateur",
     "Applied {{name}} pricing to {{count}} models": "Tarification de {{name}} appliquée à {{count}} modèles",

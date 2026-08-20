@@ -435,6 +435,7 @@
     "Application": "Приложение",
     "Application day of each month": "День подачи в месяце",
     "Application submitted this month": "Заявка в этом месяце отправлена",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "Заявки на подходящие подписки за период длительностью {{days}} дн. принимаются {{day}} числа каждого месяца.",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "Заявки на подходящие подписки за последние 90 дней принимаются {{day}} числа каждого месяца.",
     "Applications per user per month": "Заявок в месяц на пользователя",
     "Applied {{name}} pricing to {{count}} models": "Тариф {{name}} применён к {{count}} моделям",

@@ -3633,6 +3633,7 @@
     "API信息管理，可以配置多个API地址用于状态展示和负载均衡（最多50个）": "Управление информацией API, можно настроить несколько адресов API для отображения статуса и балансировки нагрузки (максимум 50)",
     "Application day of each month": "День подачи в месяце",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "Заявки на подходящие подписки за последние 90 дней принимаются {{day}} числа каждого месяца.",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "Заявки на подходящие подписки за период длительностью {{days}} дн. принимаются {{day}} числа каждого месяца.",
     "Applications per user per month": "Заявок в месяц на пользователя",
     "Apply for invoice": "Подать заявку",
     "Authorization callback URL 填": "URL обратного вызова авторизации:",

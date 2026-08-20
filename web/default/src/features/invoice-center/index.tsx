@@ -93,12 +93,17 @@ export function InvoiceCenter() {
             <h1 className='text-2xl font-semibold tracking-tight'>
               {t('Invoice Center')}
             </h1>
-            <p className='text-muted-foreground mt-1 text-sm'>
-              {t(
-                'Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.',
-                { day: query.data?.application_day ?? 25 }
-              )}
-            </p>
+            {query.data && (
+              <p className='text-muted-foreground mt-1 text-sm'>
+                {t(
+                  'Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.',
+                  {
+                    day: query.data.application_day,
+                    days: query.data.lookback_days,
+                  }
+                )}
+              </p>
+            )}
             <p className='text-destructive mt-1 text-sm'>
               {t(
                 'Please verify the invoice title carefully. Issued invoices cannot be changed or reissued.'

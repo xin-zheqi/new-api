@@ -16,6 +16,7 @@ const InvoiceCenter = ({ admin = false }) => {
   const [subscriptions, setSubscriptions] = useState([]);
   const [applications, setApplications] = useState([]);
   const [applicationDay, setApplicationDay] = useState(25);
+  const [lookbackDays, setLookbackDays] = useState(null);
   const [title, setTitle] = useState('');
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +40,7 @@ const InvoiceCenter = ({ admin = false }) => {
         setSubscriptions(response.data.data?.subscriptions || []);
         setApplications(response.data.data?.applications || []);
         setApplicationDay(response.data.data?.application_day || 25);
+        setLookbackDays(response.data.data?.lookback_days ?? null);
       }
     } catch (error) {
       showError(t('Failed to load invoice data'));
@@ -164,12 +166,14 @@ const InvoiceCenter = ({ admin = false }) => {
       </Typography.Title>
       {!admin && (
         <Card>
-          <Typography.Paragraph type='tertiary'>
-            {t(
-              'Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.',
-              { day: applicationDay },
-            )}
-          </Typography.Paragraph>
+          {lookbackDays !== null && (
+            <Typography.Paragraph type='tertiary'>
+              {t(
+                'Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.',
+                { day: applicationDay, days: lookbackDays },
+              )}
+            </Typography.Paragraph>
+          )}
           <Typography.Paragraph type='danger'>
             {t(
               'Please verify the invoice title carefully. Issued invoices cannot be changed or reissued.',

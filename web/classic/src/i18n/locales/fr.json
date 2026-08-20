@@ -3605,6 +3605,7 @@
     "API信息管理，可以配置多个API地址用于状态展示和负载均衡（最多50个）": "Infos API, vous pouvez configurer plusieurs adresses d'API pour l'affichage de l'état et l'équilibrage de charge (maximum 50)",
     "Application day of each month": "Jour de demande mensuel",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "Les demandes sont ouvertes le {{day}} de chaque mois pour les abonnements éligibles des 90 derniers jours.",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "Les demandes sont ouvertes le {{day}} de chaque mois pour les abonnements éligibles des {{days}} derniers jours.",
     "Applications per user per month": "Demandes mensuelles par utilisateur",
     "Apply for invoice": "Demander une facture",
     "Authorization callback URL 填": "Remplir l'URL de rappel d'autorisation",

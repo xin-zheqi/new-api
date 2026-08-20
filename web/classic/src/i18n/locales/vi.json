@@ -4139,6 +4139,7 @@
     "API信息管理，可以配置多个API地址用于状态展示和负载均衡（最多50个）": "Quản lý thông tin API, bạn có thể cấu hình nhiều địa chỉ API để hiển thị trạng thái và cân bằng tải (tối đa 50)",
     "Application day of each month": "Ngày yêu cầu hằng tháng",
     "Applications open on day {{day}} of each month for eligible subscriptions from the past 90 days.": "Có thể nộp hóa đơn cho các gói đủ điều kiện trong 90 ngày qua vào ngày {{day}} hàng tháng.",
+    "Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.": "Có thể nộp hóa đơn cho các gói đủ điều kiện trong {{days}} ngày qua vào ngày {{day}} hàng tháng.",
     "Applications per user per month": "Yêu cầu mỗi người mỗi tháng",
     "Apply for invoice": "Nộp yêu cầu",
     "Authorization callback URL 填": "Điền URL gọi lại ủy quyền",

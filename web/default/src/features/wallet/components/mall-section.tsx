@@ -8,6 +8,11 @@ export function MallSection({ url }: { url?: string }) {
   const { t } = useTranslation()
   if (!url) return null
 
+  const sandboxPermissions =
+    new URL(url).origin === window.location.origin
+      ? 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts'
+      : 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-storage-access-by-user-activation'
+
   return (
     <Card className='overflow-hidden'>
       <CardHeader className='flex flex-row items-center justify-between border-b p-4'>
@@ -17,7 +22,14 @@ export function MallSection({ url }: { url?: string }) {
         </Button>
       </CardHeader>
       <CardContent className='p-0'>
-        <iframe src={url} title={t('Mall')} className='h-[min(70vh,720px)] w-full border-0' />
+        <iframe
+          src={url}
+          title={t('Mall')}
+          className='h-[min(70vh,720px)] w-full border-0'
+          sandbox={sandboxPermissions}
+          referrerPolicy='no-referrer'
+          allow='payment; storage-access'
+        />
       </CardContent>
     </Card>
   )

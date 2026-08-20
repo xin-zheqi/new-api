@@ -62,6 +62,17 @@ type User struct {
 	AdminPermissions         map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
 }
 
+type IdentityReviewUser struct {
+	Id                   int    `json:"id"`
+	Username             string `json:"username"`
+	DisplayName          string `json:"display_name"`
+	Email                string `json:"email"`
+	Identity             string `json:"identity"`
+	IdentityRequested    string `json:"identity_requested"`
+	IdentityReviewStatus string `json:"identity_review_status"`
+	CreatedAt            int64  `json:"created_at"`
+}
+
 const (
 	UserIdentityPersonal   = "personal"
 	UserIdentityStudent    = "student"
@@ -98,9 +109,13 @@ func UpdateUserIdentity(userId int, identity string) error {
 	return InvalidateUserCache(userId)
 }
 
-func ListPendingIdentityReviews() ([]*User, error) {
-	var users []*User
-	err := DB.Where("identity_review_status = ?", "pending").Order("created_at asc").Find(&users).Error
+func ListPendingIdentityReviews() ([]IdentityReviewUser, error) {
+	var users []IdentityReviewUser
+	err := DB.Model(&User{}).
+		Select("id", "username", "display_name", "email", "identity", "identity_requested", "identity_review_status", "created_at").
+		Where("identity_review_status = ?", "pending").
+		Order("created_at asc").
+		Scan(&users).Error
 	return users, err
 }
 
@@ -785,8 +800,8 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 		"username":                    newUser.Username,
 		"display_name":                newUser.DisplayName,
 		"identity":                    NormalizeUserIdentity(newUser.Identity),
-		"identity_requested":           NormalizeUserIdentity(newUser.IdentityRequested),
-		"identity_review_status":       newUser.IdentityReviewStatus,
+		"identity_requested":          NormalizeUserIdentity(newUser.IdentityRequested),
+		"identity_review_status":      newUser.IdentityReviewStatus,
 		"group":                       newUser.Group,
 		"remark":                      newUser.Remark,
 		"rate_limit_enabled":          newUser.RateLimitEnabled,

@@ -110,6 +110,10 @@ const RechargeCard = ({
   const shouldShowSubscription =
     !subscriptionLoading && subscriptionPlans.length > 0;
   const regularPayMethods = payMethods || [];
+  const mallSandboxPermissions =
+    mallUrl && new URL(mallUrl).origin !== window.location.origin
+      ? 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-storage-access-by-user-activation'
+      : 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts';
 
   useEffect(() => {
     if (initialTabSetRef.current) return;
@@ -698,7 +702,15 @@ const RechargeCard = ({
       ) : topupContent}
       {mallUrl && (
         <Card className='!rounded-xl mt-4' title={t('商城')}>
-          <iframe src={mallUrl} title={t('商城')} className='w-full border-0' style={{ height: 'min(70vh, 720px)' }} />
+          <iframe
+            src={mallUrl}
+            title={t('商城')}
+            className='w-full border-0'
+            style={{ height: 'min(70vh, 720px)' }}
+            sandbox={mallSandboxPermissions}
+            referrerPolicy='no-referrer'
+            allow='payment; storage-access'
+          />
         </Card>
       )}
     </Card>

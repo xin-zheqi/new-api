@@ -142,15 +142,19 @@ func GetTopUpInfo(c *gin.Context) {
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
-		"mall_url":                safeMallURL(common.MallURL),
+		"mall_url":                safeMallURL(common.MallURL, c.Request.Host),
 	}
 	common.ApiSuccess(c, data)
 }
 
-func safeMallURL(value string) string {
+func safeMallURL(value string, applicationHost string) string {
 	value = strings.TrimSpace(value)
 	parsed, err := url.Parse(value)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		return ""
+	}
+	applicationURL, err := url.Parse("//" + strings.TrimSpace(applicationHost))
+	if err != nil || applicationURL.Hostname() == "" || strings.EqualFold(parsed.Hostname(), applicationURL.Hostname()) {
 		return ""
 	}
 	return value

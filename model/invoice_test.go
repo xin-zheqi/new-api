@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,29 @@ func setupInvoiceTest(t *testing.T) {
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&InvoiceApplication{}).Error)
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&UserSubscription{}).Error)
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&SubscriptionPlan{}).Error)
+}
+
+func TestCreateInvoiceApplicationRejectsUnsafeInputBounds(t *testing.T) {
+	setupInvoiceTest(t)
+
+	tests := []struct {
+		name            string
+		title           string
+		subscriptionIds []int
+		errorContains   string
+	}{
+		{name: "long title", title: strings.Repeat("a", InvoiceTitleMaxLength+1), subscriptionIds: []int{1}, errorContains: "must not exceed"},
+		{name: "too many subscriptions", title: "Example University", subscriptionIds: make([]int, InvoiceSubscriptionLimit+1), errorContains: "too many subscriptions"},
+		{name: "duplicate subscription", title: "Example University", subscriptionIds: []int{1, 1}, errorContains: "duplicate subscription"},
+		{name: "invalid subscription", title: "Example University", subscriptionIds: []int{0}, errorContains: "invalid subscription"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := CreateInvoiceApplication(1, test.title, test.subscriptionIds)
+			require.ErrorContains(t, err, test.errorContains)
+		})
+	}
 }
 
 func TestCreateInvoiceApplicationUsesEligibleSubscriptionsOnce(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
@@ -24,6 +25,8 @@ func invoiceOptionInt(key string, fallback int) int {
 const (
 	InvoiceApplicationStatusPending   = "pending"
 	InvoiceApplicationStatusCompleted = "completed"
+	InvoiceTitleMaxLength             = 255
+	InvoiceSubscriptionLimit          = 100
 )
 
 type InvoiceApplication struct {
@@ -39,7 +42,7 @@ type InvoiceApplication struct {
 	CreatedAt        int64                    `json:"created_at" gorm:"bigint;autoCreateTime"`
 	CompletedAt      int64                    `json:"completed_at" gorm:"bigint;default:0"`
 	UpdatedAt        int64                    `json:"updated_at" gorm:"bigint;autoUpdateTime"`
-	User             *User                    `json:"user,omitempty" gorm:"foreignKey:UserId"`
+	User             *User                    `json:"-" gorm:"foreignKey:UserId"`
 	Items            []InvoiceApplicationItem `json:"items,omitempty" gorm:"foreignKey:InvoiceApplicationId"`
 }
 
@@ -77,6 +80,22 @@ func CreateInvoiceApplication(userId int, title string, subscriptionIds []int) (
 	title = strings.TrimSpace(title)
 	if userId <= 0 || title == "" || len(subscriptionIds) == 0 {
 		return nil, errors.New("invoice title and subscriptions are required")
+	}
+	if !utf8.ValidString(title) || utf8.RuneCountInString(title) > InvoiceTitleMaxLength {
+		return nil, errors.New("invoice title must not exceed 255 characters")
+	}
+	if len(subscriptionIds) > InvoiceSubscriptionLimit {
+		return nil, errors.New("too many subscriptions in one invoice application")
+	}
+	seenSubscriptionIds := make(map[int]struct{}, len(subscriptionIds))
+	for _, subscriptionId := range subscriptionIds {
+		if subscriptionId <= 0 {
+			return nil, errors.New("invalid subscription id")
+		}
+		if _, exists := seenSubscriptionIds[subscriptionId]; exists {
+			return nil, errors.New("duplicate subscription id")
+		}
+		seenSubscriptionIds[subscriptionId] = struct{}{}
 	}
 	var application *InvoiceApplication
 	err := DB.Transaction(func(tx *gorm.DB) error {

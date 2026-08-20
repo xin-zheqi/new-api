@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +20,38 @@ import (
 type invoiceApplicationRequest struct {
 	InvoiceTitle    string `json:"invoice_title"`
 	SubscriptionIds []int  `json:"subscription_ids"`
+}
+
+const (
+	invoiceApplicationRequestMaxBytes int64 = 64 * 1024
+	invoicePDFMaxBytes                int64 = 20 * 1024 * 1024
+	invoicePDFRequestMaxBytes         int64 = invoicePDFMaxBytes + 1024*1024
+)
+
+type invoiceApplicationUserResponse struct {
+	Id          int    `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+	Identity    string `json:"identity"`
+}
+
+type invoiceApplicationAdminResponse struct {
+	model.InvoiceApplication
+	User *invoiceApplicationUserResponse `json:"user,omitempty"`
+}
+
+func newInvoiceApplicationAdminResponse(application model.InvoiceApplication) invoiceApplicationAdminResponse {
+	response := invoiceApplicationAdminResponse{InvoiceApplication: application}
+	if application.User == nil {
+		return response
+	}
+	response.User = &invoiceApplicationUserResponse{
+		Id: application.User.Id, Username: application.User.Username,
+		DisplayName: application.User.DisplayName, Email: application.User.Email,
+		Identity: application.User.Identity,
+	}
+	return response
 }
 
 func invoiceApplicationDay() int {
@@ -107,7 +140,13 @@ func CreateInvoiceApplication(c *gin.Context) {
 		return
 	}
 	var request invoiceApplicationRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, invoiceApplicationRequestMaxBytes)
 	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"success": false, "message": "invoice application is too large"})
+			return
+		}
 		common.ApiErrorMsg(c, "invalid invoice application")
 		return
 	}
@@ -137,7 +176,11 @@ func ListInvoiceApplications(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": applications, "total": total})
+	responses := make([]invoiceApplicationAdminResponse, 0, len(applications))
+	for i := range applications {
+		responses = append(responses, newInvoiceApplicationAdminResponse(applications[i]))
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": responses, "total": total})
 }
 
 func invoiceApplicationPath(id int) string {
@@ -155,13 +198,38 @@ func UploadInvoicePDF(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, invoicePDFRequestMaxBytes)
+	if err := c.Request.ParseMultipartForm(invoicePDFMaxBytes); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"success": false, "message": "PDF upload must not exceed 20 MB"})
+			return
+		}
+		common.ApiErrorMsg(c, "invalid PDF upload")
+		return
+	}
+	if c.Request.MultipartForm != nil {
+		defer c.Request.MultipartForm.RemoveAll()
+	}
 	header, err := c.FormFile("file")
-	if err != nil || header.Size <= 0 || header.Size > 20*1024*1024 {
+	if err != nil || header.Size <= 0 || header.Size > invoicePDFMaxBytes {
 		common.ApiErrorMsg(c, "PDF must be between 1 byte and 20 MB")
 		return
 	}
 	if !strings.EqualFold(filepath.Ext(header.Filename), ".pdf") {
 		common.ApiErrorMsg(c, "only PDF files are supported")
+		return
+	}
+	file, err := header.Open()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var signature [4]byte
+	_, readErr := io.ReadFull(file, signature[:])
+	closeErr := file.Close()
+	if readErr != nil || closeErr != nil || string(signature[:]) != "%PDF" {
+		common.ApiErrorMsg(c, "uploaded file is not a valid PDF")
 		return
 	}
 	if err := os.MkdirAll("invoices", 0755); err != nil {
@@ -171,12 +239,6 @@ func UploadInvoicePDF(c *gin.Context) {
 	path := invoiceApplicationPath(id)
 	if err := c.SaveUploadedFile(header, path); err != nil {
 		common.ApiError(c, err)
-		return
-	}
-	content, err := os.ReadFile(path)
-	if err != nil || len(content) < 4 || string(content[:4]) != "%PDF" {
-		_ = os.Remove(path)
-		common.ApiErrorMsg(c, "uploaded file is not a valid PDF")
 		return
 	}
 	if application.PDFPath != "" {

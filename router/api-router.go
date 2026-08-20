@@ -108,8 +108,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 				selfRoute.GET("/invoice", controller.GetSelfInvoiceCenter)
-				selfRoute.POST("/invoice/apply", controller.CreateInvoiceApplication)
-				selfRoute.GET("/invoice/:id/download", controller.DownloadInvoicePDF)
+				selfRoute.POST("/invoice/apply", middleware.CriticalRateLimit(), controller.CreateInvoiceApplication)
+				selfRoute.GET("/invoice/:id/download", middleware.DownloadRateLimit(), controller.DownloadInvoicePDF)
 
 				// 2FA routes
 				selfRoute.GET("/2fa/status", controller.Get2FAStatus)
@@ -297,7 +297,7 @@ func SetApiRouter(router *gin.Engine) {
 		invoiceAdminRoute.Use(middleware.AdminAuth())
 		{
 			invoiceAdminRoute.GET("/applications", controller.ListInvoiceApplications)
-			invoiceAdminRoute.POST("/applications/:id/pdf", controller.UploadInvoicePDF)
+			invoiceAdminRoute.POST("/applications/:id/pdf", middleware.UploadRateLimit(), controller.UploadInvoicePDF)
 			invoiceAdminRoute.DELETE("/applications/:id/pdf", controller.DeleteInvoicePDF)
 			invoiceAdminRoute.POST("/applications/:id/complete", controller.CompleteInvoiceApplication)
 		}

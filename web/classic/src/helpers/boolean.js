@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 export const toBoolean = (value) => {
+  if (typeof value === 'boolean') return value;
   // 兼容字符串、数字以及布尔原生类型
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value === 1;

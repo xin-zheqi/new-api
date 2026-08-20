@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getLucideIcon } from '../../helpers/render';
@@ -27,6 +27,7 @@ import { useSidebar } from '../../hooks/common/useSidebar';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
 import { isAdmin, isRoot, showError } from '../../helpers';
 import SkeletonWrapper from './components/SkeletonWrapper';
+import { UserContext } from '../../context/User';
 
 import { Nav, Divider, Button } from '@douyinfe/semi-ui';
 
@@ -38,6 +39,7 @@ const routerMap = {
   lottery: '/console/lottery',
   topup: '/console/topup',
   user: '/console/user',
+  identity_reviews: '/console/identity-reviews',
   subscription: '/console/subscription',
   user_subscriptions: '/console/subscription/users',
   log: '/console/log',
@@ -52,10 +54,13 @@ const routerMap = {
   deployment: '/console/deployment',
   playground: '/console/playground',
   personal: '/console/personal',
+  invoice: '/console/invoice',
+  invoice_admin: '/console/invoice/admin',
 };
 
 const SiderBar = ({ onNavigate = () => {} }) => {
   const { t } = useTranslation();
+  const [userState] = useContext(UserContext);
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const {
     isModuleVisible,
@@ -78,6 +83,9 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       return true;
     }
   }, []);
+  const invoiceEnabled = ['university', 'enterprise'].includes(
+    userState?.user?.identity,
+  ) && (() => { try { return JSON.parse(localStorage.getItem('status') || '{}').invoice_enabled !== false; } catch { return true; } })();
 
   const workspaceItems = useMemo(() => {
     const items = [
@@ -160,6 +168,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         itemKey: 'personal',
         to: '/personal',
       },
+      {
+        text: t('发票中心'),
+        itemKey: 'invoice',
+        to: '/invoice',
+        className: invoiceEnabled ? '' : 'tableHiddle',
+      },
     ];
 
     // 根据配置过滤项目
@@ -169,7 +183,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     });
 
     return filteredItems;
-  }, [t, isModuleVisible, lotteryEnabled]);
+  }, [t, isModuleVisible, lotteryEnabled, invoiceEnabled]);
 
   const adminItems = useMemo(() => {
     const items = [
@@ -217,10 +231,24 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {
+        text: t('身份审核'),
+        itemKey: 'identity_reviews',
+        to: '/identity-reviews',
+        configKey: 'user',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
         text: t('系统设置'),
         itemKey: 'setting',
         to: '/setting',
         className: isRoot() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('开票中心'),
+        itemKey: 'invoice_admin',
+        configKey: 'invoice',
+        to: '/invoice/admin',
+        className: isAdmin() ? '' : 'tableHiddle',
       },
     ];
 

@@ -82,6 +82,7 @@ const EditUserModal = (props) => {
   const getInitValues = () => ({
     username: '',
     display_name: '',
+    identity: 'personal',
     password: '',
     github_id: '',
     oidc_id: '',
@@ -328,6 +329,19 @@ const EditUserModal = (props) => {
                         label={t('显示名称')}
                         placeholder={t('请输入新的显示名称')}
                         showClear
+                      />
+                    </Col>
+
+                    <Col span={24}>
+                      <Form.Select
+                        field='identity'
+                        label={t('Identity')}
+                        optionList={[
+                          { value: 'personal', label: t('Personal') },
+                          { value: 'student', label: t('Student') },
+                          { value: 'university', label: t('University') },
+                          { value: 'enterprise', label: t('Enterprise') },
+                        ]}
                       />
                     </Col>
 

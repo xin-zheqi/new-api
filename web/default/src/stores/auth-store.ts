@@ -30,6 +30,9 @@ export interface AuthUser {
   id: number
   username: string
   display_name?: string
+  identity?: 'personal' | 'student' | 'university' | 'enterprise' | string
+  identity_requested?: string
+  identity_review_status?: string
   email?: string
   role: number
   status?: number

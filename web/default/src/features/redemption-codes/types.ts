@@ -32,6 +32,7 @@ export const redemptionSchema = z.object({
   redeem_type: z.enum(['quota', 'subscription']).default('quota'),
   subscription_plan_id: z.number().default(0),
   subscription_plan_title: z.string().optional().default(''),
+  invoice_eligible: z.boolean().default(false),
   created_time: z.number(),
   redeemed_time: z.number(),
   expired_time: z.number(), // 0 for never expires
@@ -79,6 +80,7 @@ export interface RedemptionFormData {
   quota: number
   redeem_type: 'quota' | 'subscription'
   subscription_plan_id: number
+  invoice_eligible: boolean
   expired_time: number
   count?: number // Only for create
   status?: number // Only for status update

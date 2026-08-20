@@ -27,10 +27,15 @@ import {
 } from './section-registry.tsx'
 
 const defaultOperationsSettings: OperationsSettings = {
+  MallURL: '',
   RetryTimes: 0,
   DefaultCollapseSidebar: false,
   DemoSiteEnabled: false,
   SelfUseModeEnabled: false,
+  InvoiceApplicationDay: 25,
+  InvoiceEnabled: true,
+  InvoiceLookbackDays: 90,
+  InvoiceMonthlyLimit: 1,
   ChannelDisableThreshold: '',
   QuotaRemindThreshold: '',
   AutomaticDisableChannelEnabled: false,

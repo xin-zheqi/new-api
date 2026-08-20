@@ -83,6 +83,7 @@ const SubscriptionPlansCard = ({
   allSubscriptions = [],
   reloadSubscriptionSelf,
   withCard = true,
+  mySubscriptionsOnly = false,
 }) => {
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -485,7 +486,7 @@ const SubscriptionPlansCard = ({
           </Card>
 
           {/* 可购买套餐 - 标准定价卡片 */}
-          {plans.length > 0 ? (
+          {!mySubscriptionsOnly && plans.length > 0 ? (
             <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-5 w-full px-1'>
               {plans.map((p, index) => {
                 const plan = p?.plan;
@@ -642,11 +643,11 @@ const SubscriptionPlansCard = ({
                 );
               })}
             </div>
-          ) : (
+          ) : !mySubscriptionsOnly ? (
             <div className='text-center text-gray-400 text-sm py-4'>
               {t('暂无可购买套餐')}
             </div>
-          )}
+          ) : null}
         </Space>
       )}
     </>

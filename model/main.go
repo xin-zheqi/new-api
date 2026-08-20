@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -290,6 +291,8 @@ func migrateDB() error {
 		&Checkin{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
+		&InvoiceApplication{},
+		&InvoiceApplicationItem{},
 		&SubscriptionPreConsumeRecord{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
@@ -308,6 +311,12 @@ func migrateDB() error {
 	}
 	err := DB.AutoMigrate(autoMigrateModels...)
 	if err != nil {
+		return err
+	}
+	if err := normalizeInvoiceApplicationIndex(); err != nil {
+		return err
+	}
+	if err := migrateLegacyIdentityAndInvoiceData(); err != nil {
 		return err
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
@@ -357,6 +366,8 @@ func migrateDBFast() error {
 		{&Checkin{}, "Checkin"},
 		{&SubscriptionOrder{}, "SubscriptionOrder"},
 		{&UserSubscription{}, "UserSubscription"},
+		{&InvoiceApplication{}, "InvoiceApplication"},
+		{&InvoiceApplicationItem{}, "InvoiceApplicationItem"},
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
@@ -397,6 +408,12 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := normalizeInvoiceApplicationIndex(); err != nil {
+		return err
+	}
+	if err := migrateLegacyIdentityAndInvoiceData(); err != nil {
+		return err
+	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		if err := ensureLotteryTableSQLite(); err != nil {
 			return err
@@ -410,6 +427,58 @@ func migrateDBFast() error {
 		}
 	}
 	common.SysLog("database migrated")
+	return nil
+}
+
+// normalizeInvoiceApplicationIndex removes the original unique monthly index.
+// Monthly request limits are configurable, so the database must not enforce a
+// fixed one-application-per-month rule.
+func normalizeInvoiceApplicationIndex() error {
+	migrator := DB.Migrator()
+	if migrator.HasIndex(&InvoiceApplication{}, "idx_user_invoice_month") {
+		if err := migrator.DropIndex(&InvoiceApplication{}, "idx_user_invoice_month"); err != nil {
+			return err
+		}
+	}
+	return migrator.CreateIndex(&InvoiceApplication{}, "idx_user_invoice_month")
+}
+
+const legacyIdentityInvoiceMigrationKey = "LegacyIdentityInvoiceMigrationV1"
+
+// migrateLegacyIdentityAndInvoiceData keeps upgrades from the pre-invoice schema
+// deterministic: existing accounts and subscription instances cannot gain
+// invoice eligibility from this release. New records use the normal rules.
+func migrateLegacyIdentityAndInvoiceData() error {
+	var migration Option
+	err := DB.Where("key = ?", legacyIdentityInvoiceMigrationKey).First(&migration).Error
+	if err == nil && migration.Value == "completed" {
+		return nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		updates := map[string]interface{}{
+			"identity":               UserIdentityPersonal,
+			"identity_requested":     "",
+			"identity_review_status": "",
+		}
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Model(&User{}).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Model(&UserSubscription{}).Update("invoice_eligible", false).Error; err != nil {
+			return err
+		}
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Model(&Redemption{}).Update("invoice_eligible", false).Error; err != nil {
+			return err
+		}
+		return tx.Save(&Option{Key: legacyIdentityInvoiceMigrationKey, Value: "completed"}).Error
+	})
+	if err != nil {
+		return err
+	}
+	common.SysLog("legacy identity and invoice data migration completed")
 	return nil
 }
 

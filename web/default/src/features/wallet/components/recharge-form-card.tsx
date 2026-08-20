@@ -81,6 +81,7 @@ interface RechargeFormCardProps {
   waffoMinTopup?: number
   onWaffoMethodSelect?: (method: WaffoPayMethod, index: number) => void
   enableWaffoPancakeTopup?: boolean
+  redemptionOnly?: boolean
 }
 
 export function RechargeFormCard({
@@ -111,6 +112,7 @@ export function RechargeFormCard({
   waffoMinTopup,
   onWaffoMethodSelect,
   enableWaffoPancakeTopup,
+  redemptionOnly = false,
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
@@ -188,6 +190,23 @@ export function RechargeFormCard({
           </div>
         </CardContent>
       </Card>
+    )
+  }
+
+  if (redemptionOnly) {
+    return (
+      <TitledCard title={t('Redemption Code Recharge')} description={t('Use a redemption code to add quota or activate a subscription.')} icon={<Gift className='h-4 w-4' />} iconTone='warning' disableHoverEffect>
+        {redemptionEnabled ? (
+          <div className='space-y-2.5'>
+            <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
+              <Input id='redemption-code' value={redemptionCode} onChange={(e) => onRedemptionCodeChange(e.target.value)} placeholder={t('Enter your redemption code')} className='h-9 min-w-0' />
+              <Button onClick={onRedeem} disabled={redeeming} variant='outline' className='h-9 px-4'>
+                {redeeming && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}{t('Redeem')}
+              </Button>
+            </div>
+          </div>
+        ) : <Alert><AlertDescription>{t('Redemption codes are disabled until the administrator confirms compliance terms.')}</AlertDescription></Alert>}
+      </TitledCard>
     )
   }
 

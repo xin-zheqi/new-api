@@ -6,11 +6,18 @@ import { pluginReact } from '@rsbuild/plugin-react'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
-const semiUiDir = path.dirname(require.resolve('@douyinfe/semi-ui/package.json'))
+const packageRoot = (name: string, levels = 1) => {
+  let directory = path.dirname(require.resolve(name))
+  for (let index = 0; index < levels; index++) {
+    directory = path.dirname(directory)
+  }
+  return directory
+}
+const semiUiDir = packageRoot('@douyinfe/semi-ui', 2)
 const semiDateFnsDir = path.dirname(
-  require.resolve('date-fns/package.json', { paths: [semiUiDir] }),
+  require.resolve('date-fns', { paths: [semiUiDir] }),
 )
-const visactorRoot = path.dirname(require.resolve('@visactor/vchart/package.json'))
+const visactorRoot = packageRoot('@visactor/vchart')
 
 export default defineConfig(({ envMode }) => {
   const env = loadEnv({ mode: envMode, prefixes: ['VITE_'] })
@@ -44,12 +51,10 @@ export default defineConfig(({ envMode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
-        '@visactor/react-vchart': path.dirname(
-          require.resolve('@visactor/react-vchart/package.json'),
-        ),
+        '@visactor/react-vchart': packageRoot('@visactor/react-vchart'),
         '@visactor/vchart': visactorRoot,
-        '@visactor/vchart-semi-theme': path.dirname(
-          require.resolve('@visactor/vchart-semi-theme/package.json'),
+        '@visactor/vchart-semi-theme': packageRoot(
+          '@visactor/vchart-semi-theme',
         ),
         '@douyinfe/semi-ui/dist/css/semi.css': path.resolve(
           semiUiDir,

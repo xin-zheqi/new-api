@@ -89,13 +89,17 @@ function normalizeSubscriptionPlan(value: unknown): SubscriptionPlan | null {
     price_amount: toNumber(candidate.price_amount, 0),
     currency: toStringValue(candidate.currency, 'USD') || 'USD',
     duration_unit:
-      (toStringValue(candidate.duration_unit, 'month') as SubscriptionPlan['duration_unit']) ||
-      'month',
+      (toStringValue(
+        candidate.duration_unit,
+        'month'
+      ) as SubscriptionPlan['duration_unit']) || 'month',
     duration_value: toNumber(candidate.duration_value, 1),
     custom_seconds: toNumber(candidate.custom_seconds, 0),
     quota_reset_period:
-      (toStringValue(candidate.quota_reset_period, 'never') as SubscriptionPlan['quota_reset_period']) ||
-      'never',
+      (toStringValue(
+        candidate.quota_reset_period,
+        'never'
+      ) as SubscriptionPlan['quota_reset_period']) || 'never',
     quota_reset_custom_seconds: toNumber(
       candidate.quota_reset_custom_seconds,
       0
@@ -104,15 +108,14 @@ function normalizeSubscriptionPlan(value: unknown): SubscriptionPlan | null {
     sort_order: toNumber(candidate.sort_order, 0),
     allow_balance_pay: toBoolean(candidate.allow_balance_pay, true),
     allow_wallet_overflow: toBoolean(candidate.allow_wallet_overflow, true),
+    invoice_eligible: toBoolean(candidate.invoice_eligible, false),
     max_purchase_per_user: toNumber(candidate.max_purchase_per_user, 0),
     total_amount: toNumber(candidate.total_amount, 0),
     upgrade_group: toStringValue(candidate.upgrade_group),
     downgrade_group: toStringValue(candidate.downgrade_group),
     stripe_price_id: toStringValue(candidate.stripe_price_id),
     creem_product_id: toStringValue(candidate.creem_product_id),
-    waffo_pancake_product_id: toStringValue(
-      candidate.waffo_pancake_product_id
-    ),
+    waffo_pancake_product_id: toStringValue(candidate.waffo_pancake_product_id),
   }
 }
 

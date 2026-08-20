@@ -23,5 +23,24 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "sse.js": "^2.8.0"
+  },
+  "overrides": {
+    "@hono/node-server": "1.19.15",
+    "body-parser": "2.3.0",
+    "brace-expansion": "2.1.4",
+    "dompurify": "3.4.14",
+    "fast-uri": "3.1.2",
+    "form-data": "4.0.6",
+    "hono": "4.13.3",
+    "ip-address": "10.5.0",
+    "js-yaml": "4.3.1",
+    "js-cookie": "3.0.7",
+    "linkify-it": "5.0.2",
+    "mermaid": "11.17.0",
+    "minimist": "1.2.8",
+    "postcss": "8.5.26",
+    "qs": "6.15.2",
+    "undici": "7.29.0",
+    "uuid": "14.0.0"
   }
 }

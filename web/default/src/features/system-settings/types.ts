@@ -339,10 +339,15 @@ export type BillingSettings = {
 }
 
 export type OperationsSettings = {
+  MallURL: string
   RetryTimes: number
   DefaultCollapseSidebar: boolean
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean
+  InvoiceApplicationDay: number
+  InvoiceEnabled: boolean
+  InvoiceLookbackDays: number
+  InvoiceMonthlyLimit: number
   ChannelDisableThreshold: string
   QuotaRemindThreshold: string
   AutomaticDisableChannelEnabled: boolean

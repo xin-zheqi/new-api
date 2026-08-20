@@ -53,6 +53,8 @@ import OAuth2Callback from './components/auth/OAuth2Callback';
 import PersonalSetting from './components/settings/PersonalSetting';
 import Setup from './pages/Setup';
 import SetupCheck from './components/layout/SetupCheck';
+import InvoiceCenter from './pages/Invoice';
+import IdentityReviews from './pages/IdentityReviews';
 
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -278,6 +280,18 @@ function App() {
               </Suspense>
             </PrivateRoute>
           }
+        />
+        <Route
+          path='/console/invoice'
+          element={<PrivateRoute><InvoiceCenter /></PrivateRoute>}
+        />
+        <Route
+          path='/console/invoice/admin'
+          element={<AdminRoute><InvoiceCenter admin /></AdminRoute>}
+        />
+        <Route
+          path='/console/identity-reviews'
+          element={<AdminRoute><IdentityReviews /></AdminRoute>}
         />
         <Route
           path='/console/topup'

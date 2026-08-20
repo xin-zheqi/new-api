@@ -66,6 +66,7 @@ interface SubscriptionPlansCardProps {
   onAvailabilityChange?: (available: boolean) => void
   userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
+  mySubscriptionsOnly?: boolean
 }
 
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
@@ -97,6 +98,7 @@ export function SubscriptionPlansCard({
   onAvailabilityChange,
   userQuota,
   onPurchaseSuccess,
+  mySubscriptionsOnly = false,
 }: SubscriptionPlansCardProps) {
   const { t } = useTranslation()
 
@@ -253,15 +255,15 @@ export function SubscriptionPlansCard({
     )
   }
 
-  if (plans.length === 0 && !hasAny) {
+  if ((plans.length === 0 || mySubscriptionsOnly) && !hasAny) {
     return null
   }
 
   return (
     <>
       <TitledCard
-        title={t('Subscription Plans')}
-        description={t('Subscribe to a plan for model access')}
+        title={mySubscriptionsOnly ? t('My Subscriptions') : t('Subscription Plans')}
+        description={mySubscriptionsOnly ? t('Your current and past subscriptions') : t('Subscribe to a plan for model access')}
         icon={<Crown className='h-4 w-4' />}
         iconTone='warning'
         disableHoverEffect
@@ -522,7 +524,7 @@ export function SubscriptionPlansCard({
         </div>
 
         {/* Available plans grid */}
-        {plans.length > 0 ? (
+        {!mySubscriptionsOnly && plans.length > 0 ? (
           <div className='grid grid-cols-1 gap-3 2xl:grid-cols-2 2xl:gap-4'>
             {plans.map((p, index) => {
               const plan = p?.plan
@@ -626,11 +628,11 @@ export function SubscriptionPlansCard({
               )
             })}
           </div>
-        ) : (
+        ) : !mySubscriptionsOnly ? (
           <p className='text-muted-foreground py-4 text-center text-sm'>
             {t('No plans available')}
           </p>
-        )}
+        ) : null}
       </TitledCard>
 
       <SubscriptionPurchaseDialog

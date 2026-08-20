@@ -105,6 +105,7 @@ func GetStatus(c *gin.Context) {
 		"announcements_enabled": cs.AnnouncementsEnabled,
 		"faq_enabled":           cs.FAQEnabled,
 		"lottery_enabled":       common.OptionMap["LotteryEnabled"] == "true",
+		"invoice_enabled":       common.OptionMap["InvoiceEnabled"] != "false",
 
 		// 模块管理配置
 		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],

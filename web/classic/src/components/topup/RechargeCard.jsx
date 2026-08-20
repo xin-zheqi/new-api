@@ -98,6 +98,8 @@ const RechargeCard = ({
   allSubscriptions = [],
   reloadSubscriptionSelf,
   enableRedemption = true,
+  walletOnly = false,
+  mallUrl = '',
 }) => {
   const onlineFormApiRef = useRef(null);
   const redeemFormApiRef = useRef(null);
@@ -108,6 +110,10 @@ const RechargeCard = ({
   const shouldShowSubscription =
     !subscriptionLoading && subscriptionPlans.length > 0;
   const regularPayMethods = payMethods || [];
+  const mallSandboxPermissions =
+    mallUrl && new URL(mallUrl).origin !== window.location.origin
+      ? 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-storage-access-by-user-activation'
+      : 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts';
 
   useEffect(() => {
     if (initialTabSetRef.current) return;
@@ -122,9 +128,10 @@ const RechargeCard = ({
     }
   }, [shouldShowSubscription, activeTab]);
   const topupContent = (
-    <Space vertical style={{ width: '100%' }}>
+    <Space vertical style={{ width: '100%' }} data-wallet-only={walletOnly || undefined}>
       {/* 统计数据 */}
       <Card
+        style={walletOnly ? { display: 'none' } : undefined}
         className='!rounded-xl w-full'
         cover={
           <div
@@ -579,8 +586,8 @@ const RechargeCard = ({
 
       {/* 兑换码充值 */}
       {enableRedemption ? (
-        <Card
-          className='!rounded-xl w-full'
+      <Card
+        className='!rounded-xl w-full'
           title={
             <Text type='tertiary' strong>
               {t('兑换码充值')}
@@ -665,49 +672,46 @@ const RechargeCard = ({
         </Button>
       </div>
 
-      {shouldShowSubscription ? (
+      {walletOnly ? (
+        <div className='space-y-4'>
+          <SubscriptionPlansCard
+            t={t}
+            loading={subscriptionLoading}
+            plans={subscriptionPlans}
+            payMethods={payMethods}
+            enableOnlineTopUp={enableOnlineTopUp}
+            enableStripeTopUp={enableStripeTopUp}
+            enableCreemTopUp={enableCreemTopUp}
+            billingPreference={billingPreference}
+            onChangeBillingPreference={onChangeBillingPreference}
+            activeSubscriptions={activeSubscriptions}
+            allSubscriptions={allSubscriptions}
+            reloadSubscriptionSelf={reloadSubscriptionSelf}
+            withCard={false}
+            mySubscriptionsOnly
+          />
+          {topupContent}
+        </div>
+      ) : shouldShowSubscription ? (
         <Tabs type='card' activeKey={activeTab} onChange={setActiveTab}>
-          <TabPane
-            tab={
-              <div className='flex items-center gap-2'>
-                <Sparkles size={16} />
-                {t('订阅套餐')}
-              </div>
-            }
-            itemKey='subscription'
-          >
-            <div className='py-2'>
-              <SubscriptionPlansCard
-                t={t}
-                loading={subscriptionLoading}
-                plans={subscriptionPlans}
-                payMethods={payMethods}
-                enableOnlineTopUp={enableOnlineTopUp}
-                enableStripeTopUp={enableStripeTopUp}
-                enableCreemTopUp={enableCreemTopUp}
-                billingPreference={billingPreference}
-                onChangeBillingPreference={onChangeBillingPreference}
-                activeSubscriptions={activeSubscriptions}
-                allSubscriptions={allSubscriptions}
-                reloadSubscriptionSelf={reloadSubscriptionSelf}
-                withCard={false}
-              />
-            </div>
+          <TabPane tab={t('订阅套餐')} itemKey='subscription'>
+            <div className='py-2'><SubscriptionPlansCard t={t} loading={subscriptionLoading} plans={subscriptionPlans} payMethods={payMethods} enableOnlineTopUp={enableOnlineTopUp} enableStripeTopUp={enableStripeTopUp} enableCreemTopUp={enableCreemTopUp} billingPreference={billingPreference} onChangeBillingPreference={onChangeBillingPreference} activeSubscriptions={activeSubscriptions} allSubscriptions={allSubscriptions} reloadSubscriptionSelf={reloadSubscriptionSelf} withCard={false} /></div>
           </TabPane>
-          <TabPane
-            tab={
-              <div className='flex items-center gap-2'>
-                <Wallet size={16} />
-                {t('额度充值')}
-              </div>
-            }
-            itemKey='topup'
-          >
-            <div className='py-2'>{topupContent}</div>
-          </TabPane>
+          <TabPane tab={t('额度充值')} itemKey='topup'><div className='py-2'>{topupContent}</div></TabPane>
         </Tabs>
-      ) : (
-        topupContent
+      ) : topupContent}
+      {mallUrl && (
+        <Card className='!rounded-xl mt-4' title={t('商城')}>
+          <iframe
+            src={mallUrl}
+            title={t('商城')}
+            className='w-full border-0'
+            style={{ height: 'min(70vh, 720px)' }}
+            sandbox={mallSandboxPermissions}
+            referrerPolicy='no-referrer'
+            allow='payment; storage-access'
+          />
+        </Card>
       )}
     </Card>
   );

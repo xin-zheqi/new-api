@@ -132,6 +132,10 @@ export function SidebarModulesSection({
         title: t('Lucky Draw'),
         description: t('Join lucky draw activities and view won prizes.'),
       },
+      ticket: {
+        title: t('Support tickets'),
+        description: t('Create and follow up on support requests.'),
+      },
     },
     admin: {
       channel: {
@@ -157,6 +161,10 @@ export function SidebarModulesSection({
       subscription: {
         title: t('Subscription Management'),
         description: t('Manage subscription plans and pricing.'),
+      },
+      ticket: {
+        title: t('Support ticket management'),
+        description: t('Review, reply to, and close user support tickets.'),
       },
     },
   }

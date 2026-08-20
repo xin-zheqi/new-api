@@ -203,3 +203,58 @@ func SearchRateLimit() func(c *gin.Context) {
 	}
 	return userRateLimitFactory(common.SearchRateLimitNum, common.SearchRateLimitDuration, "SR")
 }
+
+const ticketRateLimitScript = `
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then
+  redis.call("EXPIRE", KEYS[1], ARGV[2])
+end
+if count <= tonumber(ARGV[1]) then
+  return 1
+end
+return 0
+`
+
+func ticketRateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
+	if !common.RedisEnabled {
+		return userRateLimitFactory(maxRequestNum, duration, mark)
+	}
+	return func(c *gin.Context) {
+		userId := c.GetInt("id")
+		if userId == 0 {
+			c.Status(http.StatusUnauthorized)
+			c.Abort()
+			return
+		}
+		key := fmt.Sprintf("rateLimit:%s:user:%d", mark, userId)
+		allowed, err := common.RDB.Eval(c.Request.Context(), ticketRateLimitScript, []string{key}, maxRequestNum, duration).Int64()
+		if err != nil {
+			common.SysError("ticket rate limit failed: " + err.Error())
+			c.Status(http.StatusInternalServerError)
+			c.Abort()
+			return
+		}
+		if allowed != 1 {
+			c.Status(http.StatusTooManyRequests)
+			c.Abort()
+		}
+	}
+}
+
+// TicketWriteRateLimit limits ticket creation and replies by authenticated
+// user ID, so rotating source IPs cannot bypass the write limit.
+func TicketWriteRateLimit() func(c *gin.Context) {
+	return ticketRateLimitFactory(common.TicketWriteRateLimitNum, common.TicketWriteRateLimitDuration, "TW")
+}
+
+func TicketAdminWriteRateLimit() func(c *gin.Context) {
+	return ticketRateLimitFactory(common.TicketAdminWriteRateLimitNum, common.TicketAdminWriteRateLimitDuration, "TAW")
+}
+
+func TicketReadRateLimit() func(c *gin.Context) {
+	return ticketRateLimitFactory(common.TicketReadRateLimitNum, common.TicketReadRateLimitDuration, "TR")
+}
+
+func TicketDownloadRateLimit() func(c *gin.Context) {
+	return ticketRateLimitFactory(common.DownloadRateLimitNum, common.DownloadRateLimitDuration, "TD")
+}

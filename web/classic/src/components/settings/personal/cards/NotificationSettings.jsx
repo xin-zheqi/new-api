@@ -81,6 +81,7 @@ const NotificationSettings = ({
       enabled: true,
       topup: true,
       personal: true,
+      ticket: true,
     },
     admin: {
       enabled: true,
@@ -91,6 +92,7 @@ const NotificationSettings = ({
       redemption: true,
       user: true,
       setting: true,
+      ticket: true,
     },
   });
   const [adminConfig, setAdminConfig] = useState(null);
@@ -165,7 +167,7 @@ const NotificationSettings = ({
         midjourney: true,
         task: true,
       },
-      personal: { enabled: true, topup: true, personal: true },
+      personal: { enabled: true, topup: true, personal: true, ticket: true },
       admin: {
         enabled: true,
         channel: true,
@@ -175,6 +177,7 @@ const NotificationSettings = ({
         redemption: true,
         user: true,
         setting: true,
+        ticket: true,
       },
     };
     setSidebarModulesUser(defaultConfig);
@@ -284,6 +287,11 @@ const NotificationSettings = ({
           title: t('个人设置'),
           description: t('个人信息设置'),
         },
+        {
+          key: 'ticket',
+          title: t('工单中心'),
+          description: t('提交问题并查看处理进度'),
+        },
       ],
     },
     // 管理员区域：根据后端权限控制显示
@@ -314,6 +322,11 @@ const NotificationSettings = ({
           key: 'setting',
           title: t('系统设置'),
           description: t('系统参数配置'),
+        },
+        {
+          key: 'ticket',
+          title: t('工单管理'),
+          description: t('查看、回复并结束用户工单'),
         },
       ],
     },

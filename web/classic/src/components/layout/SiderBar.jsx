@@ -56,6 +56,8 @@ const routerMap = {
   personal: '/console/personal',
   invoice: '/console/invoice',
   invoice_admin: '/console/invoice/admin',
+  ticket: '/console/ticket',
+  ticket_admin: '/console/ticket/admin',
 };
 
 const SiderBar = ({ onNavigate = () => {} }) => {
@@ -174,6 +176,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/invoice',
         className: invoiceEnabled ? '' : 'tableHiddle',
       },
+      {
+        text: t('工单中心'),
+        itemKey: 'ticket',
+        to: '/ticket',
+      },
     ];
 
     // 根据配置过滤项目
@@ -248,6 +255,13 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         itemKey: 'invoice_admin',
         configKey: 'invoice',
         to: '/invoice/admin',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('工单管理'),
+        itemKey: 'ticket_admin',
+        configKey: 'ticket',
+        to: '/ticket/admin',
         className: isAdmin() ? '' : 'tableHiddle',
       },
     ];

@@ -45,6 +45,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     lottery: true,
     personal: true,
     invoice: true,
+    ticket: true,
   },
   admin: {
     enabled: true,
@@ -56,6 +57,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     subscription: true,
     setting: true,
     invoice: true,
+    ticket: true,
   },
 };
 

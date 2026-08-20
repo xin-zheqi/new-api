@@ -38,9 +38,11 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { type SidebarData } from '@/components/layout/types'
+import type { SidebarData } from '@/components/layout/types'
+import { SupportTicketNavIcon } from '@/features/support-tickets/components/support-ticket-nav-icon'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
+
 import { useStatus } from './use-status'
 
 /**
@@ -54,7 +56,9 @@ export function useSidebarData(): SidebarData {
   const { status } = useStatus()
   const lotteryEnabled = status?.lottery_enabled !== false
   const identity = useAuthStore((s) => s.auth.user?.identity)
-  const invoiceEnabled = status?.invoice_enabled !== false && (identity === 'university' || identity === 'enterprise')
+  const invoiceEnabled =
+    status?.invoice_enabled !== false &&
+    (identity === 'university' || identity === 'enterprise')
 
   return {
     navGroups: [
@@ -126,8 +130,19 @@ export function useSidebarData(): SidebarData {
             url: '/profile',
             icon: User,
           },
+          {
+            title: t('Support tickets'),
+            url: '/support-tickets',
+            icon: SupportTicketNavIcon,
+          },
           ...(invoiceEnabled
-            ? [{ title: t('Invoice Center'), url: '/invoice-center', icon: FileText }]
+            ? [
+                {
+                  title: t('Invoice Center'),
+                  url: '/invoice-center',
+                  icon: FileText,
+                },
+              ]
             : []),
           ...(lotteryEnabled
             ? [
@@ -160,6 +175,12 @@ export function useSidebarData(): SidebarData {
             icon: Users,
           },
           {
+            title: t('Support tickets'),
+            url: '/support-tickets/admin',
+            icon: SupportTicketNavIcon,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
             title: t('Identity Review'),
             url: '/identity-reviews',
             icon: Users,
@@ -174,11 +195,15 @@ export function useSidebarData(): SidebarData {
             url: '/subscriptions',
             icon: CreditCard,
           },
-          ...(status?.invoice_enabled !== false ? [{
-            title: t('Invoice Center'),
-            url: '/invoice-center/admin',
-            icon: FileText,
-          }] : []),
+          ...(status?.invoice_enabled !== false
+            ? [
+                {
+                  title: t('Invoice Center'),
+                  url: '/invoice-center/admin',
+                  icon: FileText,
+                },
+              ]
+            : []),
           {
             title: t('Subscription Management'),
             url: '/subscriptions/users',

@@ -495,23 +495,89 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 }
 
 func DeleteUserById(id int) (err error) {
+	_, err = DeleteUserByIdWithTicketAttachments(id)
+	return err
+}
+
+func DeleteUserByIdWithTicketAttachments(id int) ([]string, error) {
 	if id == 0 {
-		return errors.New("id 为空！")
+		return nil, errors.New("id 为空！")
 	}
-	user := User{Id: id}
-	return user.Delete()
+	var storageNames []string
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", id).First(&user).Error; err != nil {
+			return err
+		}
+		var err error
+		storageNames, err = deleteUserTicketsWithAttachments(tx, id)
+		if err != nil {
+			return err
+		}
+		return tx.Delete(&User{}, "id = ?", id).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return storageNames, invalidateUserCache(id)
 }
 
 func HardDeleteUserById(id int) error {
+	_, err := HardDeleteUserByIdWithTicketAttachments(id)
+	return err
+}
+
+// HardDeleteUserByIdWithTicketAttachments removes ticket rows in the same
+// transaction as the user. It returns opaque server-generated storage names
+// so the controller can delete files only after the database commit succeeds.
+func HardDeleteUserByIdWithTicketAttachments(id int) ([]string, error) {
 	if id == 0 {
-		return errors.New("id 为空！")
+		return nil, errors.New("id 为空！")
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
+	var storageNames []string
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", id).First(&user).Error; err != nil {
+			return err
+		}
+		var err error
+		storageNames, err = deleteUserTicketsWithAttachments(tx, id)
+		if err != nil {
+			return err
+		}
 		if err := deleteUserOAuthBindingsByUserId(tx, id); err != nil {
 			return err
 		}
 		return tx.Unscoped().Delete(&User{}, "id = ?", id).Error
 	})
+	if err != nil {
+		return nil, err
+	}
+	return storageNames, nil
+}
+
+func deleteUserTicketsWithAttachments(tx *gorm.DB, userId int) ([]string, error) {
+	var ticketIds []int
+	if err := tx.Model(&Ticket{}).Where("user_id = ?", userId).Pluck("id", &ticketIds).Error; err != nil {
+		return nil, err
+	}
+	if len(ticketIds) == 0 {
+		return nil, nil
+	}
+	var storageNames []string
+	if err := tx.Model(&TicketAttachment{}).Where("ticket_id IN ?", ticketIds).Pluck("storage_name", &storageNames).Error; err != nil {
+		return nil, err
+	}
+	if err := tx.Where("ticket_id IN ?", ticketIds).Delete(&TicketAttachment{}).Error; err != nil {
+		return nil, err
+	}
+	if err := tx.Where("ticket_id IN ?", ticketIds).Delete(&TicketMessage{}).Error; err != nil {
+		return nil, err
+	}
+	if err := tx.Where("id IN ?", ticketIds).Delete(&Ticket{}).Error; err != nil {
+		return nil, err
+	}
+	return storageNames, nil
 }
 
 func inviteUser(inviterId int) (err error) {

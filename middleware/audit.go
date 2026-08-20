@@ -92,6 +92,10 @@ var auditRouteActions = map[string]string{
 	"PUT /api/subscription/admin/plans/:id": "subscription.plan_update",
 	"POST /api/subscription/admin/bind":     "subscription.bind",
 
+	// 工单（管理员）
+	"POST /api/ticket/admin/:id/reply": "ticket.reply",
+	"POST /api/ticket/admin/:id/close": "ticket.close",
+
 	// 日志
 	"DELETE /api/log/": "log.clear",
 }

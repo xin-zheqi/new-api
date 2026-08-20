@@ -83,6 +83,7 @@ import {
   CalendarClock,
   Trophy,
   FileText,
+  Ticket,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -160,6 +161,9 @@ export function getLucideIcon(key, selected = false) {
     case 'invoice':
     case 'invoice_admin':
       return <FileText {...commonProps} color={iconColor} />;
+    case 'ticket':
+    case 'ticket_admin':
+      return <Ticket {...commonProps} color={iconColor} />;
     case 'setting':
       return <Settings {...commonProps} color={iconColor} />;
     default:

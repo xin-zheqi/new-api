@@ -59,6 +59,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       topup: true,
       lottery: true,
       personal: true,
+      ticket: true,
     },
     admin: {
       enabled: true,
@@ -69,6 +70,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       user: true,
       subscription: true,
       setting: true,
+      ticket: true,
     },
   });
 
@@ -121,6 +123,7 @@ export default function SettingsSidebarModulesAdmin(props) {
         topup: true,
         lottery: true,
         personal: true,
+        ticket: true,
       },
       admin: {
         enabled: true,
@@ -131,6 +134,7 @@ export default function SettingsSidebarModulesAdmin(props) {
         user: true,
         subscription: true,
         setting: true,
+        ticket: true,
       },
     };
     setSidebarModulesAdmin(defaultModules);
@@ -228,6 +232,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           title: t('个人设置'),
           description: t('个人信息设置'),
         },
+        {
+          key: 'ticket',
+          title: t('工单中心'),
+          description: t('提交问题并查看处理进度'),
+        },
       ],
     },
     {
@@ -257,6 +266,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'setting',
           title: t('系统设置'),
           description: t('系统参数配置'),
+        },
+        {
+          key: 'ticket',
+          title: t('工单管理'),
+          description: t('查看、回复并结束用户工单'),
         },
       ],
     },

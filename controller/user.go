@@ -1005,11 +1005,12 @@ func DeleteUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
-	err = model.HardDeleteUserById(id)
+	storageNames, err := model.HardDeleteUserByIdWithTicketAttachments(id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	removeTicketAttachmentFiles(storageNames)
 	recordManageAuditFor(c, originUser.Id, "user.delete", map[string]interface{}{
 		"username": originUser.Username,
 		"id":       originUser.Id,
@@ -1030,7 +1031,8 @@ func DeleteSelf(c *gin.Context) {
 		return
 	}
 
-	err := model.DeleteUserById(id)
+	storageNames, err := model.DeleteUserByIdWithTicketAttachments(id)
+	removeTicketAttachmentFiles(storageNames)
 	if err != nil {
 		common.ApiError(c, err)
 		return

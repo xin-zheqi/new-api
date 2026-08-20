@@ -211,6 +211,23 @@ func SetApiRouter(router *gin.Engine) {
 			lotteryRoute.GET("/:id", controller.GetLottery)
 			lotteryRoute.POST("/:id/join", middleware.CriticalRateLimit(), controller.JoinLottery)
 		}
+		ticketRoute := apiRouter.Group("/ticket")
+		ticketRoute.Use(middleware.UserAuth())
+		{
+			ticketRoute.GET("/self", middleware.TicketReadRateLimit(), controller.GetSelfTickets)
+			ticketRoute.POST("", middleware.TicketWriteRateLimit(), controller.CreateTicket)
+			ticketRoute.GET("/:id", middleware.TicketReadRateLimit(), controller.GetTicket)
+			ticketRoute.POST("/:id/reply", middleware.TicketWriteRateLimit(), controller.ReplyTicket)
+			ticketRoute.GET("/:id/attachment/:attachment_id", middleware.TicketDownloadRateLimit(), controller.DownloadTicketAttachment)
+		}
+		ticketAdminRoute := apiRouter.Group("/ticket/admin")
+		ticketAdminRoute.Use(middleware.AdminAuth())
+		{
+			ticketAdminRoute.GET("", middleware.TicketReadRateLimit(), controller.ListAdminTickets)
+			ticketAdminRoute.GET("/:id", middleware.TicketReadRateLimit(), controller.GetAdminTicket)
+			ticketAdminRoute.POST("/:id/reply", middleware.TicketAdminWriteRateLimit(), controller.ReplyAdminTicket)
+			ticketAdminRoute.POST("/:id/close", middleware.TicketAdminWriteRateLimit(), controller.CloseAdminTicket)
+		}
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{

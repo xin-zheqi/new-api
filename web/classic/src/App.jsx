@@ -61,6 +61,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const About = lazy(() => import('./pages/About'));
 const UserAgreement = lazy(() => import('./pages/UserAgreement'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const TicketCenter = lazy(() => import('./pages/Ticket'));
 
 function DynamicOAuth2Callback() {
   const { provider } = useParams();
@@ -288,6 +289,26 @@ function App() {
         <Route
           path='/console/invoice/admin'
           element={<AdminRoute><InvoiceCenter admin /></AdminRoute>}
+        />
+        <Route
+          path='/console/ticket'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading />} key={location.pathname}>
+                <TicketCenter />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/ticket/admin'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading />} key={location.pathname}>
+                <TicketCenter admin />
+              </Suspense>
+            </AdminRoute>
+          }
         />
         <Route
           path='/console/identity-reviews'

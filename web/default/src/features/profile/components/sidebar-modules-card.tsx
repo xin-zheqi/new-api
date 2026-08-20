@@ -120,6 +120,11 @@ export function SidebarModulesCard() {
           title: t('Personal Settings'),
           description: t('Personal info settings'),
         },
+        {
+          key: 'ticket',
+          title: t('Support tickets'),
+          description: t('Create and follow up on support requests.'),
+        },
       ],
     },
   ]

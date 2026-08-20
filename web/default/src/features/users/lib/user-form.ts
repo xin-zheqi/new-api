@@ -36,6 +36,7 @@ import { type UserFormData, type User } from '../types'
 export const userFormSchema = z.object({
   username: z.string().min(1, 'Username is required'),
   display_name: z.string().optional(),
+  identity: z.enum(['personal', 'student', 'university', 'enterprise']).optional(),
   password: z.string().optional(),
   role: z.number().optional(),
   quota_dollars: z.number().min(0).optional(),
@@ -55,6 +56,7 @@ export type UserFormValues = z.infer<typeof userFormSchema>
 export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   username: '',
   display_name: '',
+  identity: 'personal',
   password: '',
   role: 1, // Default to common user
   quota_dollars: 0,
@@ -79,6 +81,7 @@ export function transformFormDataToPayload(
   const payload: UserFormData & { id?: number } = {
     username: data.username,
     display_name: data.display_name || data.username,
+    identity: data.identity,
     password: data.password || undefined,
   }
 
@@ -116,6 +119,7 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
   return {
     username: user.username,
     display_name: user.display_name,
+    identity: (user.identity as UserFormValues['identity']) || 'personal',
     password: '',
     role: user.role,
     quota_dollars: quotaUnitsToDollars(user.quota),

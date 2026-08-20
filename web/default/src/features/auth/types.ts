@@ -129,6 +129,7 @@ export interface SystemStatus {
     password_login_enabled?: boolean
     password_register_enabled?: boolean
     lottery_enabled?: boolean
+    invoice_enabled?: boolean
     promo_popup_content?: string
     custom_oauth_providers?: CustomOAuthProviderInfo[]
     [key: string]: unknown

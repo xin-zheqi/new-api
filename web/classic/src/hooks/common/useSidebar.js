@@ -44,6 +44,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     topup: true,
     lottery: true,
     personal: true,
+    invoice: true,
   },
   admin: {
     enabled: true,
@@ -54,6 +55,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     user: true,
     subscription: true,
     setting: true,
+    invoice: true,
   },
 };
 

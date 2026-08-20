@@ -346,6 +346,30 @@ export function UsersMutateDrawer({
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name='identity'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Identity')}</FormLabel>
+                      <Select
+                        value={field.value || 'personal'}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                        <SelectContent>
+                          <SelectItem value='personal'>{t('Personal')}</SelectItem>
+                          <SelectItem value='student'>{t('Student')}</SelectItem>
+                          <SelectItem value='university'>{t('University')}</SelectItem>
+                          <SelectItem value='enterprise'>{t('Enterprise')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>{t('Used to determine invoice center access')}</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </SideDrawerSection>
 
               {/* Group & Quota Settings (Update only) */}

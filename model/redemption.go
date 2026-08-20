@@ -26,6 +26,7 @@ type Redemption struct {
 	Quota                 int            `json:"quota" gorm:"default:100"`
 	RedeemType            string         `json:"redeem_type" gorm:"type:varchar(32);not null;default:'quota'"`
 	SubscriptionPlanId    int            `json:"subscription_plan_id" gorm:"index;default:0"`
+	InvoiceEligible       bool           `json:"invoice_eligible" gorm:"default:false;index"`
 	SubscriptionPlanTitle string         `json:"subscription_plan_title,omitempty" gorm:"-:all"`
 	CreatedTime           int64          `json:"created_time" gorm:"bigint"`
 	RedeemedTime          int64          `json:"redeemed_time" gorm:"bigint"`
@@ -76,6 +77,7 @@ func (redemption *Redemption) normalizeFields() {
 	switch redemption.RedeemType {
 	case RedemptionTypeQuota:
 		redemption.SubscriptionPlanId = 0
+		redemption.InvoiceEligible = false
 	case RedemptionTypeSubscription:
 		redemption.Quota = 0
 	}
@@ -331,6 +333,12 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 			if err != nil {
 				return err
 			}
+			if redemption.InvoiceEligible {
+				if err := tx.Model(subscription).Update("invoice_eligible", true).Error; err != nil {
+					return err
+				}
+				subscription.InvoiceEligible = true
+			}
 			upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
 			redeemResult.Kind = RedemptionTypeSubscription
 			redeemResult.Quota = 0
@@ -381,7 +389,7 @@ func (redemption *Redemption) SelectUpdate() error {
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (redemption *Redemption) Update() error {
 	var err error
-	err = DB.Model(redemption).Select("name", "status", "quota", "redeem_type", "subscription_plan_id", "redeemed_time", "expired_time").Updates(redemption).Error
+	err = DB.Model(redemption).Select("name", "status", "quota", "redeem_type", "subscription_plan_id", "invoice_eligible", "redeemed_time", "expired_time").Updates(redemption).Error
 	return err
 }
 

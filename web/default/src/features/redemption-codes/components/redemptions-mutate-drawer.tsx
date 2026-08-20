@@ -31,6 +31,7 @@ import {
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
   FormControl,
@@ -295,6 +296,28 @@ export function RedemptionsMutateDrawer({
                       {t('Leave empty for never expires')}
                     </FormDescription>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='invoice_eligible'
+                render={({ field }) => (
+                  <FormItem className='flex items-start gap-3 rounded-md border p-3'>
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={form.watch('redeem_type') !== 'subscription'}
+                      />
+                    </FormControl>
+                    <div className='space-y-1'>
+                      <FormLabel>{t('Invoice eligible')}</FormLabel>
+                      <FormDescription>
+                        {t('Subscriptions redeemed with this code can be included in an invoice application.')}
+                      </FormDescription>
+                    </div>
                   </FormItem>
                 )}
               />

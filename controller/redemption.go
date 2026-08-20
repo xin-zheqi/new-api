@@ -106,6 +106,7 @@ func AddRedemption(c *gin.Context) {
 			Quota:              redemption.Quota,
 			RedeemType:         redemption.RedeemType,
 			SubscriptionPlanId: redemption.SubscriptionPlanId,
+			InvoiceEligible:    redemption.InvoiceEligible,
 			ExpiredTime:        redemption.ExpiredTime,
 		}
 		err = cleanRedemption.Insert()
@@ -178,6 +179,7 @@ func UpdateRedemption(c *gin.Context) {
 		cleanRedemption.Quota = redemption.Quota
 		cleanRedemption.RedeemType = redemption.RedeemType
 		cleanRedemption.SubscriptionPlanId = redemption.SubscriptionPlanId
+		cleanRedemption.InvoiceEligible = redemption.InvoiceEligible
 		cleanRedemption.ExpiredTime = redemption.ExpiredTime
 		if err = validateRedemptionConfig(c, cleanRedemption); err != nil {
 			handleRedemptionValidationError(c, err)

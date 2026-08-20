@@ -43,6 +43,13 @@ import {
 import type { User } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
+const identityLabels: Record<string, string> = {
+  personal: 'Personal',
+  student: 'Student',
+  university: 'University',
+  enterprise: 'Enterprise',
+}
+
 function getQuotaProgressColor(percentage: number): string {
   if (percentage <= 10) return '[&_[data-slot=progress-indicator]]:bg-rose-500'
   if (percentage <= 30) return '[&_[data-slot=progress-indicator]]:bg-amber-500'
@@ -127,6 +134,23 @@ export function useUsersColumns(): ColumnDef<User>[] {
       enableHiding: false,
       size: 220,
       meta: { mobileTitle: true },
+    },
+    {
+      accessorKey: 'identity',
+      header: t('Identity'),
+      cell: ({ row }) => {
+        const identity = row.original.identity
+        return (
+          <StatusBadge
+            label={identity ? t(identityLabels[identity] ?? identity) : t('Not selected')}
+            variant={identity ? 'info' : 'neutral'}
+            copyable={false}
+          />
+        )
+      },
+      enableSorting: false,
+      size: 120,
+      meta: { mobileOrder: 15 },
     },
     {
       accessorKey: 'status',

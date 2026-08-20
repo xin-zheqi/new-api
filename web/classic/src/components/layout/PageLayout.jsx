@@ -23,6 +23,7 @@ import SiderBar from './SiderBar';
 import App from '../../App';
 import FooterBar from './Footer';
 import PromoPopup from './PromoPopup';
+import IdentitySelectionModal from '../auth/IdentitySelectionModal';
 import { ToastContainer } from 'react-toastify';
 import ErrorBoundary from '../common/ErrorBoundary';
 import React, { useContext, useEffect, useState } from 'react';
@@ -71,6 +72,10 @@ const PageLayout = () => {
     location.pathname !== '/console/playground';
 
   const isConsoleRoute = location.pathname.startsWith('/console');
+  const isInvoiceRoute =
+    location.pathname === '/console/invoice' ||
+    location.pathname === '/console/invoice/admin';
+  const isIdentityReviewRoute = location.pathname === '/console/identity-reviews';
   const showSider = isConsoleRoute && (!isMobile || drawerOpen);
   const isFixedLayout = isConsoleRoute || location.pathname === '/pricing';
 
@@ -80,11 +85,18 @@ const PageLayout = () => {
     }
   }, [isMobile, drawerOpen, collapsed, setCollapsed]);
 
-  const loadUser = () => {
+  const loadUser = async () => {
     let user = localStorage.getItem('user');
-    if (user) {
-      let data = JSON.parse(user);
-      userDispatch({ type: 'login', payload: data });
+    if (!user) return;
+    let data = JSON.parse(user);
+    userDispatch({ type: 'login', payload: data });
+    try {
+      const response = await API.get('/api/user/self');
+      if (response.data?.success && response.data.data) {
+        userDispatch({ type: 'login', payload: response.data.data });
+      }
+    } catch (error) {
+      console.error('Failed to refresh user profile', error);
     }
   };
 
@@ -104,7 +116,7 @@ const PageLayout = () => {
   };
 
   useEffect(() => {
-    loadUser();
+    loadUser().catch(console.error);
     loadStatus().catch(console.error);
     let systemName = getSystemName();
     if (systemName) {
@@ -218,7 +230,15 @@ const PageLayout = () => {
               flex: isFixedLayout ? '1 0 auto' : '1 1 auto',
               overflowY: isFixedLayout && !isMobile ? 'hidden' : 'visible',
               WebkitOverflowScrolling: 'touch',
-              padding: shouldInnerPadding ? (isMobile ? '5px' : '24px') : '0',
+              padding: isInvoiceRoute || isIdentityReviewRoute
+                ? isMobile
+                  ? '69px 5px 5px'
+                  : '88px 24px 24px'
+                : shouldInnerPadding
+                  ? isMobile
+                    ? '5px'
+                    : '24px'
+                  : '0',
               position: 'relative',
               minHeight: 0,
             }}
@@ -240,6 +260,7 @@ const PageLayout = () => {
         </Layout>
       </Layout>
       <PromoPopup />
+      <IdentitySelectionModal />
       <ToastContainer />
     </Layout>
   );

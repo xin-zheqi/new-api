@@ -36,6 +36,9 @@ export const userSchema = z.object({
   id: z.number(),
   username: z.string(),
   display_name: z.string(),
+  identity: z.string().optional(),
+  identity_requested: z.string().optional(),
+  identity_review_status: z.string().optional(),
   password: z.string().optional(),
   github_id: z.string().optional(),
   oidc_id: z.string().optional(),
@@ -106,6 +109,7 @@ export interface SearchUsersParams {
 export interface UserFormData {
   username: string
   display_name: string
+  identity?: 'personal' | 'student' | 'university' | 'enterprise'
   password?: string
   role?: number // Only used when creating user
   quota?: number // Only used when updating user

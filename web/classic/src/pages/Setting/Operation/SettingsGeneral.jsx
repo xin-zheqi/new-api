@@ -255,6 +255,16 @@ export default function GeneralSettings(props) {
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.Input
+                  field={'MallURL'}
+                  label={t('商城网址')}
+                  initValue={''}
+                  placeholder='https://example.com'
+                  onChange={handleFieldChange('MallURL')}
+                  showClear
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Input
                   field={'general_setting.docs_link'}
                   label={t('文档地址')}
                   initValue={''}

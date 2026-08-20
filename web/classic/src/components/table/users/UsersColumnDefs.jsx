@@ -39,6 +39,13 @@ import {
 
 const renderTimestamp = (text) => (text ? timestamp2string(text) : '-');
 
+const identityLabels = {
+  personal: '个人',
+  student: '学生',
+  university: '高校',
+  enterprise: '企业',
+};
+
 /**
  * Render user role
  */
@@ -331,6 +338,15 @@ export const getUsersColumns = ({
       title: t('用户名'),
       dataIndex: 'username',
       render: (text, record) => renderUsername(text, record),
+    },
+    {
+      title: t('用户身份'),
+      dataIndex: 'identity',
+      render: (identity) => (
+        <Tag color={identity ? 'cyan' : 'grey'} shape='circle'>
+          {identity ? t(identityLabels[identity] || identity) : t('未选择')}
+        </Tag>
+      ),
     },
     {
       title: t('状态'),

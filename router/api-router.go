@@ -107,6 +107,9 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPancakePay)
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
+				selfRoute.GET("/invoice", controller.GetSelfInvoiceCenter)
+				selfRoute.POST("/invoice/apply", controller.CreateInvoiceApplication)
+				selfRoute.GET("/invoice/:id/download", controller.DownloadInvoicePDF)
 
 				// 2FA routes
 				selfRoute.GET("/2fa/status", controller.Get2FAStatus)
@@ -128,6 +131,8 @@ func SetApiRouter(router *gin.Engine) {
 			adminRoute.Use(middleware.AdminAuth())
 			{
 				adminRoute.GET("/", controller.GetAllUsers)
+				adminRoute.GET("/identity-reviews", controller.GetIdentityReviews)
+				adminRoute.POST("/identity-reviews/:id/:action", controller.ReviewIdentity)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.POST("/topup/manual", middleware.RootAuth(), controller.AdminCreateManualTopUp)
@@ -287,6 +292,14 @@ func SetApiRouter(router *gin.Engine) {
 			redemptionRoute.PUT("/", controller.UpdateRedemption)
 			redemptionRoute.DELETE("/invalid", controller.DeleteInvalidRedemption)
 			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
+		}
+		invoiceAdminRoute := apiRouter.Group("/invoice/admin")
+		invoiceAdminRoute.Use(middleware.AdminAuth())
+		{
+			invoiceAdminRoute.GET("/applications", controller.ListInvoiceApplications)
+			invoiceAdminRoute.POST("/applications/:id/pdf", controller.UploadInvoicePDF)
+			invoiceAdminRoute.DELETE("/applications/:id/pdf", controller.DeleteInvoicePDF)
+			invoiceAdminRoute.POST("/applications/:id/complete", controller.CompleteInvoiceApplication)
 		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)

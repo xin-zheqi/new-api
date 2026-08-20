@@ -39,6 +39,9 @@ export interface UserProfile {
   username: string
   /** Display name */
   display_name: string
+  identity?: 'personal' | 'student' | 'university' | 'enterprise' | string
+  identity_requested?: string
+  identity_review_status?: string
   /** User role (1=普通用户, 10=管理员, 100=超级管理员) */
   role: number
   /** Email address */

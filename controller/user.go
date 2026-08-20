@@ -159,6 +159,9 @@ func setupLogin(user *model.User, c *gin.Context) {
 			"id":           user.Id,
 			"username":     user.Username,
 			"display_name": user.DisplayName,
+			"identity":     user.Identity,
+			"identity_requested": user.IdentityRequested,
+			"identity_review_status": user.IdentityReviewStatus,
 			"role":         user.Role,
 			"status":       user.Status,
 			"group":        user.Group,
@@ -379,6 +382,10 @@ func GetUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if user.Identity == "" && (user.IdentityReviewStatus == "pending" || user.IdentityRequested == model.UserIdentityUniversity || user.IdentityRequested == model.UserIdentityEnterprise) {
+		user.Identity = model.UserIdentityPersonal
+		_ = model.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{"identity": model.UserIdentityPersonal}).Error
+	}
 	myRole := c.GetInt("role")
 	if !canManageTargetRole(myRole, user.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
@@ -489,6 +496,10 @@ func GetSelf(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if user.Identity == "" && (user.IdentityReviewStatus == "pending" || user.IdentityRequested == model.UserIdentityUniversity || user.IdentityRequested == model.UserIdentityEnterprise) {
+		user.Identity = model.UserIdentityPersonal
+		_ = model.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{"identity": model.UserIdentityPersonal}).Error
+	}
 	// Hide admin remarks: set to empty to trigger omitempty tag, ensuring the remark field is not included in JSON returned to regular users
 	user.Remark = ""
 
@@ -504,6 +515,9 @@ func GetSelf(c *gin.Context) {
 		"id":                user.Id,
 		"username":          user.Username,
 		"display_name":      user.DisplayName,
+		"identity":          user.Identity,
+		"identity_requested": user.IdentityRequested,
+		"identity_review_status": user.IdentityReviewStatus,
 		"role":              user.Role,
 		"status":            user.Status,
 		"email":             user.Email,
@@ -701,6 +715,12 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	updatedUser.Role = originUser.Role
+	if strings.TrimSpace(updatedUser.Identity) == "" {
+		updatedUser.Identity = originUser.Identity
+	} else if model.NormalizeUserIdentity(updatedUser.Identity) == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
 	myRole := c.GetInt("role")
 	if !canManageTargetRole(myRole, originUser.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
@@ -749,6 +769,33 @@ func UpdateUser(c *gin.Context) {
 		"message": "",
 	})
 	return
+}
+
+func GetIdentityReviews(c *gin.Context) {
+	users, err := model.ListPendingIdentityReviews()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, users)
+}
+
+func ReviewIdentity(c *gin.Context) {
+	userId, err := strconv.Atoi(c.Param("id"))
+	if err != nil || userId <= 0 {
+		common.ApiErrorMsg(c, "invalid user id")
+		return
+	}
+	approved := c.Param("action") == "approve"
+	if c.Param("action") != "approve" && c.Param("action") != "reject" {
+		common.ApiErrorMsg(c, "invalid review action")
+		return
+	}
+	if err := model.ReviewUserIdentity(userId, approved); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 func AdminClearUserBinding(c *gin.Context) {
@@ -852,6 +899,19 @@ func UpdateSelf(c *gin.Context) {
 	}
 
 	// 原有的用户信息更新逻辑
+	if identityValue, exists := requestData["identity"]; exists {
+		identity, ok := identityValue.(string)
+		if !ok || model.NormalizeUserIdentity(identity) == "" {
+			common.ApiErrorI18n(c, i18n.MsgInvalidInput)
+			return
+		}
+		if err := model.UpdateUserIdentity(c.GetInt("id"), identity); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
+		return
+	}
 	var user model.User
 	requestDataBytes, err := common.Marshal(requestData)
 	if err != nil {

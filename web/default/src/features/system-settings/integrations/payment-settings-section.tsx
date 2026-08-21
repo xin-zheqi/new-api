@@ -827,6 +827,7 @@ export function PaymentSettingsSection({
   }
 
   const currentFormValues = form.watch()
+  const mallEnabled = form.watch('MallEnabled')
   const waffoValues: WaffoSettingsValues = {
     WaffoEnabled: currentFormValues.WaffoEnabled,
     WaffoApiKey: currentFormValues.WaffoApiKey,
@@ -989,7 +990,7 @@ export function PaymentSettingsSection({
                             autoComplete='url'
                             placeholder='https://example.com'
                             maxLength={2048}
-                            disabled={!currentFormValues.MallEnabled}
+                            disabled={!mallEnabled}
                             {...field}
                           />
                         </FormControl>

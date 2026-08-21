@@ -182,7 +182,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       {
         text: t('发票中心'),
         itemKey: 'invoice',
-        to: '/invoice',
+        to: '/console/invoice',
         className: invoiceEnabled ? '' : 'tableHiddle',
       },
       {
@@ -249,21 +249,15 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       {
         text: t('Identity Review'),
         itemKey: 'identity_reviews',
-        to: '/identity-reviews',
+        to: '/console/identity-reviews',
         configKey: 'user',
         className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('系统设置'),
-        itemKey: 'setting',
-        to: '/setting',
-        className: isRoot() ? '' : 'tableHiddle',
       },
       {
         text: t('开票中心'),
         itemKey: 'invoice_admin',
         configKey: 'invoice',
-        to: '/invoice/admin',
+        to: '/console/invoice/admin',
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {
@@ -272,6 +266,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         configKey: 'ticket',
         to: '/ticket/admin',
         className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('系统设置'),
+        itemKey: 'setting',
+        to: '/setting',
+        className: isRoot() ? '' : 'tableHiddle',
       },
     ];
 

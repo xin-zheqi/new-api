@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/relayconvert"
@@ -15,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type Adaptor struct {
@@ -26,11 +29,73 @@ func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dt
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
+	if info != nil && info.ChannelOtherSettings.ClaudeCodeMimic {
+		applyClaudeCodeMimicBody(request)
+	}
 	claudeSettings := model_setting.GetClaudeSettings()
 	if info != nil && claudeSettings.ShouldApplyThinkingSignatureCompatibility(info.ChannelId, info.ChannelType, info.OriginModelName) {
 		request.RemoveThinkingBlocksFromMessages()
 	}
 	return request, nil
+}
+
+// applyClaudeCodeMimicBody adds the stable, non-secret request traits used by
+// Claude Code. Existing downstream metadata/system content is preserved.
+func applyClaudeCodeMimicBody(request *dto.ClaudeRequest) {
+	if request == nil {
+		return
+	}
+	if len(request.Metadata) == 0 {
+		metadata, _ := common.Marshal(map[string]string{"user_id": claudeCodeMimicUserID()})
+		request.Metadata = metadata
+	} else {
+		var metadata map[string]any
+		if common.Unmarshal(request.Metadata, &metadata) == nil {
+			if metadata == nil {
+				metadata = map[string]any{}
+			}
+			if value, ok := metadata["user_id"].(string); !ok || strings.TrimSpace(value) == "" {
+				metadata["user_id"] = claudeCodeMimicUserID()
+			}
+			if encoded, err := common.Marshal(metadata); err == nil {
+				request.Metadata = encoded
+			}
+		}
+	}
+
+	identity := "You are Claude Code, Anthropic's official CLI for Claude."
+	switch system := request.System.(type) {
+	case nil:
+		request.System = []dto.ClaudeMediaMessage{{Type: "text", Text: &identity}}
+	case string:
+		if !strings.Contains(system, "Claude Code") {
+			request.System = []dto.ClaudeMediaMessage{{Type: "text", Text: &identity}, {Type: "text", Text: &system}}
+		}
+	case []dto.ClaudeMediaMessage:
+		if !claudeCodeSystemPresent(system) {
+			request.System = append([]dto.ClaudeMediaMessage{{Type: "text", Text: &identity}}, system...)
+		}
+	default:
+		// Normalize JSON-decoded array/map representations while preserving all
+		// existing blocks. This is the common path for requests parsed from JSON.
+		entries := request.ParseSystem()
+		if len(entries) > 0 && !claudeCodeSystemPresent(entries) {
+			request.System = append([]dto.ClaudeMediaMessage{{Type: "text", Text: &identity}}, entries...)
+		}
+	}
+}
+
+func claudeCodeSystemPresent(entries []dto.ClaudeMediaMessage) bool {
+	for _, entry := range entries {
+		if strings.Contains(entry.GetText(), "Claude Code") {
+			return true
+		}
+	}
+	return false
+}
+
+func claudeCodeMimicUserID() string {
+	return `{"device_id":"` + strings.Repeat("0", 64) + `","account_uuid":"","session_id":"` + uuid.NewString() + `"}`
 }
 
 func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
@@ -93,7 +158,27 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	}
 	req.Set("anthropic-version", anthropicVersion)
 	CommonClaudeHeadersOperation(c, req, info)
+	if info != nil && info.ChannelOtherSettings.ClaudeCodeMimic {
+		applyClaudeCodeMimicHeaders(req)
+	}
 	return nil
+}
+
+func applyClaudeCodeMimicHeaders(req *http.Header) {
+	for key, value := range map[string]string{
+		"User-Agent": "claude-cli/2.1.220 (external, cli)",
+		"X-Stainless-Lang": "js",
+		"X-Stainless-Package-Version": "0.94.0",
+		"X-Stainless-OS": "Linux",
+		"X-Stainless-Arch": "arm64",
+		"X-Stainless-Runtime": "node",
+		"X-Stainless-Runtime-Version": "v24.3.0",
+		"X-App": "cli",
+		"Anthropic-Dangerous-Direct-Browser-Access": "true",
+	} {
+		req.Set(key, value)
+	}
+	req.Set("anthropic-beta", "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14")
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {

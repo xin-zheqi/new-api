@@ -20,7 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { Main } from '@/components/layout'
+import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -62,13 +62,14 @@ export function IdentityReviews() {
   }
 
   return (
-    <Main>
-      <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 overflow-auto p-4 pt-8 sm:p-6 sm:pt-8'>
-        <h1 className='text-2xl font-semibold'>{t('Identity Review')}</h1>
-        <p className='text-muted-foreground text-sm'>
-          {t('University and enterprise identity applications')}
-        </p>
-        <div className='space-y-3'>
+    <SectionPageLayout>
+      <SectionPageLayout.Title>{t('Identity Review')}</SectionPageLayout.Title>
+      <SectionPageLayout.Content>
+        <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 py-2'>
+          <p className='text-muted-foreground text-sm'>
+            {t('University and enterprise identity applications')}
+          </p>
+          <div className='space-y-3'>
           {query.data?.map((user) => (
             <Card key={user.id}>
               <CardContent className='flex flex-wrap items-center gap-3 p-4'>
@@ -110,8 +111,9 @@ export function IdentityReviews() {
               {t('No identity applications')}
             </p>
           )}
+          </div>
         </div>
-      </div>
-    </Main>
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
   )
 }

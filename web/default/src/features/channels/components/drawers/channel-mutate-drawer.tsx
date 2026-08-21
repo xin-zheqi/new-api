@@ -293,6 +293,7 @@ const SENSITIVE_FORM_FIELDS = [
   'allow_inference_geo',
   'allow_speed',
   'claude_beta_query',
+  'claude_code_mimic',
   'disable_task_polling_sleep',
   'disable_image_generation',
   'strip_image_generation_tool',
@@ -343,6 +344,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.strip_image_generation_tool ||
     values.system_prompt_override ||
     values.claude_beta_query ||
+    values.claude_code_mimic ||
     values.upstream_model_update_check_enabled ||
     values.upstream_model_update_auto_sync_enabled ||
     values.upstream_model_update_ignored_models?.trim()
@@ -4554,6 +4556,25 @@ export function ChannelMutateDrawer({
                                               checked={field.value}
                                               onCheckedChange={field.onChange}
                                             />
+                                          </FormControl>
+                                        </FormItem>
+                                      )}
+                                    />
+                                    <FormField
+                                      control={form.control}
+                                      name='claude_code_mimic'
+                                      render={({ field }) => (
+                                        <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                          <div className='space-y-0.5'>
+                                            <FormLabel className='text-sm'>
+                                              {t('Emulate Claude Code client')}
+                                            </FormLabel>
+                                            <FormDescription>
+                                              {t('Add Claude Code headers and request traits for this channel')}
+                                            </FormDescription>
+                                          </div>
+                                          <FormControl>
+                                            <Switch checked={field.value} onCheckedChange={field.onChange} />
                                           </FormControl>
                                         </FormItem>
                                       )}

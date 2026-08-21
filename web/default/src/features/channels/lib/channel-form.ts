@@ -213,6 +213,7 @@ export const channelFormSchema = z
     allow_inference_geo: z.boolean().optional(), // OpenAI/Anthropic: inference geography
     allow_speed: z.boolean().optional(), // Anthropic: speed mode control
     claude_beta_query: z.boolean().optional(), // Anthropic: beta query passthrough
+    claude_code_mimic: z.boolean().optional(), // Anthropic: emulate Claude Code CLI
     auto_test_enabled: z.boolean().optional(), // Whether scheduled channel tests include this channel
     disable_task_polling_sleep: z.boolean().optional(),
     // Upstream model update settings (stored in settings JSON)
@@ -360,6 +361,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   allow_inference_geo: false,
   allow_speed: false,
   claude_beta_query: false,
+  claude_code_mimic: false,
   auto_test_enabled: true,
   disable_task_polling_sleep: false,
   upstream_model_update_check_enabled: false,
@@ -429,6 +431,7 @@ export function transformChannelToFormDefaults(
   let allowInferenceGeo = false
   let allowSpeed = false
   let claudeBetaQuery = false
+  let claudeCodeMimic = false
   let autoTestEnabled = true
   let disableTaskPollingSleep = false
   let upstreamModelUpdateCheckEnabled = false
@@ -454,6 +457,7 @@ export function transformChannelToFormDefaults(
       allowInferenceGeo = parsed.allow_inference_geo === true
       allowSpeed = parsed.allow_speed === true
       claudeBetaQuery = parsed.claude_beta_query === true
+      claudeCodeMimic = parsed.claude_code_mimic === true
       autoTestEnabled = parsed.auto_test_enabled !== false
       disableTaskPollingSleep = parsed.disable_task_polling_sleep === true
       upstreamModelUpdateCheckEnabled =
@@ -514,6 +518,7 @@ export function transformChannelToFormDefaults(
     allow_inference_geo: allowInferenceGeo,
     allow_speed: allowSpeed,
     claude_beta_query: claudeBetaQuery,
+    claude_code_mimic: claudeCodeMimic,
     auto_test_enabled: autoTestEnabled,
     disable_task_polling_sleep: disableTaskPollingSleep,
     allow_safety_identifier: allowSafetyIdentifier,
@@ -634,9 +639,11 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.allow_inference_geo = formData.allow_inference_geo === true
     settingsObj.allow_speed = formData.allow_speed === true
     settingsObj.claude_beta_query = formData.claude_beta_query === true
+    settingsObj.claude_code_mimic = formData.claude_code_mimic === true
   } else {
     if ('allow_speed' in settingsObj) delete settingsObj.allow_speed
     if ('claude_beta_query' in settingsObj) delete settingsObj.claude_beta_query
+    if ('claude_code_mimic' in settingsObj) delete settingsObj.claude_code_mimic
   }
 
   settingsObj.auto_test_enabled = formData.auto_test_enabled !== false

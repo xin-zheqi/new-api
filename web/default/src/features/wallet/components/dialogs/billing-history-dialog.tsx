@@ -16,17 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
 import {
-  Search,
-  Copy,
   Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Plus,
+  Search,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { StatusBadge } from '@/components/status-badge'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,17 +58,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatusBadge } from '@/components/status-badge'
 import { useIsRoot } from '@/hooks/use-admin'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatCurrencyFromUSD } from '@/lib/currency'
-import { formatNumber } from '@/lib/format'
+
 import { useBillingHistory } from '../../hooks/use-billing-history'
 import {
   getStatusConfig,
   getPaymentMethodName,
   formatTimestamp,
 } from '../../lib/billing'
+import { formatPaymentAmount } from '../../lib/format'
 import { ManualTopupDialog } from './manual-topup-dialog'
 
 interface BillingHistoryDialogProps {
@@ -75,11 +76,19 @@ interface BillingHistoryDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+const BILLING_SKELETON_KEYS = [
+  'billing-skeleton-1',
+  'billing-skeleton-2',
+  'billing-skeleton-3',
+  'billing-skeleton-4',
+  'billing-skeleton-5',
+] as const
+
 export function BillingHistoryDialog({
   open,
   onOpenChange,
 }: BillingHistoryDialogProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const {
     records,
     total,
@@ -151,7 +160,12 @@ export function BillingHistoryDialog({
                 onValueChange={(value) => {
                   if (value !== null) {
                     handleStatusChange(
-                      value as 'all' | 'success' | 'pending' | 'failed' | 'expired'
+                      value as
+                        | 'all'
+                        | 'success'
+                        | 'pending'
+                        | 'failed'
+                        | 'expired'
                     )
                   }
                 }}
@@ -178,7 +192,7 @@ export function BillingHistoryDialog({
                 ]}
                 value={pageSize.toString()}
                 onValueChange={(value) =>
-                  value !== null && handlePageSizeChange(parseInt(value))
+                  value !== null && handlePageSizeChange(Number.parseInt(value))
                 }
               >
                 <SelectTrigger className='h-9 w-full sm:w-32'>
@@ -197,10 +211,10 @@ export function BillingHistoryDialog({
 
             {/* Records List */}
             <ScrollArea className='h-[calc(100dvh-15rem)] pr-3 sm:h-[500px] sm:pr-4'>
-              {loading ? (
+              {loading && (
                 <div className='space-y-3'>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className='rounded-lg border p-3 sm:p-4'>
+                  {BILLING_SKELETON_KEYS.map((key) => (
+                    <div key={key} className='rounded-lg border p-3 sm:p-4'>
                       <div className='flex items-start justify-between'>
                         <div className='flex-1 space-y-2'>
                           <Skeleton className='h-4 w-48' />
@@ -216,7 +230,8 @@ export function BillingHistoryDialog({
                     </div>
                   ))}
                 </div>
-              ) : records.length === 0 ? (
+              )}
+              {!loading && records.length === 0 && (
                 <div className='text-muted-foreground flex h-[320px] flex-col items-center justify-center text-center sm:h-[400px]'>
                   <p className='text-sm font-medium'>
                     {t('No billing records found')}
@@ -227,10 +242,16 @@ export function BillingHistoryDialog({
                       : t('Your transaction history will appear here')}
                   </p>
                 </div>
-              ) : (
+              )}
+              {!loading && records.length > 0 && (
                 <div className='space-y-3'>
                   {records.map((record) => {
                     const statusConfig = getStatusConfig(record.status)
+                    const isSubscriptionPurchase =
+                      record.source === 'subscription' ||
+                      (!record.source &&
+                        Number(record.amount || 0) === 0 &&
+                        record.trade_no.toLowerCase().startsWith('sub'))
                     return (
                       <div
                         key={record.id}
@@ -291,19 +312,25 @@ export function BillingHistoryDialog({
                               {t('Amount')}
                             </Label>
                             <div className='text-sm font-semibold'>
-                              {formatCurrencyFromUSD(record.amount, {
-                                digitsLarge: 2,
-                                digitsSmall: 2,
-                                abbreviate: false,
-                              })}
+                              {isSubscriptionPurchase
+                                ? t('Subscription Plan')
+                                : formatCurrencyFromUSD(record.amount, {
+                                    digitsLarge: 2,
+                                    digitsSmall: 2,
+                                    abbreviate: false,
+                                  })}
                             </div>
                           </div>
                           <div className='space-y-1'>
                             <Label className='text-muted-foreground text-xs'>
                               {t('Payment')}
                             </Label>
-                            <div className='text-sm font-semibold text-red-600'>
-                              {formatNumber(record.money)}
+                            <div className='text-destructive text-sm font-semibold'>
+                              {formatPaymentAmount(
+                                record.money,
+                                record.currency,
+                                i18n.language
+                              )}
                             </div>
                           </div>
                         </div>

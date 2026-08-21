@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,14 +24,19 @@ type WaffoPancakePayRequest struct {
 }
 
 func RequestWaffoPancakeAmount(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+
 	var req WaffoPancakePayRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
 
-	if req.Amount < int64(setting.WaffoPancakeMinTopUp) {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.WaffoPancakeMinTopUp)})
+	if valid, message := validateTopUpAmount(req.Amount, getWaffoPancakeMinTopup()); !valid {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": message})
 		return
 	}
 
@@ -48,6 +54,10 @@ func RequestWaffoPancakeAmount(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": fmt.Sprintf("%.2f", payMoney)})
+}
+
+func getWaffoPancakeMinTopup() int64 {
+	return topUpDisplayLimit(setting.WaffoPancakeMinTopUp)
 }
 
 func getWaffoPancakePayMoney(amount int64, group string) float64 {
@@ -337,6 +347,11 @@ func getWaffoPancakeBuyerIdentity(user *model.User) string {
 }
 
 func RequestWaffoPancakePay(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
 	if !isWaffoPancakeTopUpEnabled() {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Waffo Pancake 配置不完整"})
 		return
@@ -347,8 +362,8 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
-	if req.Amount < int64(setting.WaffoPancakeMinTopUp) {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", setting.WaffoPancakeMinTopUp)})
+	if valid, message := validateTopUpAmount(req.Amount, getWaffoPancakeMinTopup()); !valid {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": message})
 		return
 	}
 
@@ -379,9 +394,18 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		TradeNo:         tradeNo,
 		PaymentMethod:   model.PaymentMethodWaffoPancake,
 		PaymentProvider: model.PaymentProviderWaffoPancake,
+		Currency:        "USD",
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
+	expectedPayment, paymentErr := model.NewSubscriptionPaymentFromMajorUnits(formatWaffoPancakeAmount(payMoney), topUp.Currency)
+	if paymentErr != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 订单金额快照无效 user_id=%d trade_no=%s error=%q", id, tradeNo, paymentErr.Error()))
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付金额配置错误"})
+		return
+	}
+	topUp.ExpectedAmountMicros = expectedPayment.AmountMicros
+	topUp.ExpectedCurrency = expectedPayment.Currency
 	if err := topUp.Insert(); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 创建充值订单失败 user_id=%d trade_no=%s amount=%d error=%q", id, tradeNo, req.Amount, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
@@ -442,6 +466,7 @@ func WaffoPancakeWebhook(c *gin.Context) {
 		return
 	}
 
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentWebhookMaxBytes)
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 读取请求体失败 path=%q client_ip=%s error=%q", c.Request.RequestURI, common.GetClientIP(c), err.Error()))
@@ -450,11 +475,11 @@ func WaffoPancakeWebhook(c *gin.Context) {
 	}
 
 	signature := c.GetHeader("X-Waffo-Signature")
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 收到请求 path=%q client_ip=%s signature=%q body=%q", c.Request.RequestURI, common.GetClientIP(c), signature, string(bodyBytes)))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 收到请求 path=%q client_ip=%s payload_bytes=%d signature_present=%t", c.Request.RequestURI, common.GetClientIP(c), len(bodyBytes), signature != ""))
 
 	event, err := service.VerifyConfiguredWaffoPancakeWebhook(string(bodyBytes), signature)
 	if err != nil {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 验签失败 path=%q client_ip=%s signature=%q body=%q error=%q", c.Request.RequestURI, common.GetClientIP(c), signature, string(bodyBytes), err.Error()))
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Waffo Pancake webhook 验签失败 path=%q client_ip=%s payload_bytes=%d error=%q", c.Request.RequestURI, common.GetClientIP(c), len(bodyBytes), err.Error()))
 		c.String(http.StatusUnauthorized, "invalid signature")
 		return
 	}
@@ -486,12 +511,22 @@ func WaffoPancakeWebhook(c *gin.Context) {
 				"Waffo Pancake webhook 订阅订单解析失败 event_id=%s order_id=%s buyer_identity=%q client_ip=%s error=%q",
 				event.ID, event.Data.OrderID, event.Data.MerchantProvidedBuyerIdentity, common.GetClientIP(c), err.Error(),
 			))
-			c.String(http.StatusOK, "OK")
+			if errors.Is(err, model.ErrSubscriptionOrderNotFound) || errors.Is(err, service.ErrWaffoPancakeOrderMismatch) {
+				c.String(http.StatusBadRequest, "order not found")
+			} else {
+				c.String(http.StatusInternalServerError, "retry")
+			}
 			return
 		}
 		LockOrder(tradeNo)
 		defer UnlockOrder(tradeNo)
-		if err := model.CompleteSubscriptionOrder(tradeNo, string(bodyBytes), model.PaymentProviderWaffoPancake, ""); err != nil {
+		payment, err := model.NewSubscriptionPaymentFromMajorUnits(event.Data.Amount, event.Data.Currency)
+		if err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 订阅实付金额无效 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, common.GetClientIP(c), err.Error()))
+			c.String(http.StatusOK, "OK")
+			return
+		}
+		if err := model.CompleteSubscriptionOrder(tradeNo, string(bodyBytes), model.PaymentProviderWaffoPancake, "", payment); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 订阅完成失败 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, common.GetClientIP(c), err.Error()))
 			c.String(http.StatusInternalServerError, "retry")
 			return
@@ -503,21 +538,30 @@ func WaffoPancakeWebhook(c *gin.Context) {
 
 	tradeNo, err := service.ResolveWaffoPancakeTradeNo(event)
 	if err != nil {
-		// LogError (not LogWarn): covers order-not-found and buyer-identity
-		// mismatch — both warrant human attention. 200 OK so Waffo doesn't
-		// retry a permanently-unresolvable webhook.
+		// Permanent identity/order mismatches are rejected, while a database
+		// lookup failure is explicitly retryable instead of being acknowledged.
 		logger.LogError(c.Request.Context(), fmt.Sprintf(
 			"Waffo Pancake webhook 订单解析失败 event_id=%s order_id=%s buyer_identity=%q client_ip=%s error=%q",
 			event.ID, event.Data.OrderID, event.Data.MerchantProvidedBuyerIdentity, common.GetClientIP(c), err.Error(),
 		))
-		c.String(http.StatusOK, "OK")
+		if errors.Is(err, model.ErrTopUpNotFound) || errors.Is(err, service.ErrWaffoPancakeOrderMismatch) {
+			c.String(http.StatusBadRequest, "order not found")
+		} else {
+			c.String(http.StatusInternalServerError, "retry")
+		}
 		return
 	}
 
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
 
-	if err := model.RechargeWaffoPancake(tradeNo); err != nil {
+	paidPayment, paymentErr := model.NewSubscriptionPaymentFromMajorUnits(event.Data.Amount, event.Data.Currency)
+	if paymentErr != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 充值实付金额或币种无效 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, common.GetClientIP(c), paymentErr.Error()))
+		c.String(http.StatusBadRequest, "invalid payment amount")
+		return
+	}
+	if err := model.RechargeWaffoPancakeWithPayment(tradeNo, paidPayment); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 充值处理失败 trade_no=%s event_id=%s order_id=%s client_ip=%s error=%q", tradeNo, event.ID, event.Data.OrderID, common.GetClientIP(c), err.Error()))
 		c.String(http.StatusInternalServerError, "retry")
 		return

@@ -27,7 +27,6 @@ import {
 } from './section-registry.tsx'
 
 const defaultOperationsSettings: OperationsSettings = {
-  MallURL: '',
   RetryTimes: 0,
   DefaultCollapseSidebar: false,
   DemoSiteEnabled: false,

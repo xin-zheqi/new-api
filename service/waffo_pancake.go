@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	pancake "github.com/waffo-com/waffo-pancake-sdk-go"
 )
+
+var ErrWaffoPancakeOrderMismatch = errors.New("waffo pancake order identity or provider mismatch")
 
 // WaffoPancakePriceSnapshot is the per-session price override sent with checkout.
 type WaffoPancakePriceSnapshot struct {
@@ -204,15 +207,19 @@ func ResolveWaffoPancakeTradeNo(event *WaffoPancakeWebhookEvent) (string, error)
 	if tradeNo == "" {
 		return "", fmt.Errorf("missing webhook orderMerchantExternalId")
 	}
-	topUp := model.GetTopUpByTradeNo(tradeNo)
-	if topUp == nil || topUp.PaymentProvider != model.PaymentProviderWaffoPancake {
-		return "", fmt.Errorf("waffo pancake order not found for tradeNo=%s", tradeNo)
+	topUp, err := model.FindTopUpByTradeNo(tradeNo)
+	if err != nil {
+		return "", fmt.Errorf("lookup waffo pancake topup for tradeNo=%s: %w", tradeNo, err)
+	}
+	if topUp.PaymentProvider != model.PaymentProviderWaffoPancake {
+		return "", fmt.Errorf("%w: tradeNo=%s", ErrWaffoPancakeOrderMismatch, tradeNo)
 	}
 	expectedIdentity := WaffoPancakeBuyerIdentityFromUserID(topUp.UserId)
 	actualIdentity := strings.TrimSpace(event.Data.MerchantProvidedBuyerIdentity)
 	if actualIdentity != expectedIdentity {
 		return "", fmt.Errorf(
-			"waffo pancake buyer identity mismatch for tradeNo=%s: expected=%q actual=%q",
+			"%w: tradeNo=%s expected=%q actual=%q",
+			ErrWaffoPancakeOrderMismatch,
 			tradeNo,
 			expectedIdentity,
 			actualIdentity,
@@ -231,15 +238,19 @@ func ResolveWaffoPancakeSubscriptionTradeNo(event *WaffoPancakeWebhookEvent) (st
 	if tradeNo == "" {
 		return "", fmt.Errorf("missing webhook orderMerchantExternalId")
 	}
-	order := model.GetSubscriptionOrderByTradeNo(tradeNo)
-	if order == nil || order.PaymentProvider != model.PaymentProviderWaffoPancake {
-		return "", fmt.Errorf("waffo pancake subscription order not found for tradeNo=%s", tradeNo)
+	order, err := model.FindSubscriptionOrderByTradeNo(tradeNo)
+	if err != nil {
+		return "", fmt.Errorf("lookup waffo pancake subscription order for tradeNo=%s: %w", tradeNo, err)
+	}
+	if order.PaymentProvider != model.PaymentProviderWaffoPancake {
+		return "", fmt.Errorf("%w: subscription tradeNo=%s", ErrWaffoPancakeOrderMismatch, tradeNo)
 	}
 	expectedIdentity := WaffoPancakeBuyerIdentityFromUserID(order.UserId)
 	actualIdentity := strings.TrimSpace(event.Data.MerchantProvidedBuyerIdentity)
 	if actualIdentity != expectedIdentity {
 		return "", fmt.Errorf(
-			"waffo pancake buyer identity mismatch for subscription tradeNo=%s: expected=%q actual=%q",
+			"%w: subscription tradeNo=%s expected=%q actual=%q",
+			ErrWaffoPancakeOrderMismatch,
 			tradeNo,
 			expectedIdentity,
 			actualIdentity,

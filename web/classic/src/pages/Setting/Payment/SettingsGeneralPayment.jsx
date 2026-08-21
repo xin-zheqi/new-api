@@ -24,9 +24,11 @@ import {
   removeTrailingSlash,
   showError,
   showSuccess,
+  toBoolean,
   verifyJSON,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
+import { isSafeEmbeddedMallUrl } from '../../../components/topup/mallMode';
 
 export default function SettingsGeneralPayment(props) {
   const { t } = useTranslation();
@@ -39,6 +41,8 @@ export default function SettingsGeneralPayment(props) {
     PayMethods: '',
     AmountOptions: '',
     AmountDiscount: '',
+    MallURL: '',
+    'payment_setting.mall_enabled': false,
   });
   const [originInputs, setOriginInputs] = useState({});
   const formApiRef = useRef(null);
@@ -52,6 +56,10 @@ export default function SettingsGeneralPayment(props) {
         PayMethods: props.options.PayMethods || '',
         AmountOptions: props.options.AmountOptions || '',
         AmountDiscount: props.options.AmountDiscount || '',
+        MallURL: props.options.MallURL || '',
+        'payment_setting.mall_enabled': toBoolean(
+          props.options['payment_setting.mall_enabled'],
+        ),
       };
       setInputs(currentInputs);
       setOriginInputs({ ...currentInputs });
@@ -64,6 +72,20 @@ export default function SettingsGeneralPayment(props) {
   };
 
   const submitGeneralSettings = async () => {
+    const mallUrl = inputs.MallURL.trim();
+    if (inputs['payment_setting.mall_enabled']) {
+      if (!mallUrl) {
+        showError(
+          t('The mall URL is required when the card-store mall is enabled.'),
+        );
+        return;
+      }
+      if (!isSafeEmbeddedMallUrl(mallUrl, window.location.hostname)) {
+        showError(t('The mall URL must be a valid HTTPS URL.'));
+        return;
+      }
+    }
+
     if (
       originInputs.TopupGroupRatio !== inputs.TopupGroupRatio &&
       !verifyJSON(inputs.TopupGroupRatio)
@@ -131,20 +153,31 @@ export default function SettingsGeneralPayment(props) {
           value: inputs.AmountDiscount,
         });
       }
-
-      const results = await Promise.all(
-        options.map((option) =>
-          API.put('/api/option/', {
-            key: option.key,
-            value: option.value,
-          }),
-        ),
+      const mallSettingsChanged =
+        originInputs['payment_setting.mall_enabled'] !==
+          inputs['payment_setting.mall_enabled'] ||
+        originInputs.MallURL !== mallUrl;
+      const requests = options.map((option) =>
+        API.put('/api/option/', {
+          key: option.key,
+          value: option.value,
+        }),
       );
+      if (mallSettingsChanged) {
+        requests.push(
+          API.put('/api/option/mall', {
+            mall_enabled: inputs['payment_setting.mall_enabled'],
+            mall_url: mallUrl,
+          }),
+        );
+      }
+
+      const results = await Promise.all(requests);
 
       const errorResults = results.filter((res) => !res.data.success);
       if (errorResults.length === 0) {
         showSuccess(t('更新成功'));
-        setOriginInputs({ ...inputs });
+        setOriginInputs({ ...inputs, MallURL: mallUrl });
         props.refresh && props.refresh();
       } else {
         errorResults.forEach((res) => {
@@ -174,6 +207,36 @@ export default function SettingsGeneralPayment(props) {
               '该服务器地址将影响支付回调地址以及默认首页展示的地址，请确保正确配置',
             )}
           />
+          <Row
+            gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+            style={{ marginTop: 16 }}
+          >
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Switch
+                field='payment_setting.mall_enabled'
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+                label={t('Enable card-store mall')}
+                extraText={t(
+                  'When enabled, the wallet embeds the configured mall. When disabled, users can purchase subscription plans directly.',
+                )}
+              />
+            </Col>
+            <Col xs={24} sm={24} md={16} lg={16} xl={16}>
+              <Form.Input
+                field='MallURL'
+                label={t('Mall URL')}
+                placeholder='https://example.com'
+                maxLength={2048}
+                disabled={!inputs['payment_setting.mall_enabled']}
+                extraText={t(
+                  'Use an external HTTPS address without credentials.',
+                )}
+                showClear
+              />
+            </Col>
+          </Row>
           <Row
             gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
             style={{ marginTop: 16 }}

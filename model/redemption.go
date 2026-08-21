@@ -26,7 +26,7 @@ type Redemption struct {
 	Quota                 int            `json:"quota" gorm:"default:100"`
 	RedeemType            string         `json:"redeem_type" gorm:"type:varchar(32);not null;default:'quota'"`
 	SubscriptionPlanId    int            `json:"subscription_plan_id" gorm:"index;default:0"`
-	InvoiceEligible       bool           `json:"invoice_eligible" gorm:"default:false;index"`
+	InvoiceEligible       bool           `json:"invoice_eligible" gorm:"index"`
 	SubscriptionPlanTitle string         `json:"subscription_plan_title,omitempty" gorm:"-:all"`
 	CreatedTime           int64          `json:"created_time" gorm:"bigint"`
 	RedeemedTime          int64          `json:"redeemed_time" gorm:"bigint"`
@@ -77,10 +77,12 @@ func (redemption *Redemption) normalizeFields() {
 	switch redemption.RedeemType {
 	case RedemptionTypeQuota:
 		redemption.SubscriptionPlanId = 0
-		redemption.InvoiceEligible = false
 	case RedemptionTypeSubscription:
 		redemption.Quota = 0
 	}
+	// Redemption codes do not prove a monetary payment, so subscriptions
+	// created from them must never become invoice eligible.
+	redemption.InvoiceEligible = false
 }
 
 func (redemption *Redemption) AfterFind(tx *gorm.DB) error {
@@ -329,15 +331,9 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 			redeemResult.Quota = redemption.Quota
 			logMessage = fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id)
 		case RedemptionTypeSubscription:
-			subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption")
+			subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption", nil)
 			if err != nil {
 				return err
-			}
-			if redemption.InvoiceEligible {
-				if err := tx.Model(subscription).Update("invoice_eligible", true).Error; err != nil {
-					return err
-				}
-				subscription.InvoiceEligible = true
 			}
 			upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
 			redeemResult.Kind = RedemptionTypeSubscription
@@ -360,7 +356,7 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 			errors.Is(err, ErrRedemptionQuotaInvalid) ||
 			errors.Is(err, ErrRedemptionPlanRequired) ||
 			errors.Is(err, ErrRedemptionPlanNotFound) ||
-			err.Error() == "已达到该套餐购买上限" {
+			errors.Is(err, ErrSubscriptionPurchaseLimit) {
 			return nil, err
 		}
 		common.SysError("redemption failed: " + err.Error())

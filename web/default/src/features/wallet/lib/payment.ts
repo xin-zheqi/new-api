@@ -28,44 +28,11 @@ import type { PresetAmount, TopupInfo } from '../types'
 // Payment Processing Functions
 // ============================================================================
 
-/**
- * Check if browser is Safari
- */
-function isSafariBrowser(): boolean {
-  return (
-    navigator.userAgent.indexOf('Safari') > -1 &&
-    navigator.userAgent.indexOf('Chrome') < 1
-  )
-}
-
-/**
- * Submit payment form (for non-Stripe payments)
- */
-export function submitPaymentForm(
-  url: string,
-  params: Record<string, unknown>
-): void {
-  const form = document.createElement('form')
-  form.action = url
-  form.method = 'POST'
-
-  // Don't open in new tab for Safari
-  if (!isSafariBrowser()) {
-    form.target = '_blank'
-  }
-
-  // Add form parameters
-  Object.entries(params).forEach(([key, value]) => {
-    const input = document.createElement('input')
-    input.type = 'hidden'
-    input.name = key
-    input.value = String(value)
-    form.appendChild(input)
-  })
-
-  document.body.appendChild(form)
-  form.submit()
-  document.body.removeChild(form)
+export function canPurchaseBuiltInSubscriptions(
+  mallModeKnown: boolean,
+  mallEnabled: boolean
+): boolean {
+  return mallModeKnown && !mallEnabled
 }
 
 /**

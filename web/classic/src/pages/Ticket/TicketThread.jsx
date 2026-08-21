@@ -184,6 +184,10 @@ const TicketThread = ({
       <div
         className='min-h-[260px] flex-1 space-y-4 overflow-y-auto pr-1'
         style={{ maxHeight: admin ? 'calc(100vh - 390px)' : '58vh' }}
+        role='log'
+        aria-label={`${t('工单编号')} #${ticket.id}`}
+        aria-live='polite'
+        aria-relevant='additions text'
       >
         {messages.length === 0 ? (
           <Empty description={t('暂无工单消息')} />

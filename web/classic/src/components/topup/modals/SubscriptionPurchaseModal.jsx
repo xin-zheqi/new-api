@@ -31,7 +31,7 @@ import {
 import { Crown, CalendarClock, Package } from 'lucide-react';
 import { SiStripe } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
-import { renderQuota } from '../../../helpers';
+import { getQuotaPerUnit, renderQuota } from '../../../helpers';
 import { getCurrencyConfig } from '../../../helpers/render';
 import {
   formatSubscriptionDuration,
@@ -53,6 +53,8 @@ const SubscriptionPurchaseModal = ({
   enableStripeTopUp = false,
   enableCreemTopUp = false,
   purchaseLimitInfo = null,
+  userQuota = 0,
+  onPayBalance,
   onPayStripe,
   onPayCreem,
   onPayEpay,
@@ -70,6 +72,23 @@ const SubscriptionPurchaseModal = ({
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
   const hasAnyPayment = hasStripe || hasCreem || hasEpay;
+  const configuredQuotaPerUnit = Number(getQuotaPerUnit());
+  const quotaPerUnit =
+    Number.isFinite(configuredQuotaPerUnit) && configuredQuotaPerUnit > 0
+      ? configuredQuotaPerUnit
+      : 500000;
+  const planPrice = Number(plan?.price_amount || 0);
+  const balanceCost = Math.max(
+    0,
+    Number.isFinite(planPrice) ? Math.ceil(planPrice * quotaPerUnit) : 0,
+  );
+  const numericUserQuota = Number(userQuota || 0);
+  const availableBalance = Math.max(
+    0,
+    Number.isFinite(numericUserQuota) ? numericUserQuota : 0,
+  );
+  const allowBalancePay = plan?.allow_balance_pay !== false;
+  const insufficientBalance = availableBalance < balanceCost;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
@@ -179,6 +198,42 @@ const SubscriptionPurchaseModal = ({
             />
           )}
 
+          <div className='space-y-2 rounded-lg border border-solid border-[var(--semi-color-border)] p-3'>
+            <div className='flex items-center justify-between gap-3 text-sm'>
+              <Text type='tertiary'>{t('Required')}</Text>
+              <Text strong>{renderQuota(balanceCost)}</Text>
+            </div>
+            <div className='flex items-center justify-between gap-3 text-sm'>
+              <Text type='tertiary'>{t('Available')}</Text>
+              <Text strong>{renderQuota(availableBalance)}</Text>
+            </div>
+            {!allowBalancePay ? (
+              <Banner
+                type='warning'
+                description={t('This plan does not allow balance redemption')}
+                closeIcon={null}
+              />
+            ) : insufficientBalance ? (
+              <Banner
+                type='warning'
+                description={t('Insufficient balance')}
+                closeIcon={null}
+              />
+            ) : null}
+            <Button
+              block
+              theme='light'
+              icon={<IconCreditCard />}
+              onClick={onPayBalance}
+              loading={paying}
+              disabled={
+                purchaseLimitReached || !allowBalancePay || insufficientBalance
+              }
+            >
+              {t('Pay with Balance')}
+            </Button>
+          </div>
+
           {hasAnyPayment ? (
             <div className='space-y-3'>
               <Text size='small' type='tertiary'>
@@ -242,14 +297,7 @@ const SubscriptionPurchaseModal = ({
                 </div>
               )}
             </div>
-          ) : (
-            <Banner
-              type='info'
-              description={t('管理员未开启在线支付功能，请联系管理员配置。')}
-              className='!rounded-xl'
-              closeIcon={null}
-            />
-          )}
+          ) : null}
         </div>
       ) : null}
     </Modal>

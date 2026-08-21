@@ -2,58 +2,117 @@ package model
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
 
-func invoiceOptionInt(key string, fallback int) int {
-	common.OptionMapRWMutex.RLock()
-	value := common.OptionMap[key]
-	common.OptionMapRWMutex.RUnlock()
-	parsed, err := strconv.Atoi(value)
-	if err != nil || parsed <= 0 {
-		return fallback
-	}
-	return parsed
-}
-
 const (
 	InvoiceApplicationStatusPending   = "pending"
 	InvoiceApplicationStatusCompleted = "completed"
-	InvoiceTitleMaxLength             = 255
-	InvoiceSubscriptionLimit          = 100
+	InvoiceApplicationStatusRejected  = "rejected"
+
+	InvoiceTitleMaxLength           = 255
+	InvoiceTaxpayerIdMaxLength      = 32
+	InvoiceBankNameMaxLength        = 255
+	InvoiceRemarkMaxLength          = 1000
+	InvoiceRejectionReasonMaxLength = 1000
+	InvoiceSubscriptionLimit        = 100
 )
 
+var (
+	ErrInvoiceApplicationNotFound = errors.New("invoice application not found")
+	ErrInvoiceApplicationState    = errors.New("invoice application is no longer pending")
+	ErrInvoicePDFRequired         = errors.New("upload an invoice PDF before completing the application")
+	ErrInvalidInvoiceFilter       = errors.New("invalid invoice application filter")
+	ErrInvoiceIdentityRequired    = errors.New("invoice center is only available for university or enterprise users")
+)
+
+var invoiceSettingOptionKeys = []string{
+	"InvoiceEnabled",
+	"InvoiceApplicationDay",
+	"InvoiceLookbackDays",
+	"InvoiceMonthlyLimit",
+}
+
+type InvoiceRequestError struct {
+	message string
+}
+
+func (e *InvoiceRequestError) Error() string {
+	return e.message
+}
+
+func IsInvoiceRequestError(err error) bool {
+	var requestError *InvoiceRequestError
+	return errors.As(err, &requestError)
+}
+
+func invoiceRequestError(message string) error {
+	return &InvoiceRequestError{message: message}
+}
+
+func invoiceRequestErrorf(format string, arguments ...interface{}) error {
+	return &InvoiceRequestError{message: fmt.Sprintf(format, arguments...)}
+}
+
 type InvoiceApplication struct {
-	Id               int                      `json:"id"`
-	UserId           int                      `json:"user_id" gorm:"index;index:idx_user_invoice_month,priority:1"`
-	ApplicationMonth string                   `json:"application_month" gorm:"type:varchar(7);index:idx_user_invoice_month,priority:2"`
-	InvoiceTitle     string                   `json:"invoice_title" gorm:"type:varchar(255);not null"`
-	TaxpayerId       string                   `json:"taxpayer_id" gorm:"type:varchar(32);not null;default:''"`
-	TotalAmount      int64                    `json:"total_amount" gorm:"type:bigint;not null;default:0"`
-	Status           string                   `json:"status" gorm:"type:varchar(32);not null;default:'pending';index"`
-	PDFPath          string                   `json:"-" gorm:"type:text"`
-	PDFName          string                   `json:"pdf_name,omitempty" gorm:"type:varchar(255)"`
-	CreatedAt        int64                    `json:"created_at" gorm:"bigint;autoCreateTime"`
-	CompletedAt      int64                    `json:"completed_at" gorm:"bigint;default:0"`
-	UpdatedAt        int64                    `json:"updated_at" gorm:"bigint;autoUpdateTime"`
-	User             *User                    `json:"-" gorm:"foreignKey:UserId"`
-	Items            []InvoiceApplicationItem `json:"items,omitempty" gorm:"foreignKey:InvoiceApplicationId"`
+	Id               int    `json:"id"`
+	UserId           int    `json:"user_id" gorm:"index;index:idx_user_invoice_month,priority:1"`
+	ApplicationMonth string `json:"application_month" gorm:"type:varchar(7);index:idx_user_invoice_month,priority:2"`
+	InvoiceTitle     string `json:"invoice_title" gorm:"type:varchar(255);not null"`
+	TaxpayerId       string `json:"taxpayer_id" gorm:"type:varchar(32)"`
+	BankName         string `json:"bank_name" gorm:"type:varchar(255)"`
+	Remark           string `json:"remark" gorm:"type:text"`
+	// LegacyTotalAmount contains the pre-payment-snapshot quota value. It is
+	// retained only for schema compatibility and is never exposed as money.
+	LegacyTotalAmount int64                    `json:"-" gorm:"column:total_amount;type:bigint;not null;default:0"`
+	TotalAmountMicros int64                    `json:"total_amount_micros" gorm:"type:bigint;not null;default:0"`
+	Currency          string                   `json:"currency" gorm:"type:varchar(8);not null;default:''"`
+	Status            string                   `json:"status" gorm:"type:varchar(32);not null;default:'pending';index;index:idx_invoice_status_created,priority:1"`
+	PDFPath           string                   `json:"-" gorm:"type:text"`
+	PDFName           string                   `json:"pdf_name,omitempty" gorm:"type:varchar(255)"`
+	RejectionReason   string                   `json:"rejection_reason,omitempty" gorm:"type:text"`
+	RejectedAt        int64                    `json:"rejected_at" gorm:"bigint"`
+	RejectedBy        int                      `json:"rejected_by" gorm:"index"`
+	CreatedAt         int64                    `json:"created_at" gorm:"bigint;autoCreateTime;index:idx_invoice_status_created,priority:2"`
+	CompletedAt       int64                    `json:"completed_at" gorm:"bigint"`
+	UpdatedAt         int64                    `json:"updated_at" gorm:"bigint;autoUpdateTime"`
+	User              *User                    `json:"-" gorm:"foreignKey:UserId;-:migration"`
+	Items             []InvoiceApplicationItem `json:"items,omitempty" gorm:"foreignKey:InvoiceApplicationId"`
 }
 
 type InvoiceApplicationItem struct {
 	Id                   int    `json:"id"`
 	InvoiceApplicationId int    `json:"invoice_application_id" gorm:"index"`
-	UserSubscriptionId   int    `json:"user_subscription_id" gorm:"uniqueIndex:idx_invoice_subscription"`
+	UserSubscriptionId   int    `json:"user_subscription_id"`
+	ActiveSlot           *int   `json:"-"`
 	PlanTitle            string `json:"plan_title" gorm:"type:varchar(255)"`
-	AmountTotal          int64  `json:"amount_total" gorm:"type:bigint;not null;default:0"`
+	LegacyAmountTotal    int64  `json:"-" gorm:"column:amount_total;type:bigint;not null;default:0"`
+	PaidAmountMicros     int64  `json:"paid_amount_micros" gorm:"type:bigint;not null;default:0"`
+	Currency             string `json:"currency" gorm:"type:varchar(8);not null;default:''"`
 	StartTime            int64  `json:"start_time" gorm:"bigint"`
 	EndTime              int64  `json:"end_time" gorm:"bigint"`
+}
+
+// invoiceApplicationItemIndex is used only after legacy invoice rows have
+// been normalized. Keeping the unique index off the runtime model prevents
+// AutoMigrate from attempting to build it while duplicate historical rows
+// still exist.
+type invoiceApplicationItemIndex struct {
+	UserSubscriptionId int  `gorm:"column:user_subscription_id;uniqueIndex:idx_invoice_subscription_active,priority:1"`
+	ActiveSlot         *int `gorm:"column:active_slot;uniqueIndex:idx_invoice_subscription_active,priority:2"`
+}
+
+func (invoiceApplicationItemIndex) TableName() string {
+	return "invoice_application_items"
 }
 
 type InvoiceEligibleSubscription struct {
@@ -61,76 +120,268 @@ type InvoiceEligibleSubscription struct {
 	PlanTitle string `json:"plan_title"`
 }
 
-func GetInvoiceEligibleSubscriptions(userId int) ([]InvoiceEligibleSubscription, error) {
+type InvoiceApplicationInput struct {
+	InvoiceTitle string
+	TaxpayerId   string
+	BankName     string
+	Remark       string
+}
+
+type InvoiceAdminFilter struct {
+	Status  string
+	Keyword string
+	UserId  int
+}
+
+type InvoiceSettings struct {
+	Enabled        bool
+	ApplicationDay int
+	LookbackDays   int
+	MonthlyLimit   int
+}
+
+func parseInvoiceSettingInt(values map[string]string, key string, minimum, maximum, fallback int, rejectInvalid bool) (int, error) {
+	value, exists := values[key]
+	if !exists {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err == nil && parsed >= minimum && parsed <= maximum {
+		return parsed, nil
+	}
+	if rejectInvalid {
+		return 0, fmt.Errorf("invalid %s setting", key)
+	}
+	return fallback, nil
+}
+
+func invoiceSettingsFromValues(values map[string]string, rejectInvalid bool) (InvoiceSettings, error) {
+	settings := InvoiceSettings{Enabled: true, ApplicationDay: 25, LookbackDays: 90, MonthlyLimit: 1}
+	if value, exists := values["InvoiceEnabled"]; exists {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "true":
+			settings.Enabled = true
+		case "false":
+			settings.Enabled = false
+		default:
+			if rejectInvalid {
+				return InvoiceSettings{}, errors.New("invalid InvoiceEnabled setting")
+			}
+		}
+	}
+	var err error
+	settings.ApplicationDay, err = parseInvoiceSettingInt(values, "InvoiceApplicationDay", 1, 28, settings.ApplicationDay, rejectInvalid)
+	if err != nil {
+		return InvoiceSettings{}, err
+	}
+	settings.LookbackDays, err = parseInvoiceSettingInt(values, "InvoiceLookbackDays", 1, 3650, settings.LookbackDays, rejectInvalid)
+	if err != nil {
+		return InvoiceSettings{}, err
+	}
+	settings.MonthlyLimit, err = parseInvoiceSettingInt(values, "InvoiceMonthlyLimit", 1, 31, settings.MonthlyLimit, rejectInvalid)
+	if err != nil {
+		return InvoiceSettings{}, err
+	}
+	return settings, nil
+}
+
+// GetInvoiceSettings reads the local option snapshot. Request handlers must use
+// LoadInvoiceSettings so a stale node cannot keep accepting applications.
+func GetInvoiceSettings() InvoiceSettings {
+	values := make(map[string]string, len(invoiceSettingOptionKeys))
+	common.OptionMapRWMutex.RLock()
+	for _, key := range invoiceSettingOptionKeys {
+		if value, exists := common.OptionMap[key]; exists {
+			values[key] = value
+		}
+	}
+	common.OptionMapRWMutex.RUnlock()
+	settings, _ := invoiceSettingsFromValues(values, false)
+	return settings
+}
+
+// LoadInvoiceSettings reads the shared database on every invoice request. This
+// prevents the periodic in-memory option sync from creating a cross-node window
+// where a disabled or tightened invoice policy is still accepted.
+func LoadInvoiceSettings() (InvoiceSettings, error) {
+	if DB == nil {
+		return InvoiceSettings{}, errors.New("invoice settings database is unavailable")
+	}
+	var options []Option
+	if err := DB.Select("key", "value").Where("key IN ?", invoiceSettingOptionKeys).Find(&options).Error; err != nil {
+		return InvoiceSettings{}, fmt.Errorf("load invoice settings: %w", err)
+	}
+	values := make(map[string]string, len(options))
+	for _, option := range options {
+		values[option.Key] = option.Value
+	}
+	settings, err := invoiceSettingsFromValues(values, true)
+	if err != nil {
+		return InvoiceSettings{}, fmt.Errorf("load invoice settings: %w", err)
+	}
+	return settings, nil
+}
+
+func normalizeInvoiceText(value, field string, maxLength int, multiline, required bool) (string, error) {
+	if !utf8.ValidString(value) {
+		return "", invoiceRequestErrorf("%s is not valid UTF-8", field)
+	}
+	value = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\r", "\n"))
+	if value == "" {
+		if required {
+			return "", invoiceRequestErrorf("%s is required", field)
+		}
+		return "", nil
+	}
+	if utf8.RuneCountInString(value) > maxLength {
+		return "", invoiceRequestErrorf("%s must not exceed %d characters", field, maxLength)
+	}
+	for _, r := range value {
+		if r == '<' || r == '>' || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
+			return "", invoiceRequestErrorf("%s contains unsupported characters", field)
+		}
+		if unicode.IsControl(r) && !(multiline && r == '\n') {
+			return "", invoiceRequestErrorf("%s contains unsupported characters", field)
+		}
+		if !multiline && r == '\n' {
+			return "", invoiceRequestErrorf("%s must be a single line", field)
+		}
+	}
+	return value, nil
+}
+
+func normalizeInvoiceInput(input InvoiceApplicationInput) (InvoiceApplicationInput, error) {
+	var err error
+	input.InvoiceTitle, err = normalizeInvoiceText(input.InvoiceTitle, "invoice title", InvoiceTitleMaxLength, false, true)
+	if err != nil {
+		return InvoiceApplicationInput{}, err
+	}
+	input.TaxpayerId, err = normalizeInvoiceText(input.TaxpayerId, "taxpayer id", InvoiceTaxpayerIdMaxLength, false, false)
+	if err != nil {
+		return InvoiceApplicationInput{}, err
+	}
+	input.TaxpayerId = strings.ToUpper(input.TaxpayerId)
+	for _, r := range input.TaxpayerId {
+		if (r < '0' || r > '9') && (r < 'A' || r > 'Z') {
+			return InvoiceApplicationInput{}, invoiceRequestError("taxpayer id must contain only letters and digits")
+		}
+	}
+	input.BankName, err = normalizeInvoiceText(input.BankName, "bank name", InvoiceBankNameMaxLength, false, false)
+	if err != nil {
+		return InvoiceApplicationInput{}, err
+	}
+	input.Remark, err = normalizeInvoiceText(input.Remark, "invoice remark", InvoiceRemarkMaxLength, true, false)
+	if err != nil {
+		return InvoiceApplicationInput{}, err
+	}
+	return input, nil
+}
+
+func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]InvoiceEligibleSubscription, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid user id")
 	}
-	cutoff := common.GetTimestamp() - int64(invoiceOptionInt("InvoiceLookbackDays", 90))*24*60*60
+	var user User
+	if err := DB.Select("id", "identity").Where("id = ?", userId).First(&user).Error; err != nil {
+		return nil, err
+	}
+	if !IsInvoiceEligibleIdentity(user.Identity) {
+		return nil, ErrInvoiceIdentityRequired
+	}
+	cutoff := common.GetTimestamp() - int64(settings.LookbackDays)*24*60*60
 	var subscriptions []InvoiceEligibleSubscription
 	err := DB.Table("user_subscriptions AS us").
-		Select("us.*, sp.title AS plan_title").
+		Select("us.*, COALESCE(NULLIF(us.plan_title_snapshot, ''), sp.title, '') AS plan_title").
 		Joins("LEFT JOIN subscription_plans AS sp ON sp.id = us.plan_id").
-		Where("us.user_id = ? AND us.invoice_eligible = ? AND us.created_at >= ?", userId, true, cutoff).
-		Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai WHERE iai.user_subscription_id = us.id)").
-		Order("us.created_at DESC, us.id DESC").Find(&subscriptions).Error
+		Where("us.user_id = ? AND us.invoice_eligible = ? AND us.paid_amount_micros > 0 AND us.paid_currency <> ? AND us.created_at >= ?", userId, true, "", cutoff).
+		Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai WHERE iai.user_subscription_id = us.id AND iai.active_slot = ?)", 1).
+		Order("us.created_at DESC, us.id DESC").Limit(InvoiceSubscriptionLimit).Find(&subscriptions).Error
 	return subscriptions, err
 }
 
-func CreateInvoiceApplication(userId int, title string, subscriptionIds []int) (*InvoiceApplication, error) {
-	title = strings.TrimSpace(title)
-	if userId <= 0 || title == "" || len(subscriptionIds) == 0 {
-		return nil, errors.New("invoice title and subscriptions are required")
+func CreateInvoiceApplication(userId int, settings InvoiceSettings, input InvoiceApplicationInput, subscriptionIds []int) (*InvoiceApplication, error) {
+	if userId <= 0 || len(subscriptionIds) == 0 {
+		return nil, invoiceRequestError("invoice title and subscriptions are required")
 	}
-	if !utf8.ValidString(title) || utf8.RuneCountInString(title) > InvoiceTitleMaxLength {
-		return nil, errors.New("invoice title must not exceed 255 characters")
+	input, err := normalizeInvoiceInput(input)
+	if err != nil {
+		return nil, err
 	}
 	if len(subscriptionIds) > InvoiceSubscriptionLimit {
-		return nil, errors.New("too many subscriptions in one invoice application")
+		return nil, invoiceRequestError("too many subscriptions in one invoice application")
 	}
 	seenSubscriptionIds := make(map[int]struct{}, len(subscriptionIds))
 	for _, subscriptionId := range subscriptionIds {
 		if subscriptionId <= 0 {
-			return nil, errors.New("invalid subscription id")
+			return nil, invoiceRequestError("invalid subscription id")
 		}
 		if _, exists := seenSubscriptionIds[subscriptionId]; exists {
-			return nil, errors.New("duplicate subscription id")
+			return nil, invoiceRequestError("duplicate subscription id")
 		}
 		seenSubscriptionIds[subscriptionId] = struct{}{}
 	}
+
 	var application *InvoiceApplication
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err = DB.Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
 		var user User
-		if err := lockForUpdate(tx).Where("id = ?", userId).First(&user).Error; err != nil {
+		if err := lockForUpdate(tx).Select("id", "identity").Where("id = ?", userId).First(&user).Error; err != nil {
 			return err
+		}
+		if !IsInvoiceEligibleIdentity(user.Identity) {
+			return ErrInvoiceIdentityRequired
 		}
 		var monthlyCount int64
-		if err := tx.Model(&InvoiceApplication{}).Where("user_id = ? AND application_month = ?", userId, now.Format("2006-01")).Count(&monthlyCount).Error; err != nil {
+		if err := tx.Model(&InvoiceApplication{}).
+			Where("user_id = ? AND application_month = ? AND status IN ?", userId, now.Format("2006-01"), []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).
+			Count(&monthlyCount).Error; err != nil {
 			return err
 		}
-		monthlyLimit := invoiceOptionInt("InvoiceMonthlyLimit", 1)
-		if monthlyCount >= int64(monthlyLimit) {
-			return errors.New("invoice application already submitted this month")
+		if monthlyCount >= int64(settings.MonthlyLimit) {
+			return invoiceRequestError("invoice application already submitted this month")
 		}
+
 		var subscriptions []InvoiceEligibleSubscription
-		if err := tx.Table("user_subscriptions AS us").Select("us.*, sp.title AS plan_title").
+		if err := tx.Table("user_subscriptions AS us").Select("us.*, COALESCE(NULLIF(us.plan_title_snapshot, ''), sp.title, '') AS plan_title").
 			Joins("LEFT JOIN subscription_plans AS sp ON sp.id = us.plan_id").
-			Where("us.user_id = ? AND us.id IN ? AND us.invoice_eligible = ? AND us.created_at >= ?", userId, subscriptionIds, true, common.GetTimestamp()-int64(invoiceOptionInt("InvoiceLookbackDays", 90))*24*60*60).
-			Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai WHERE iai.user_subscription_id = us.id)").Find(&subscriptions).Error; err != nil {
+			Where("us.user_id = ? AND us.id IN ? AND us.invoice_eligible = ? AND us.paid_amount_micros > 0 AND us.paid_currency <> ? AND us.created_at >= ?", userId, subscriptionIds, true, "", common.GetTimestamp()-int64(settings.LookbackDays)*24*60*60).
+			Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai WHERE iai.user_subscription_id = us.id AND iai.active_slot = ?)", 1).
+			Find(&subscriptions).Error; err != nil {
 			return err
 		}
 		if len(subscriptions) != len(subscriptionIds) {
-			return errors.New("one or more subscriptions are not eligible for invoicing")
+			return invoiceRequestError("one or more subscriptions are not eligible for invoicing")
 		}
-		application = &InvoiceApplication{UserId: userId, ApplicationMonth: now.Format("2006-01"), InvoiceTitle: title, Status: InvoiceApplicationStatusPending}
+
+		application = &InvoiceApplication{
+			UserId: userId, ApplicationMonth: now.Format("2006-01"),
+			InvoiceTitle: input.InvoiceTitle, TaxpayerId: input.TaxpayerId,
+			BankName: input.BankName, Remark: input.Remark,
+			Status: InvoiceApplicationStatusPending,
+		}
 		for _, subscription := range subscriptions {
-			if subscription.AmountTotal <= 0 {
-				return errors.New("subscription quota is invalid")
+			if subscription.PaidAmountMicros <= 0 {
+				return invoiceRequestError("subscription amount is invalid")
 			}
-			application.TotalAmount += subscription.AmountTotal
+			currency, err := normalizeSubscriptionPaymentCurrency(subscription.PaidCurrency)
+			if err != nil || currency != subscription.PaidCurrency {
+				return invoiceRequestError("subscription currency is invalid")
+			}
+			if application.Currency == "" {
+				application.Currency = currency
+			} else if application.Currency != currency {
+				return invoiceRequestError("subscriptions in one invoice application must use the same currency")
+			}
+			if subscription.PaidAmountMicros > math.MaxInt64-application.TotalAmountMicros {
+				return invoiceRequestError("subscription amount is invalid")
+			}
+			activeSlot := 1
+			application.TotalAmountMicros += subscription.PaidAmountMicros
 			application.Items = append(application.Items, InvoiceApplicationItem{
-				UserSubscriptionId: subscription.Id, PlanTitle: subscription.PlanTitle,
-				AmountTotal: subscription.AmountTotal, StartTime: subscription.StartTime, EndTime: subscription.EndTime,
+				UserSubscriptionId: subscription.Id, ActiveSlot: &activeSlot,
+				PlanTitle: subscription.PlanTitle, PaidAmountMicros: subscription.PaidAmountMicros,
+				Currency:  currency,
+				StartTime: subscription.StartTime, EndTime: subscription.EndTime,
 			})
 		}
 		return tx.Create(application).Error
@@ -138,41 +389,256 @@ func CreateInvoiceApplication(userId int, title string, subscriptionIds []int) (
 	return application, err
 }
 
-func ListUserInvoiceApplications(userId int) ([]InvoiceApplication, error) {
-	var applications []InvoiceApplication
-	err := DB.Preload("Items").Where("user_id = ?", userId).Order("created_at DESC, id DESC").Find(&applications).Error
-	return applications, err
-}
-
-func ListInvoiceApplications(offset, limit int) ([]InvoiceApplication, int64, error) {
-	var applications []InvoiceApplication
+func ListUserInvoiceApplications(userId, offset, limit int) ([]InvoiceApplication, int64, error) {
+	if userId <= 0 || offset < 0 || limit < 1 || limit > 100 {
+		return nil, 0, ErrInvalidInvoiceFilter
+	}
+	query := DB.Model(&InvoiceApplication{}).Where("user_id = ?", userId)
 	var total int64
-	query := DB.Model(&InvoiceApplication{}).Preload("User").Preload("Items").Order("created_at DESC, id DESC")
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	if err := query.Offset(offset).Limit(limit).Find(&applications).Error; err != nil {
+	var applications []InvoiceApplication
+	err := query.Preload("Items").Order("created_at DESC, id DESC").
+		Offset(offset).Limit(limit).Find(&applications).Error
+	return applications, total, err
+}
+
+func CountActiveUserInvoiceApplicationsInMonth(userId int, month string) (int64, error) {
+	if userId <= 0 || len(month) != 7 {
+		return 0, ErrInvalidInvoiceFilter
+	}
+	var count int64
+	err := DB.Model(&InvoiceApplication{}).
+		Where("user_id = ? AND application_month = ? AND status IN ?", userId, month, []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).
+		Count(&count).Error
+	return count, err
+}
+
+func escapeInvoiceLike(value string) string {
+	value = strings.ReplaceAll(value, "!", "!!")
+	value = strings.ReplaceAll(value, "%", "!%")
+	value = strings.ReplaceAll(value, "_", "!_")
+	return "%" + strings.ToLower(value) + "%"
+}
+
+func invoiceApplicationQuery(db *gorm.DB) *gorm.DB {
+	return db.Preload("User", func(query *gorm.DB) *gorm.DB {
+		return query.Unscoped().Select("id", "username", "display_name", "email", "identity")
+	}).Preload("Items")
+}
+
+func ListInvoiceApplications(filter InvoiceAdminFilter, offset, limit int) ([]InvoiceApplication, int64, error) {
+	if offset < 0 || limit < 1 || limit > 100 || filter.UserId < 0 {
+		return nil, 0, ErrInvalidInvoiceFilter
+	}
+	if filter.Status != "" && filter.Status != InvoiceApplicationStatusPending && filter.Status != InvoiceApplicationStatusCompleted && filter.Status != InvoiceApplicationStatusRejected {
+		return nil, 0, ErrInvalidInvoiceFilter
+	}
+	keyword, err := normalizeInvoiceText(filter.Keyword, "invoice search", 100, false, false)
+	if err != nil {
+		return nil, 0, ErrInvalidInvoiceFilter
+	}
+
+	query := DB.Model(&InvoiceApplication{}).
+		Joins("LEFT JOIN users u ON u.id = invoice_applications.user_id")
+	if filter.Status != "" {
+		query = query.Where("invoice_applications.status = ?", filter.Status)
+	}
+	if filter.UserId > 0 {
+		query = query.Where("invoice_applications.user_id = ?", filter.UserId)
+	}
+	if keyword != "" {
+		pattern := escapeInvoiceLike(keyword)
+		condition := "(LOWER(invoice_applications.invoice_title) LIKE ? ESCAPE '!' OR LOWER(invoice_applications.taxpayer_id) LIKE ? ESCAPE '!' OR LOWER(invoice_applications.bank_name) LIKE ? ESCAPE '!' OR LOWER(u.username) LIKE ? ESCAPE '!' OR LOWER(u.display_name) LIKE ? ESCAPE '!' OR LOWER(u.email) LIKE ? ESCAPE '!')"
+		arguments := []interface{}{pattern, pattern, pattern, pattern, pattern, pattern}
+		if id, parseErr := strconv.Atoi(keyword); parseErr == nil && id > 0 {
+			condition = "(invoice_applications.id = ? OR " + strings.TrimPrefix(condition, "(")
+			arguments = append([]interface{}{id}, arguments...)
+		}
+		query = query.Where(condition, arguments...)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var applications []InvoiceApplication
+	if err := invoiceApplicationQuery(query.Select("invoice_applications.*")).
+		Order("invoice_applications.created_at DESC, invoice_applications.id DESC").
+		Offset(offset).Limit(limit).Find(&applications).Error; err != nil {
 		return nil, 0, err
 	}
 	return applications, total, nil
 }
 
 func GetInvoiceApplication(id int) (*InvoiceApplication, error) {
+	if id <= 0 {
+		return nil, ErrInvoiceApplicationNotFound
+	}
 	var application InvoiceApplication
-	if err := DB.Preload("User").Preload("Items").First(&application, id).Error; err != nil {
+	if err := invoiceApplicationQuery(DB).First(&application, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrInvoiceApplicationNotFound
+		}
 		return nil, err
 	}
 	return &application, nil
 }
 
-func SaveInvoicePDF(id int, path, name string) error {
-	return DB.Model(&InvoiceApplication{}).Where("id = ?", id).Updates(map[string]interface{}{"pdf_path": path, "pdf_name": name, "updated_at": common.GetTimestamp()}).Error
+func GetInvoicePDF(id, userId int) (*InvoiceApplication, error) {
+	if id <= 0 || userId < 0 {
+		return nil, ErrInvoiceApplicationNotFound
+	}
+	var application InvoiceApplication
+	query := DB.Select("id", "user_id", "status", "pdf_path", "pdf_name").Where("id = ?", id)
+	if userId > 0 {
+		query = query.Where("user_id = ?", userId)
+	}
+	if err := query.First(&application).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrInvoiceApplicationNotFound
+		}
+		return nil, err
+	}
+	return &application, nil
 }
 
-func ClearInvoicePDF(id int) error {
-	return DB.Model(&InvoiceApplication{}).Where("id = ?", id).Updates(map[string]interface{}{"pdf_path": "", "pdf_name": "", "updated_at": common.GetTimestamp()}).Error
+func ReplaceInvoicePDF(id int, path, name string) (string, error) {
+	if id <= 0 || path == "" || name == "" {
+		return "", ErrInvoiceApplicationNotFound
+	}
+	var oldPath string
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var application InvoiceApplication
+		if err := lockForUpdate(tx).Select("id", "status", "pdf_path").Where("id = ?", id).First(&application).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvoiceApplicationNotFound
+			}
+			return err
+		}
+		if application.Status != InvoiceApplicationStatusPending {
+			return ErrInvoiceApplicationState
+		}
+		oldPath = application.PDFPath
+		result := tx.Model(&InvoiceApplication{}).Where("id = ? AND status = ?", id, InvoiceApplicationStatusPending).
+			Updates(map[string]interface{}{"pdf_path": path, "pdf_name": name, "updated_at": common.GetTimestamp()})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrInvoiceApplicationState
+		}
+		return nil
+	})
+	return oldPath, err
+}
+
+func ClearInvoicePDF(id int) (string, error) {
+	var oldPath string
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var application InvoiceApplication
+		if err := lockForUpdate(tx).Select("id", "status", "pdf_path").Where("id = ?", id).First(&application).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvoiceApplicationNotFound
+			}
+			return err
+		}
+		if application.Status != InvoiceApplicationStatusPending {
+			return ErrInvoiceApplicationState
+		}
+		oldPath = application.PDFPath
+		if oldPath == "" {
+			return nil
+		}
+		result := tx.Model(&InvoiceApplication{}).Where("id = ? AND status = ?", id, InvoiceApplicationStatusPending).
+			Updates(map[string]interface{}{"pdf_path": "", "pdf_name": "", "updated_at": common.GetTimestamp()})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrInvoiceApplicationState
+		}
+		return nil
+	})
+	return oldPath, err
 }
 
 func CompleteInvoiceApplication(id int) error {
-	return DB.Model(&InvoiceApplication{}).Where("id = ? AND status = ?", id, InvoiceApplicationStatusPending).Updates(map[string]interface{}{"status": InvoiceApplicationStatusCompleted, "completed_at": common.GetTimestamp(), "updated_at": common.GetTimestamp()}).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var application InvoiceApplication
+		if err := lockForUpdate(tx).Select("id", "status", "pdf_path").Where("id = ?", id).First(&application).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvoiceApplicationNotFound
+			}
+			return err
+		}
+		if application.Status != InvoiceApplicationStatusPending {
+			return ErrInvoiceApplicationState
+		}
+		if application.PDFPath == "" {
+			return ErrInvoicePDFRequired
+		}
+		now := common.GetTimestamp()
+		result := tx.Model(&InvoiceApplication{}).Where("id = ? AND status = ?", id, InvoiceApplicationStatusPending).
+			Updates(map[string]interface{}{"status": InvoiceApplicationStatusCompleted, "completed_at": now, "updated_at": now})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrInvoiceApplicationState
+		}
+		return nil
+	})
+}
+
+func RejectInvoiceApplication(id, adminId int, reason string) (string, error) {
+	if id <= 0 || adminId <= 0 {
+		return "", ErrInvoiceApplicationNotFound
+	}
+	reason, err := normalizeInvoiceText(reason, "rejection reason", InvoiceRejectionReasonMaxLength, true, true)
+	if err != nil {
+		return "", err
+	}
+	var oldPath string
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		var owner InvoiceApplication
+		if err := tx.Select("user_id").Where("id = ?", id).First(&owner).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvoiceApplicationNotFound
+			}
+			return err
+		}
+		var user User
+		if err := lockForUpdate(tx.Unscoped()).Select("id").Where("id = ?", owner.UserId).First(&user).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		var application InvoiceApplication
+		if err := lockForUpdate(tx).Select("id", "status", "pdf_path").Where("id = ?", id).First(&application).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvoiceApplicationNotFound
+			}
+			return err
+		}
+		if application.Status != InvoiceApplicationStatusPending {
+			return ErrInvoiceApplicationState
+		}
+		oldPath = application.PDFPath
+		now := common.GetTimestamp()
+		result := tx.Model(&InvoiceApplication{}).Where("id = ? AND status = ?", id, InvoiceApplicationStatusPending).
+			Updates(map[string]interface{}{
+				"status": InvoiceApplicationStatusRejected, "rejection_reason": reason,
+				"rejected_at": now, "rejected_by": adminId,
+				"pdf_path": "", "pdf_name": "", "updated_at": now,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrInvoiceApplicationState
+		}
+		return tx.Model(&InvoiceApplicationItem{}).Where("invoice_application_id = ? AND active_slot = ?", id, 1).
+			Update("active_slot", nil).Error
+	})
+	return oldPath, err
 }

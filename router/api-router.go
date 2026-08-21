@@ -233,6 +233,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.PUT("/", controller.UpdateOption)
+			optionRoute.PUT("/invoice", controller.UpdateInvoiceSettings)
+			optionRoute.PUT("/mall", controller.UpdateMallSettings)
 			optionRoute.POST("/payment_compliance", controller.ConfirmPaymentCompliance)
 			optionRoute.GET("/channel_affinity_cache", controller.GetChannelAffinityCacheStats)
 			optionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
@@ -316,7 +318,9 @@ func SetApiRouter(router *gin.Engine) {
 			invoiceAdminRoute.GET("/applications", controller.ListInvoiceApplications)
 			invoiceAdminRoute.POST("/applications/:id/pdf", middleware.UploadRateLimit(), controller.UploadInvoicePDF)
 			invoiceAdminRoute.DELETE("/applications/:id/pdf", controller.DeleteInvoicePDF)
+			invoiceAdminRoute.GET("/applications/:id/download", middleware.DownloadRateLimit(), controller.DownloadAdminInvoicePDF)
 			invoiceAdminRoute.POST("/applications/:id/complete", controller.CompleteInvoiceApplication)
+			invoiceAdminRoute.POST("/applications/:id/reject", middleware.CriticalRateLimit(), controller.RejectInvoiceApplication)
 		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)

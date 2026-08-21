@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -22,11 +23,15 @@ type SubscriptionEpayPayRequest struct {
 }
 
 func SubscriptionRequestEpay(c *gin.Context) {
+	if rejectSubscriptionPurchaseWhenMallEnabled(c) {
+		return
+	}
 	if !requirePaymentCompliance(c) {
 		return
 	}
 
 	var req SubscriptionEpayPayRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
 		common.ApiErrorMsg(c, "参数错误")
 		return
@@ -83,18 +88,30 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorMsg(c, "当前管理员未配置支付信息")
 		return
 	}
+	paymentAmount := strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64)
+	expectedPayment, err := model.NewSubscriptionPaymentFromMajorUnits(paymentAmount, "CNY")
+	if err != nil {
+		common.ApiErrorMsg(c, "套餐金额配置错误")
+		return
+	}
 
 	order := &model.SubscriptionOrder{
-		UserId:          userId,
-		PlanId:          plan.Id,
-		Money:           plan.PriceAmount,
-		TradeNo:         tradeNo,
-		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: model.PaymentProviderEpay,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+		UserId:               userId,
+		PlanId:               plan.Id,
+		Money:                plan.PriceAmount,
+		TradeNo:              tradeNo,
+		PaymentMethod:        req.PaymentMethod,
+		PaymentProvider:      model.PaymentProviderEpay,
+		ExpectedAmountMicros: expectedPayment.AmountMicros,
+		ExpectedCurrency:     expectedPayment.Currency,
+		CreateTime:           time.Now().Unix(),
+		Status:               common.TopUpStatusPending,
 	}
-	if err := order.Insert(); err != nil {
+	if err := model.CreatePendingSubscriptionOrder(order, plan); err != nil {
+		if errors.Is(err, model.ErrSubscriptionPurchaseLimit) {
+			common.ApiErrorMsg(c, "已达到该套餐购买上限")
+			return
+		}
 		common.ApiErrorMsg(c, "创建订单失败")
 		return
 	}
@@ -102,7 +119,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Money:          paymentAmount,
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,
@@ -119,6 +136,7 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	var params map[string]string
 
 	if c.Request.Method == "POST" {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
 		// POST 请求：从 POST body 解析参数
 		if err := c.Request.ParseForm(); err != nil {
 			_, _ = c.Writer.Write([]byte("fail"))
@@ -156,11 +174,16 @@ func SubscriptionEpayNotify(c *gin.Context) {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
+	payment, err := model.NewSubscriptionPaymentFromMajorUnits(verifyInfo.Money, "CNY")
+	if err != nil {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
 
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
-	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type, payment); err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -174,6 +197,7 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	var params map[string]string
 
 	if c.Request.Method == "POST" {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
 		// POST 请求：从 POST body 解析参数
 		if err := c.Request.ParseForm(); err != nil {
 			c.Redirect(http.StatusFound, paymentReturnPath("/console/topup?pay=fail"))
@@ -207,9 +231,14 @@ func SubscriptionEpayReturn(c *gin.Context) {
 		return
 	}
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
+		payment, err := model.NewSubscriptionPaymentFromMajorUnits(verifyInfo.Money, "CNY")
+		if err != nil {
+			c.Redirect(http.StatusFound, paymentReturnPath("/console/topup?pay=fail"))
+			return
+		}
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type, payment); err != nil {
 			c.Redirect(http.StatusFound, paymentReturnPath("/console/topup?pay=fail"))
 			return
 		}

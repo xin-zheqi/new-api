@@ -133,6 +133,8 @@ export function getTicketErrorMessage(error, t, fallback) {
       return t('工单已结束，不能继续操作。');
     case 'ticket_message_limit':
       return t('此工单已达到 100 条消息上限。');
+    case 'ticket_attachment_limit':
+      return t('此工单已达到图片存储上限，请继续使用文字回复。');
     case 'ticket_state_changed':
       return t('工单状态已经变化，请刷新后重试。');
     case 'ticket_invalid_filter':

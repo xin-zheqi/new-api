@@ -39,6 +39,18 @@ export type UpdateOptionResponse = {
   message: string
 }
 
+export type MallSettingsUpdateRequest = {
+  mall_enabled: boolean
+  mall_url: string
+}
+
+export type InvoiceSettingsUpdateRequest = {
+  invoice_enabled: boolean
+  application_day: number
+  lookback_days: number
+  monthly_limit: number
+}
+
 export type ConfirmPaymentComplianceResponse = {
   success: boolean
   message: string
@@ -293,6 +305,8 @@ export type BillingSettings = {
   MinTopUp: number
   CustomCallbackAddress: string
   PayMethods: string
+  MallURL: string
+  'payment_setting.mall_enabled': boolean
   'payment_setting.amount_options': string
   'payment_setting.amount_discount': string
   'payment_setting.compliance_confirmed': boolean
@@ -339,7 +353,6 @@ export type BillingSettings = {
 }
 
 export type OperationsSettings = {
-  MallURL: string
   RetryTimes: number
   DefaultCollapseSidebar: boolean
   DemoSiteEnabled: boolean

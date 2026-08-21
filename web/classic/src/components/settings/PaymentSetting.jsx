@@ -44,6 +44,8 @@ const PaymentSetting = () => {
     PayMethods: '',
     AmountOptions: '',
     AmountDiscount: '',
+    MallURL: '',
+    'payment_setting.mall_enabled': false,
 
     StripeApiSecret: '',
     StripeWebhookSecret: '',
@@ -147,6 +149,7 @@ const PaymentSetting = () => {
             }
             break;
           case 'payment_setting.compliance_confirmed':
+          case 'payment_setting.mall_enabled':
             newInputs[item.key] = toBoolean(item.value);
             break;
           case 'payment_setting.compliance_confirmed_at':

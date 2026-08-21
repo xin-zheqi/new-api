@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { SystemBehaviorSection } from '../general/system-behavior-section'
-import { InvoiceSettingsSection } from './invoice-settings-section'
 import { TokenSafetySection } from '../general/token-safety-section'
 import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
@@ -27,6 +26,7 @@ import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { InvoiceSettingsSection } from './invoice-settings-section'
 
 const OPERATIONS_SECTIONS = [
   {
@@ -38,7 +38,6 @@ const OPERATIONS_SECTIONS = [
           DefaultCollapseSidebar: settings.DefaultCollapseSidebar,
           DemoSiteEnabled: settings.DemoSiteEnabled,
           SelfUseModeEnabled: settings.SelfUseModeEnabled,
-          MallURL: settings.MallURL,
         }}
       />
     ),
@@ -47,12 +46,14 @@ const OPERATIONS_SECTIONS = [
     id: 'invoice',
     titleKey: 'Invoice settings',
     build: (settings: OperationsSettings) => (
-      <InvoiceSettingsSection defaultValues={{
-        InvoiceEnabled: settings.InvoiceEnabled,
-        InvoiceApplicationDay: settings.InvoiceApplicationDay,
-        InvoiceLookbackDays: settings.InvoiceLookbackDays,
-        InvoiceMonthlyLimit: settings.InvoiceMonthlyLimit,
-      }} />
+      <InvoiceSettingsSection
+        defaultValues={{
+          InvoiceEnabled: settings.InvoiceEnabled,
+          InvoiceApplicationDay: settings.InvoiceApplicationDay,
+          InvoiceLookbackDays: settings.InvoiceLookbackDays,
+          InvoiceMonthlyLimit: settings.InvoiceMonthlyLimit,
+        }}
+      />
     ),
   },
   {

@@ -2,13 +2,16 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -19,29 +22,38 @@ const (
 	TicketSenderUser  = "user"
 	TicketSenderAdmin = "admin"
 
-	TicketTitleMaxLength   = 120
-	TicketContentMaxLength = 4000
-	TicketMessageLimit     = 100
+	TicketTitleMaxLength                  = 120
+	TicketContentMaxLength                = 4000
+	TicketMessageLimit                    = 100
+	TicketAttachmentMaxBytes        int64 = 5 * 1024 * 1024
+	TicketAttachmentTotalMaxBytes   int64 = 50 * 1024 * 1024
+	TicketAttachmentLimit                 = 20
+	ticketSQLiteTransactionAttempts       = 4
+	ticketMigrationBatchSize              = 500
+	ticketActiveSlotIndexName             = "idx_ticket_user_active"
+	ticketActiveSlotMigrationKey          = "TicketActiveSlotMigrationV1"
+	ticketSystemActorId                   = 0
 )
 
 var (
-	ErrTicketNotFound      = errors.New("ticket not found")
-	ErrTicketActiveExists  = errors.New("an active ticket already exists")
-	ErrTicketWaitingAdmin  = errors.New("ticket is waiting for an administrator reply")
-	ErrTicketWaitingUser   = errors.New("ticket is waiting for the user reply")
-	ErrTicketClosed        = errors.New("ticket is closed")
-	ErrTicketMessageLimit  = errors.New("ticket message limit reached")
-	ErrTicketStateChanged  = errors.New("ticket state changed, please retry")
-	ErrInvalidTicketStatus = errors.New("invalid ticket status")
-	ErrInvalidTicketSearch = errors.New("invalid ticket search")
+	ErrTicketNotFound        = errors.New("ticket not found")
+	ErrTicketActiveExists    = errors.New("an active ticket already exists")
+	ErrTicketWaitingAdmin    = errors.New("ticket is waiting for an administrator reply")
+	ErrTicketWaitingUser     = errors.New("ticket is waiting for the user reply")
+	ErrTicketClosed          = errors.New("ticket is closed")
+	ErrTicketMessageLimit    = errors.New("ticket message limit reached")
+	ErrTicketAttachmentLimit = errors.New("ticket attachment storage limit reached")
+	ErrTicketStateChanged    = errors.New("ticket state changed, please retry")
+	ErrInvalidTicketStatus   = errors.New("invalid ticket status")
+	ErrInvalidTicketSearch   = errors.New("invalid ticket search")
 )
 
 type Ticket struct {
 	Id            int             `json:"id"`
-	UserId        int             `json:"user_id" gorm:"index;uniqueIndex:idx_ticket_user_active,priority:1"`
+	UserId        int             `json:"user_id" gorm:"index"`
 	Title         string          `json:"title" gorm:"type:varchar(120);not null"`
 	Status        string          `json:"status" gorm:"type:varchar(32);not null;index:idx_ticket_admin_queue,priority:1"`
-	ActiveSlot    *int            `json:"-" gorm:"uniqueIndex:idx_ticket_user_active,priority:2"`
+	ActiveSlot    *int            `json:"-"`
 	MessageCount  int             `json:"message_count" gorm:"not null"`
 	LastMessageAt int64           `json:"last_message_at" gorm:"bigint;not null;index:idx_ticket_admin_queue,priority:2"`
 	CreatedAt     int64           `json:"created_at" gorm:"bigint;autoCreateTime"`
@@ -50,6 +62,18 @@ type Ticket struct {
 	ClosedBy      int             `json:"-"`
 	User          *User           `json:"-" gorm:"foreignKey:UserId;-:migration"`
 	Messages      []TicketMessage `json:"-" gorm:"foreignKey:TicketId;-:migration"`
+}
+
+// ticketActiveSlotIndex is only used by GORM's migrator. Keeping the unique
+// index off Ticket lets AutoMigrate add active_slot before legacy rows are
+// normalized, rather than creating the index too early.
+type ticketActiveSlotIndex struct {
+	UserId     int  `gorm:"column:user_id;uniqueIndex:idx_ticket_user_active,priority:1"`
+	ActiveSlot *int `gorm:"column:active_slot;uniqueIndex:idx_ticket_user_active,priority:2"`
+}
+
+func (ticketActiveSlotIndex) TableName() string {
+	return "tickets"
 }
 
 type TicketMessage struct {
@@ -82,6 +106,126 @@ type TicketAdminFilter struct {
 	UserId  int
 }
 
+// normalizeTicketActiveSlotIndex upgrades ticket rows created before the
+// active-slot invariant was enforced. The most recently active ticket remains
+// open for each user; older duplicates are system-closed and retain their full
+// conversation history for audit purposes.
+func normalizeTicketActiveSlotIndex() error {
+	if err := DB.Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&Option{Key: ticketActiveSlotMigrationKey, Value: "pending"}).Error; err != nil {
+		return err
+	}
+
+	closedDuplicates := 0
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		// Claim only a pending marker. The UPDATE waits for a concurrent row
+		// lock and re-evaluates this predicate afterwards, so another node sees
+		// the running marker and exits instead of repeating the migration.
+		claim := tx.Model(&Option{}).
+			Where(commonKeyCol+" = ? AND value = ?", ticketActiveSlotMigrationKey, "pending").
+			Update("value", "running")
+		if claim.Error != nil {
+			return claim.Error
+		}
+		if claim.RowsAffected == 0 {
+			return nil
+		}
+
+		var maxTicketId int
+		if err := tx.Model(&Ticket{}).Select("COALESCE(MAX(id), 0)").Scan(&maxTicketId).Error; err != nil {
+			return err
+		}
+		if maxTicketId > 0 {
+			activeStatuses := []string{TicketStatusWaitingAdmin, TicketStatusWaitingUser}
+			var activeTickets []struct {
+				Id     int
+				UserId int
+			}
+			if err := tx.Model(&Ticket{}).
+				Select("id", "user_id").
+				Where("id <= ? AND status IN ?", maxTicketId, activeStatuses).
+				Order("user_id ASC, last_message_at DESC, id DESC").
+				Scan(&activeTickets).Error; err != nil {
+				return err
+			}
+
+			winnerIds := make([]int, 0, len(activeTickets))
+			duplicateIds := make([]int, 0)
+			lastUserId := 0
+			hasLastUser := false
+			for _, ticket := range activeTickets {
+				if !hasLastUser || ticket.UserId != lastUserId {
+					winnerIds = append(winnerIds, ticket.Id)
+					lastUserId = ticket.UserId
+					hasLastUser = true
+					continue
+				}
+				duplicateIds = append(duplicateIds, ticket.Id)
+			}
+
+			// Clear stale slots first so a winner can safely take slot 1 even
+			// when an older or already-closed row previously occupied it.
+			if err := tx.Model(&Ticket{}).
+				Where("id <= ? AND status NOT IN ? AND active_slot IS NOT NULL", maxTicketId, activeStatuses).
+				UpdateColumn("active_slot", nil).Error; err != nil {
+				return err
+			}
+			now := common.GetTimestamp()
+			for start := 0; start < len(duplicateIds); start += ticketMigrationBatchSize {
+				end := min(start+ticketMigrationBatchSize, len(duplicateIds))
+				result := tx.Model(&Ticket{}).
+					Where("id IN ? AND status IN ?", duplicateIds[start:end], activeStatuses).
+					Updates(map[string]interface{}{
+						"status":      TicketStatusClosed,
+						"active_slot": nil,
+						"closed_at":   now,
+						"closed_by":   ticketSystemActorId,
+						"updated_at":  now,
+					})
+				if result.Error != nil {
+					return result.Error
+				}
+				closedDuplicates += int(result.RowsAffected)
+			}
+			for start := 0; start < len(winnerIds); start += ticketMigrationBatchSize {
+				end := min(start+ticketMigrationBatchSize, len(winnerIds))
+				if err := tx.Model(&Ticket{}).
+					Where("id IN ? AND status IN ?", winnerIds[start:end], activeStatuses).
+					UpdateColumn("active_slot", 1).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		complete := tx.Model(&Option{}).
+			Where(commonKeyCol+" = ? AND value = ?", ticketActiveSlotMigrationKey, "running").
+			Update("value", "completed")
+		if complete.Error != nil {
+			return complete.Error
+		}
+		if complete.RowsAffected != 1 {
+			return errors.New("ticket active-slot migration lost its database lock")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	migrator := DB.Migrator()
+	if !migrator.HasIndex(&Ticket{}, ticketActiveSlotIndexName) {
+		if err := migrator.CreateIndex(&ticketActiveSlotIndex{}, ticketActiveSlotIndexName); err != nil {
+			// A failed index build must be retried with normalization on restart.
+			_ = DB.Model(&Option{}).Where(commonKeyCol+" = ?", ticketActiveSlotMigrationKey).Update("value", "pending").Error
+			return err
+		}
+	}
+	if closedDuplicates > 0 {
+		common.SysLog(fmt.Sprintf("ticket active-slot migration system-closed %d duplicate tickets", closedDuplicates))
+	}
+	return nil
+}
+
 func normalizeTicketText(value string, maxLength int, multiline bool) (string, error) {
 	if !utf8.ValidString(value) {
 		return "", errors.New("text must be valid UTF-8")
@@ -97,6 +241,12 @@ func normalizeTicketText(value string, maxLength int, multiline bool) (string, e
 		return "", errors.New("text length is out of range")
 	}
 	for _, r := range value {
+		// Ticket text is rendered in multiple clients and may be reused by
+		// future rich-text surfaces. Reject markup delimiters at the storage
+		// boundary instead of relying on every renderer to escape them.
+		if r == '<' || r == '>' {
+			return "", errors.New("text contains unsupported markup characters")
+		}
 		if unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
 			return "", errors.New("text contains unsupported format characters")
 		}
@@ -117,6 +267,40 @@ func NormalizeTicketTitle(value string) (string, error) {
 
 func NormalizeTicketContent(value string) (string, error) {
 	return normalizeTicketText(value, TicketContentMaxLength, true)
+}
+
+func validateTicketAttachment(attachment *TicketAttachment) error {
+	if attachment == nil {
+		return nil
+	}
+	if attachment.Size < 1 || attachment.Size > TicketAttachmentMaxBytes {
+		return ErrTicketAttachmentLimit
+	}
+	return nil
+}
+
+func isTicketSQLiteLockError(err error) bool {
+	if err == nil || !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "sqlite_busy") ||
+		strings.Contains(message, "sqlite_locked") ||
+		strings.Contains(message, "database is locked") ||
+		strings.Contains(message, "database table is locked")
+}
+
+func runTicketTransaction(operation func(*gorm.DB) error) error {
+	for attempt := 0; attempt < ticketSQLiteTransactionAttempts; attempt++ {
+		err := DB.Transaction(operation)
+		if !isTicketSQLiteLockError(err) {
+			return err
+		}
+		if attempt+1 < ticketSQLiteTransactionAttempts {
+			time.Sleep(time.Duration(attempt+1) * 5 * time.Millisecond)
+		}
+	}
+	return ErrTicketStateChanged
 }
 
 func CheckCanCreateTicket(userId int) error {
@@ -186,16 +370,19 @@ func CreateTicket(userId int, title, content string, attachment *TicketAttachmen
 	if err != nil {
 		return nil, err
 	}
+	if err := validateTicketAttachment(attachment); err != nil {
+		return nil, err
+	}
 
 	now := common.GetTimestamp()
 	activeSlot := 1
-	ticket := &Ticket{
+	ticket := Ticket{
 		UserId: userId, Title: title, Status: TicketStatusWaitingAdmin,
 		ActiveSlot: &activeSlot, MessageCount: 1, LastMessageAt: now,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	var created Ticket
-	err = DB.Transaction(func(tx *gorm.DB) error {
+	err = runTicketTransaction(func(tx *gorm.DB) error {
 		var user User
 		if err := lockForUpdate(tx).Select("id").Where("id = ?", userId).First(&user).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -212,26 +399,28 @@ func CreateTicket(userId int, title, content string, attachment *TicketAttachmen
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		if err := tx.Create(ticket).Error; err != nil {
+		attemptTicket := ticket
+		if err := tx.Create(&attemptTicket).Error; err != nil {
 			return err
 		}
 		message := TicketMessage{
-			TicketId: ticket.Id, SenderId: userId, SenderRole: TicketSenderUser,
+			TicketId: attemptTicket.Id, SenderId: userId, SenderRole: TicketSenderUser,
 			Content: content, CreatedAt: now,
 		}
 		if err := tx.Create(&message).Error; err != nil {
 			return err
 		}
 		if attachment != nil {
-			attachment.TicketId = ticket.Id
-			attachment.MessageId = message.Id
-			attachment.UploaderId = userId
-			attachment.CreatedAt = now
-			if err := tx.Create(attachment).Error; err != nil {
+			attemptAttachment := *attachment
+			attemptAttachment.TicketId = attemptTicket.Id
+			attemptAttachment.MessageId = message.Id
+			attemptAttachment.UploaderId = userId
+			attemptAttachment.CreatedAt = now
+			if err := tx.Create(&attemptAttachment).Error; err != nil {
 				return err
 			}
 		}
-		return getTicketDetail(tx, ticket.Id, userId, false, &created)
+		return getTicketDetail(tx, attemptTicket.Id, userId, false, &created)
 	})
 	if err != nil {
 		if !errors.Is(err, ErrTicketActiveExists) {
@@ -253,6 +442,9 @@ func replyTicket(ticketId, actorId int, actorRole, content string, attachment *T
 	if err != nil {
 		return nil, err
 	}
+	if err := validateTicketAttachment(attachment); err != nil {
+		return nil, err
+	}
 	expectedStatus := TicketStatusWaitingAdmin
 	nextStatus := TicketStatusWaitingUser
 	if actorRole == TicketSenderUser {
@@ -264,7 +456,7 @@ func replyTicket(ticketId, actorId int, actorRole, content string, attachment *T
 
 	now := common.GetTimestamp()
 	var replied Ticket
-	err = DB.Transaction(func(tx *gorm.DB) error {
+	err = runTicketTransaction(func(tx *gorm.DB) error {
 		var owner Ticket
 		if err := tx.Select("user_id").Where("id = ?", ticketId).First(&owner).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -302,6 +494,22 @@ func replyTicket(ticketId, actorId int, actorRole, content string, attachment *T
 		if ticket.MessageCount >= TicketMessageLimit {
 			return ErrTicketMessageLimit
 		}
+		if attachment != nil {
+			var usage struct {
+				Count      int64
+				TotalBytes int64
+			}
+			if err := tx.Model(&TicketAttachment{}).
+				Select("COUNT(*) AS count, COALESCE(SUM(size), 0) AS total_bytes").
+				Where("ticket_id = ?", ticket.Id).Scan(&usage).Error; err != nil {
+				return err
+			}
+			if usage.Count < 0 || usage.Count >= TicketAttachmentLimit ||
+				usage.TotalBytes < 0 || usage.TotalBytes > TicketAttachmentTotalMaxBytes ||
+				attachment.Size > TicketAttachmentTotalMaxBytes-usage.TotalBytes {
+				return ErrTicketAttachmentLimit
+			}
+		}
 
 		result := tx.Model(&Ticket{}).
 			Where("id = ? AND status = ? AND message_count < ?", ticket.Id, expectedStatus, TicketMessageLimit).
@@ -325,11 +533,12 @@ func replyTicket(ticketId, actorId int, actorRole, content string, attachment *T
 			return err
 		}
 		if attachment != nil {
-			attachment.TicketId = ticket.Id
-			attachment.MessageId = message.Id
-			attachment.UploaderId = actorId
-			attachment.CreatedAt = now
-			if err := tx.Create(attachment).Error; err != nil {
+			attemptAttachment := *attachment
+			attemptAttachment.TicketId = ticket.Id
+			attemptAttachment.MessageId = message.Id
+			attemptAttachment.UploaderId = actorId
+			attemptAttachment.CreatedAt = now
+			if err := tx.Create(&attemptAttachment).Error; err != nil {
 				return err
 			}
 		}
@@ -355,7 +564,7 @@ func CloseTicket(ticketId, adminId int) (*Ticket, error) {
 	}
 	now := common.GetTimestamp()
 	var closed Ticket
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := runTicketTransaction(func(tx *gorm.DB) error {
 		var owner Ticket
 		if err := tx.Select("user_id").Where("id = ?", ticketId).First(&owner).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

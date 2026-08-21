@@ -26,12 +26,9 @@ import {
   FormControl,
   FormDescription,
   FormField,
-  FormItem,
   FormLabel,
-  FormMessage,
 } from '@/components/ui/form'
 import { Switch } from '@/components/ui/switch'
-import { Input } from '@/components/ui/input'
 
 import {
   SettingsForm,
@@ -47,7 +44,6 @@ const behaviorSchema = z.object({
   DefaultCollapseSidebar: z.boolean(),
   DemoSiteEnabled: z.boolean(),
   SelfUseModeEnabled: z.boolean(),
-  MallURL: z.string(),
 })
 
 type BehaviorFormValues = z.infer<typeof behaviorSchema>
@@ -105,19 +101,6 @@ export function SystemBehaviorSection({
                   />
                 </FormControl>
               </SettingsSwitchItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name='MallURL'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Mall URL')}</FormLabel>
-                <FormDescription>{t('Website URL loaded in the user wallet mall.')}</FormDescription>
-                <FormControl><Input placeholder='https://example.com' {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
             )}
           />
 

@@ -135,6 +135,8 @@ export interface TopupInfo {
   discount: Record<number, number>
   /** Optional topup link for purchasing codes */
   topup_link?: string
+  /** Whether the wallet uses the configured external mall */
+  mall_enabled?: boolean
   mall_url?: string
   /** Whether Creem topup is enabled */
   enable_creem_topup?: boolean
@@ -263,6 +265,8 @@ export interface UserWalletData {
  */
 export type TopupStatus = 'success' | 'pending' | 'failed' | 'expired'
 
+export type TopupSource = 'recharge' | 'subscription'
+
 /**
  * Topup billing record
  */
@@ -279,6 +283,10 @@ export interface TopupRecord {
   trade_no: string
   /** Payment method type */
   payment_method: string
+  /** Stable business source. Optional for compatibility with older API nodes. */
+  source?: TopupSource
+  /** ISO 4217 currency used for the actual payment. */
+  currency?: string
   /** Creation timestamp */
   create_time: number
   /** Completion timestamp */

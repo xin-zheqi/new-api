@@ -120,18 +120,44 @@ func ListPendingIdentityReviews() ([]IdentityReviewUser, error) {
 }
 
 func ReviewUserIdentity(userId int, approved bool) error {
-	user, err := GetUserById(userId, false)
+	if userId <= 0 {
+		return errors.New("invalid user id")
+	}
+	var requestedIdentity string
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Where("id = ?", userId).First(&user).Error; err != nil {
+			return err
+		}
+		requestedIdentity = NormalizeUserIdentity(user.IdentityRequested)
+		if user.IdentityReviewStatus != "pending" ||
+			(requestedIdentity != UserIdentityUniversity && requestedIdentity != UserIdentityEnterprise) {
+			return errors.New("identity review is not pending")
+		}
+
+		updates := map[string]interface{}{
+			"identity":               UserIdentityPersonal,
+			"identity_review_status": "rejected",
+			"identity_requested":     "",
+		}
+		if approved {
+			updates["identity"] = requestedIdentity
+			updates["identity_review_status"] = "approved"
+		}
+		// Keep the pending predicate in the write as a second line of defence
+		// for SQLite, where FOR UPDATE is intentionally unavailable.
+		result := tx.Model(&User{}).
+			Where("id = ? AND identity_review_status = ? AND identity_requested = ?", userId, "pending", requestedIdentity).
+			Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("identity review is not pending")
+		}
+		return nil
+	})
 	if err != nil {
-		return err
-	}
-	if user.IdentityReviewStatus != "pending" || NormalizeUserIdentity(user.IdentityRequested) == "" {
-		return errors.New("identity review is not pending")
-	}
-	updates := map[string]interface{}{"identity": UserIdentityPersonal, "identity_review_status": "rejected", "identity_requested": ""}
-	if approved {
-		updates = map[string]interface{}{"identity": NormalizeUserIdentity(user.IdentityRequested), "identity_review_status": "approved", "identity_requested": ""}
-	}
-	if err := DB.Model(&User{}).Where("id = ?", userId).Updates(updates).Error; err != nil {
 		return err
 	}
 	return InvalidateUserCache(userId)

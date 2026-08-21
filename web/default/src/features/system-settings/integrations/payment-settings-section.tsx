@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { TFunction } from 'i18next'
 import { Code2, Eye, ShieldAlert } from 'lucide-react'
 import * as React from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
@@ -46,9 +47,14 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { getSafeEmbeddedMallUrl } from '@/lib/safe-mall-url'
 import { cn } from '@/lib/utils'
 
-import { confirmPaymentCompliance } from '../api'
+import {
+  confirmPaymentCompliance,
+  updateMallSettings,
+  updateSystemOption,
+} from '../api'
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -56,7 +62,6 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
-import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
@@ -94,91 +99,124 @@ function isHttpOriginUrl(value: string) {
   }
 }
 
-const paymentSchema = z.object({
-  PayAddress: z.string().refine((value) => {
-    const trimmed = value.trim()
-    if (!trimmed) return true
-    return /^https?:\/\//.test(trimmed)
-  }, 'Provide a valid callback URL starting with http:// or https://'),
-  EpayId: z.string(),
-  EpayKey: z.string(),
-  Price: z.coerce.number().min(0),
-  MinTopUp: z.coerce.number().min(0),
-  CustomCallbackAddress: z
-    .string()
-    .refine(
-      isHttpOriginUrl,
-      'Enter only a top-level callback domain, for example https://api.example.com, without any path.'
-    ),
-  PayMethods: z.string().superRefine((value, ctx) => {
-    const error = getJsonError(value)
-    if (error) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: error,
-      })
-    }
-  }),
-  AmountOptions: z.string().superRefine((value, ctx) => {
-    const error = getJsonError(value, (parsed) => Array.isArray(parsed))
-    if (error) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: error,
-      })
-    }
-  }),
-  AmountDiscount: z.string().superRefine((value, ctx) => {
-    const error = getJsonError(
-      value,
-      (parsed) =>
-        !!parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    )
-    if (error) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: error,
-      })
-    }
-  }),
-  StripeApiSecret: z.string(),
-  StripeWebhookSecret: z.string(),
-  StripePriceId: z.string(),
-  StripeUnitPrice: z.coerce.number().min(0),
-  StripeMinTopUp: z.coerce.number().min(0),
-  StripePromotionCodesEnabled: z.boolean(),
-  CreemApiKey: z.string(),
-  CreemWebhookSecret: z.string(),
-  CreemTestMode: z.boolean(),
-  CreemProducts: z.string().superRefine((value, ctx) => {
-    const error = getJsonError(value, (parsed) => Array.isArray(parsed))
-    if (error) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: error,
-      })
-    }
-  }),
-  WaffoEnabled: z.boolean(),
-  WaffoApiKey: z.string(),
-  WaffoPrivateKey: z.string(),
-  WaffoPublicCert: z.string(),
-  WaffoSandboxPublicCert: z.string(),
-  WaffoSandboxApiKey: z.string(),
-  WaffoSandboxPrivateKey: z.string(),
-  WaffoSandbox: z.boolean(),
-  WaffoMerchantId: z.string(),
-  WaffoCurrency: z.string(),
-  WaffoUnitPrice: z.coerce.number().min(0),
-  WaffoMinTopUp: z.coerce.number().min(1),
-  WaffoNotifyUrl: z.string(),
-  WaffoReturnUrl: z.string(),
-  WaffoPancakeMerchantID: z.string(),
-  WaffoPancakePrivateKey: z.string(),
-  WaffoPancakeReturnURL: z.string(),
-})
+function createPaymentSchema(t: TFunction) {
+  return z
+    .object({
+      PayAddress: z.string().refine((value) => {
+        const trimmed = value.trim()
+        if (!trimmed) return true
+        return /^https?:\/\//.test(trimmed)
+      }, 'Provide a valid callback URL starting with http:// or https://'),
+      EpayId: z.string(),
+      EpayKey: z.string(),
+      Price: z.coerce.number().min(0),
+      MinTopUp: z.coerce.number().min(0),
+      CustomCallbackAddress: z
+        .string()
+        .refine(
+          isHttpOriginUrl,
+          t(
+            'Enter only a top-level callback domain, for example https://api.example.com, without any path.'
+          )
+        ),
+      MallEnabled: z.boolean(),
+      MallURL: z.string(),
+      PayMethods: z.string().superRefine((value, ctx) => {
+        const error = getJsonError(value)
+        if (error) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: error,
+          })
+        }
+      }),
+      AmountOptions: z.string().superRefine((value, ctx) => {
+        const error = getJsonError(value, (parsed) => Array.isArray(parsed))
+        if (error) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: error,
+          })
+        }
+      }),
+      AmountDiscount: z.string().superRefine((value, ctx) => {
+        const error = getJsonError(
+          value,
+          (parsed) =>
+            !!parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        )
+        if (error) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: error,
+          })
+        }
+      }),
+      StripeApiSecret: z.string(),
+      StripeWebhookSecret: z.string(),
+      StripePriceId: z.string(),
+      StripeUnitPrice: z.coerce.number().min(0),
+      StripeMinTopUp: z.coerce.number().min(0),
+      StripePromotionCodesEnabled: z.boolean(),
+      CreemApiKey: z.string(),
+      CreemWebhookSecret: z.string(),
+      CreemTestMode: z.boolean(),
+      CreemProducts: z.string().superRefine((value, ctx) => {
+        const error = getJsonError(value, (parsed) => Array.isArray(parsed))
+        if (error) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: error,
+          })
+        }
+      }),
+      WaffoEnabled: z.boolean(),
+      WaffoApiKey: z.string(),
+      WaffoPrivateKey: z.string(),
+      WaffoPublicCert: z.string(),
+      WaffoSandboxPublicCert: z.string(),
+      WaffoSandboxApiKey: z.string(),
+      WaffoSandboxPrivateKey: z.string(),
+      WaffoSandbox: z.boolean(),
+      WaffoMerchantId: z.string(),
+      WaffoCurrency: z.string(),
+      WaffoUnitPrice: z.coerce.number().min(0),
+      WaffoMinTopUp: z.coerce.number().min(1),
+      WaffoNotifyUrl: z.string(),
+      WaffoReturnUrl: z.string(),
+      WaffoPancakeMerchantID: z.string(),
+      WaffoPancakePrivateKey: z.string(),
+      WaffoPancakeReturnURL: z.string(),
+    })
+    .superRefine((values, ctx) => {
+      const mallURL = values.MallURL.trim()
+      if (!values.MallEnabled) return
 
-type PaymentFormValues = z.infer<typeof paymentSchema>
+      if (!mallURL) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MallURL'],
+          message: t('Mall URL is required when the mall is enabled'),
+        })
+        return
+      }
+
+      if (
+        getSafeEmbeddedMallUrl(
+          mallURL,
+          typeof window === 'undefined' ? '' : window.location.hostname
+        ) === undefined
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MallURL'],
+          message: t('Enter a valid HTTPS URL without embedded credentials'),
+        })
+      }
+    })
+}
+
+type PaymentFormValues = z.infer<ReturnType<typeof createPaymentSchema>>
 type WaffoFormFieldValues = Omit<WaffoSettingsValues, 'WaffoPayMethods'>
 type PaymentBaseFormValues = Omit<
   PaymentFormValues,
@@ -223,7 +261,7 @@ export function PaymentSettingsSection({
 }: PaymentSettingsSectionProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const updateOption = useUpdateOption()
+  const paymentSchema = React.useMemo(() => createPaymentSchema(t), [t])
   const initialFormValues = React.useMemo<PaymentFormValues>(
     () => ({
       ...defaultValues,
@@ -424,6 +462,8 @@ export function PaymentSettingsSection({
       Price: values.Price,
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
+      MallEnabled: values.MallEnabled,
+      MallURL: values.MallURL.trim(),
       PayMethods: values.PayMethods.trim(),
       AmountOptions: values.AmountOptions.trim(),
       AmountDiscount: values.AmountDiscount.trim(),
@@ -468,6 +508,8 @@ export function PaymentSettingsSection({
       CustomCallbackAddress: removeTrailingSlash(
         initialRef.current.CustomCallbackAddress
       ),
+      MallEnabled: initialRef.current.MallEnabled,
+      MallURL: initialRef.current.MallURL.trim(),
       PayMethods: initialRef.current.PayMethods.trim(),
       AmountOptions: initialRef.current.AmountOptions.trim(),
       AmountDiscount: initialRef.current.AmountDiscount.trim(),
@@ -534,6 +576,10 @@ export function PaymentSettingsSection({
         value: sanitized.CustomCallbackAddress,
       })
     }
+
+    const hasMallChanges =
+      sanitized.MallEnabled !== initial.MallEnabled ||
+      sanitized.MallURL !== initial.MallURL
 
     if (
       normalizeJsonForComparison(sanitized.PayMethods) !==
@@ -708,43 +754,59 @@ export function PaymentSettingsSection({
       waffoPancakeSelection.storeID !== waffoPancakeSavedBinding.storeID ||
       waffoPancakeSelection.productID !== waffoPancakeSavedBinding.productID
 
-    if (updates.length === 0 && !hasWaffoPancakeChanges) {
+    if (updates.length === 0 && !hasMallChanges && !hasWaffoPancakeChanges) {
       toast.info(t('No changes to save'))
       return
     }
 
-    for (const update of updates) {
-      await updateOption.mutateAsync(update)
-    }
+    if (hasWaffoPancakeChanges) {
+      if (!sanitized.WaffoPancakeMerchantID) {
+        toast.error(t('Merchant ID is required'))
+        return
+      }
 
-    if (!hasWaffoPancakeChanges) {
-      return
-    }
-
-    if (!sanitized.WaffoPancakeMerchantID) {
-      toast.error(t('Merchant ID is required'))
-      return
-    }
-
-    if (!waffoPancakeSelection.storeID || !waffoPancakeSelection.productID) {
-      toast.error(t('Pick or create both a store and a product before saving.'))
-      return
+      if (!waffoPancakeSelection.storeID || !waffoPancakeSelection.productID) {
+        toast.error(
+          t('Pick or create both a store and a product before saving.')
+        )
+        return
+      }
     }
 
     try {
-      const body = await saveWaffoPancakeConfig({
-        merchantID: sanitized.WaffoPancakeMerchantID,
-        privateKey: sanitized.WaffoPancakePrivateKey,
-        returnURL: sanitized.WaffoPancakeReturnURL,
-        storeID: waffoPancakeSelection.storeID,
-        productID: waffoPancakeSelection.productID,
-      })
+      if (hasMallChanges) {
+        await updateMallSettings({
+          mall_enabled: sanitized.MallEnabled,
+          mall_url: sanitized.MallURL,
+        })
+      }
 
-      if (
-        body?.message === 'success' &&
-        typeof body.data === 'object' &&
-        body.data
-      ) {
+      for (const update of updates) {
+        await updateSystemOption(update)
+      }
+
+      if (hasWaffoPancakeChanges) {
+        const body = await saveWaffoPancakeConfig({
+          merchantID: sanitized.WaffoPancakeMerchantID,
+          privateKey: sanitized.WaffoPancakePrivateKey,
+          returnURL: sanitized.WaffoPancakeReturnURL,
+          storeID: waffoPancakeSelection.storeID,
+          productID: waffoPancakeSelection.productID,
+        })
+
+        if (
+          body?.message !== 'success' ||
+          typeof body.data !== 'object' ||
+          !body.data
+        ) {
+          const reason = typeof body?.data === 'string' ? body.data : undefined
+          throw new Error(
+            reason
+              ? `${t('Waffo Pancake save failed')}: ${reason}`
+              : t('Waffo Pancake save failed')
+          )
+        }
+
         const saved = body.data as { product_id: string; store_id: string }
         const savedBinding = {
           storeID: saved.store_id,
@@ -752,22 +814,14 @@ export function PaymentSettingsSection({
         }
         setWaffoPancakeSavedBinding(savedBinding)
         setWaffoPancakeSelection(savedBinding)
-        queryClient.invalidateQueries({ queryKey: ['system-options'] })
-        toast.success(t('Waffo Pancake settings saved'))
-        return
       }
 
-      const reason = typeof body?.data === 'string' ? body.data : undefined
-      toast.error(
-        reason
-          ? `${t('Waffo Pancake save failed')}: ${reason}`
-          : t('Waffo Pancake save failed')
-      )
+      await queryClient.invalidateQueries({ queryKey: ['system-options'] })
+      toast.success(t('Setting updated successfully'))
     } catch (error) {
+      void queryClient.invalidateQueries({ queryKey: ['system-options'] })
       toast.error(
-        `${t('Waffo Pancake save failed')}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        error instanceof Error ? error.message : t('Failed to update setting')
       )
     }
   }
@@ -872,7 +926,7 @@ export function PaymentSettingsSection({
         >
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
-            isSaving={updateOption.isPending || isSubmitting}
+            isSaving={isSubmitting}
             saveLabel='Save all settings'
           />
           <Tabs defaultValue='general' className='min-w-0'>
@@ -896,6 +950,58 @@ export function PaymentSettingsSection({
                   <p className='text-muted-foreground text-sm'>
                     {t('Shared configuration for all payment gateways')}
                   </p>
+                </div>
+
+                <div className='space-y-4 rounded-md border p-4'>
+                  <FormField
+                    control={form.control}
+                    name='MallEnabled'
+                    render={({ field }) => (
+                      <SettingsSwitchItem className='border-0 p-0'>
+                        <SettingsSwitchContent>
+                          <FormLabel>{t('Enable wallet mall')}</FormLabel>
+                          <FormDescription>
+                            {t(
+                              'Use the configured external mall instead of built-in subscription purchasing.'
+                            )}
+                          </FormDescription>
+                        </SettingsSwitchContent>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </SettingsSwitchItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='MallURL'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Mall URL')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='url'
+                            inputMode='url'
+                            autoComplete='url'
+                            placeholder='https://example.com'
+                            maxLength={2048}
+                            disabled={!currentFormValues.MallEnabled}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'HTTPS page embedded in the wallet when mall mode is enabled.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
 
                 <div className='grid gap-6 md:grid-cols-2'>

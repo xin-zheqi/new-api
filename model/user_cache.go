@@ -149,6 +149,9 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	if err != nil {
 		return nil, err
 	}
+	if userCache.Id != userId {
+		return nil, fmt.Errorf("incomplete user cache for user %d", userId)
+	}
 	return &userCache, nil
 }
 

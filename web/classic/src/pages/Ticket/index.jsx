@@ -60,6 +60,12 @@ import {
 
 const { Text, Title } = Typography;
 
+const DEFAULT_ADMIN_FILTERS = {
+  keyword: '',
+  status: TICKET_STATUS.WAITING_ADMIN,
+  userId: '',
+};
+
 const UserTicketCenter = () => {
   const { t } = useTranslation();
   const [tickets, setTickets] = useState([]);
@@ -86,10 +92,13 @@ const UserTicketCenter = () => {
     nextPage = page,
     nextPageSize = pageSize,
     preferredId = null,
+    silent = false,
   ) => {
     const requestId = ++listRequestRef.current;
-    setListLoading(true);
-    setListError('');
+    if (!silent) {
+      setListLoading(true);
+      setListError('');
+    }
     try {
       const response = await API.get('/api/ticket/self', {
         params: { p: nextPage, page_size: nextPageSize },
@@ -109,6 +118,7 @@ const UserTicketCenter = () => {
       setPage(Number(data.page || nextPage));
       setPageSize(Number(data.page_size || nextPageSize));
       setActiveTicketId(nextActiveId);
+      setListError('');
 
       const preferredOnPage = items.some((item) => item.id === preferredId)
         ? preferredId
@@ -125,22 +135,26 @@ const UserTicketCenter = () => {
     } catch (error) {
       if (requestId !== listRequestRef.current) return null;
       const message = getTicketErrorMessage(error, t, t('加载工单列表失败'));
-      setListError(message);
-      showError(message);
+      if (!silent) {
+        setListError(message);
+        showError(message);
+      }
       return null;
     } finally {
-      if (requestId === listRequestRef.current) setListLoading(false);
+      if (!silent && requestId === listRequestRef.current) {
+        setListLoading(false);
+      }
     }
   };
 
-  const loadDetail = async (id) => {
+  const loadDetail = async (id, silent = false) => {
     const requestId = ++detailRequestRef.current;
     if (!id) {
       setTicket(null);
-      setDetailLoading(false);
+      if (!silent) setDetailLoading(false);
       return;
     }
-    setDetailLoading(true);
+    if (!silent) setDetailLoading(true);
     try {
       const response = await API.get(`/api/ticket/${id}`, {
         skipErrorHandler: true,
@@ -154,10 +168,14 @@ const UserTicketCenter = () => {
       setTicket(response.data.data || null);
     } catch (error) {
       if (requestId !== detailRequestRef.current) return;
-      showError(getTicketErrorMessage(error, t, t('加载工单详情失败')));
-      setTicket(null);
+      if (!silent) {
+        showError(getTicketErrorMessage(error, t, t('加载工单详情失败')));
+        setTicket(null);
+      }
     } finally {
-      if (requestId === detailRequestRef.current) setDetailLoading(false);
+      if (!silent && requestId === detailRequestRef.current) {
+        setDetailLoading(false);
+      }
     }
   };
 
@@ -172,6 +190,16 @@ const UserTicketCenter = () => {
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (listLoading || detailLoading || replying || creating) return;
+      const currentTicketId = selectedIdRef.current;
+      void loadTickets(page, pageSize, currentTicketId, true);
+      if (currentTicketId) void loadDetail(currentTicketId, true);
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [page, pageSize, listLoading, detailLoading, replying, creating]);
 
   const createTicket = async () => {
     const title = createTitle.trim();
@@ -238,6 +266,13 @@ const UserTicketCenter = () => {
   };
 
   const canCreate = !listLoading && !listError && !creating && !activeTicketId;
+  const createTooltip = activeTicketId
+    ? t('当前工单结束后才能创建新工单')
+    : listLoading
+      ? t('加载中...')
+      : listError
+        ? t('加载工单列表失败')
+        : t('创建新工单');
 
   return (
     <div className='ticket-center-page mt-[60px] w-full px-2 pb-4'>
@@ -251,11 +286,7 @@ const UserTicketCenter = () => {
               {t('查看历史问题，并与管理员继续沟通。')}
             </Text>
           </div>
-          <Tooltip
-            content={
-              canCreate ? t('创建新工单') : t('当前工单结束后才能创建新工单')
-            }
-          >
+          <Tooltip content={createTooltip}>
             <span>
               <Button
                 theme='solid'
@@ -270,7 +301,7 @@ const UserTicketCenter = () => {
           </Tooltip>
         </div>
 
-        {!canCreate && (
+        {!!activeTicketId && (
           <Banner
             type='info'
             description={t(
@@ -324,6 +355,7 @@ const UserTicketCenter = () => {
                           ? 'bg-[var(--semi-color-primary-light-default)]'
                           : 'hover:bg-[var(--semi-color-fill-0)]'
                       }`}
+                      aria-pressed={selected}
                       disabled={replying}
                       onClick={() => {
                         selectedIdRef.current = item.id;
@@ -471,6 +503,7 @@ const AdminTicketCenter = () => {
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState(TICKET_STATUS.WAITING_ADMIN);
   const [userId, setUserId] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState(DEFAULT_ADMIN_FILTERS);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [replying, setReplying] = useState(false);
@@ -491,11 +524,12 @@ const AdminTicketCenter = () => {
   const loadTickets = async (
     nextPage = page,
     nextPageSize = pageSize,
-    filters = null,
+    filters = appliedFilters,
+    silent = false,
   ) => {
-    const nextKeyword = filters ? filters.keyword : keyword;
-    const nextStatus = filters ? filters.status : status;
-    const nextUserId = filters ? filters.userId : userId;
+    const nextKeyword = filters.keyword;
+    const nextStatus = filters.status;
+    const nextUserId = filters.userId;
     const trimmedUserId = nextUserId.trim();
     if (trimmedUserId && !/^[1-9]\d*$/.test(trimmedUserId)) {
       showError(t('请输入有效的用户 ID'));
@@ -503,7 +537,7 @@ const AdminTicketCenter = () => {
     }
 
     const requestId = ++listRequestRef.current;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const params = { p: nextPage, page_size: nextPageSize };
       if (nextKeyword.trim()) params.keyword = nextKeyword.trim();
@@ -527,20 +561,22 @@ const AdminTicketCenter = () => {
       return true;
     } catch (error) {
       if (requestId !== listRequestRef.current) return false;
-      showError(getTicketErrorMessage(error, t, t('加载工单列表失败')));
+      if (!silent) {
+        showError(getTicketErrorMessage(error, t, t('加载工单列表失败')));
+      }
       return false;
     } finally {
-      if (requestId === listRequestRef.current) setLoading(false);
+      if (!silent && requestId === listRequestRef.current) setLoading(false);
     }
   };
 
-  const loadDetail = async (id) => {
+  const loadDetail = async (id, silent = false) => {
     const requestId = ++detailRequestRef.current;
     if (!id) {
-      setDetailLoading(false);
+      if (!silent) setDetailLoading(false);
       return;
     }
-    setDetailLoading(true);
+    if (!silent) setDetailLoading(true);
     try {
       const response = await API.get(`/api/ticket/admin/${id}`, {
         skipErrorHandler: true,
@@ -559,16 +595,44 @@ const AdminTicketCenter = () => {
       setDetail(response.data.data || null);
     } catch (error) {
       if (requestId !== detailRequestRef.current) return;
-      showError(getTicketErrorMessage(error, t, t('加载工单详情失败')));
-      setDetail(null);
+      if (!silent) {
+        showError(getTicketErrorMessage(error, t, t('加载工单详情失败')));
+        setDetail(null);
+      }
     } finally {
-      if (requestId === detailRequestRef.current) setDetailLoading(false);
+      if (!silent && requestId === detailRequestRef.current) {
+        setDetailLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadTickets(1, pageSize);
+    loadTickets(1, pageSize, DEFAULT_ADMIN_FILTERS);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (loading || detailLoading || replying || closing) return;
+      void loadTickets(page, pageSize, appliedFilters, true);
+      const currentTicketId = detailIdRef.current;
+      if (currentTicketId) void loadDetail(currentTicketId, true);
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [
+    page,
+    pageSize,
+    appliedFilters,
+    loading,
+    detailLoading,
+    replying,
+    closing,
+  ]);
+
+  const applyFilters = async () => {
+    const nextFilters = { keyword, status, userId };
+    const loaded = await loadTickets(1, pageSize, nextFilters);
+    if (loaded) setAppliedFilters(nextFilters);
+  };
 
   const openDetail = (record) => {
     detailIdRef.current = record.id;
@@ -598,7 +662,7 @@ const AdminTicketCenter = () => {
         setDetail(response.data.data || null);
       }
       showSuccess(t('回复已发送'));
-      await loadTickets(page, pageSize);
+      await loadTickets(page, pageSize, appliedFilters);
       return true;
     } catch (error) {
       showError(getTicketErrorMessage(error, t, t('回复工单失败')));
@@ -644,7 +708,7 @@ const AdminTicketCenter = () => {
             setDetail(response.data.data || null);
           }
           showSuccess(t('工单已结束'));
-          await loadTickets(page, pageSize);
+          await loadTickets(page, pageSize, appliedFilters);
         } catch (error) {
           showError(getTicketErrorMessage(error, t, t('结束工单失败')));
           throw error;
@@ -747,7 +811,7 @@ const AdminTicketCenter = () => {
         placeholder={t('搜索工单编号、标题、用户或邮箱')}
         style={{ width: isMobile ? '100%' : 280 }}
         onChange={(value) => setKeyword(truncateTicketText(value, 100))}
-        onEnterPress={() => loadTickets(1, pageSize)}
+        onEnterPress={applyFilters}
       />
       <Select
         value={status}
@@ -767,7 +831,7 @@ const AdminTicketCenter = () => {
         onChange={(value) =>
           setUserId(value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 19))
         }
-        onEnterPress={() => loadTickets(1, pageSize)}
+        onEnterPress={applyFilters}
       />
       <div className='flex gap-2'>
         <Button
@@ -775,7 +839,7 @@ const AdminTicketCenter = () => {
           theme='solid'
           icon={<Search size={15} />}
           loading={loading}
-          onClick={() => loadTickets(1, pageSize)}
+          onClick={applyFilters}
         >
           {t('查询')}
         </Button>
@@ -790,11 +854,8 @@ const AdminTicketCenter = () => {
               setKeyword('');
               setStatus(TICKET_STATUS.WAITING_ADMIN);
               setUserId('');
-              loadTickets(1, pageSize, {
-                keyword: '',
-                status: TICKET_STATUS.WAITING_ADMIN,
-                userId: '',
-              });
+              setAppliedFilters(DEFAULT_ADMIN_FILTERS);
+              loadTickets(1, pageSize, DEFAULT_ADMIN_FILTERS);
             }}
           />
         </Tooltip>
@@ -805,7 +866,7 @@ const AdminTicketCenter = () => {
             icononly
             type='tertiary'
             theme='outline'
-            onClick={() => loadTickets(page, pageSize)}
+            onClick={() => loadTickets(page, pageSize, appliedFilters)}
           />
         </Tooltip>
       </div>
@@ -837,8 +898,9 @@ const AdminTicketCenter = () => {
           currentPage: page,
           pageSize,
           total,
-          onPageChange: (nextPage) => loadTickets(nextPage, pageSize),
-          onPageSizeChange: (size) => loadTickets(1, size),
+          onPageChange: (nextPage) =>
+            loadTickets(nextPage, pageSize, appliedFilters),
+          onPageSizeChange: (size) => loadTickets(1, size, appliedFilters),
           isMobile,
           pageSizeOpts: [10, 20, 50],
           t,

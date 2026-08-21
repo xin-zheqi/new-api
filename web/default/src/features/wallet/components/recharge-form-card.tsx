@@ -35,6 +35,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { formatNumber } from '@/lib/format'
+import { getSafeHttpCheckoutUrl } from '@/lib/payment-redirect'
 import { cn } from '@/lib/utils'
 
 import {
@@ -141,6 +142,7 @@ export function RechargeFormCard({
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
   const redemptionEnabled = topupInfo?.enable_redemption !== false
+  const safeTopupLink = getSafeHttpCheckoutUrl(topupLink)
 
   if (loading) {
     return (
@@ -195,17 +197,45 @@ export function RechargeFormCard({
 
   if (redemptionOnly) {
     return (
-      <TitledCard title={t('Redemption Code Recharge')} description={t('Use a redemption code to add quota or activate a subscription.')} icon={<Gift className='h-4 w-4' />} iconTone='warning' disableHoverEffect>
+      <TitledCard
+        title={t('Redemption Code Recharge')}
+        description={t(
+          'Use a redemption code to add quota or activate a subscription.'
+        )}
+        icon={<Gift className='h-4 w-4' />}
+        iconTone='warning'
+        disableHoverEffect
+      >
         {redemptionEnabled ? (
           <div className='space-y-2.5'>
             <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
-              <Input id='redemption-code' value={redemptionCode} onChange={(e) => onRedemptionCodeChange(e.target.value)} placeholder={t('Enter your redemption code')} className='h-9 min-w-0' />
-              <Button onClick={onRedeem} disabled={redeeming} variant='outline' className='h-9 px-4'>
-                {redeeming && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}{t('Redeem')}
+              <Input
+                id='redemption-code'
+                value={redemptionCode}
+                onChange={(e) => onRedemptionCodeChange(e.target.value)}
+                placeholder={t('Enter your redemption code')}
+                className='h-9 min-w-0'
+              />
+              <Button
+                onClick={onRedeem}
+                disabled={redeeming}
+                variant='outline'
+                className='h-9 px-4'
+              >
+                {redeeming && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
+                {t('Redeem')}
               </Button>
             </div>
           </div>
-        ) : <Alert><AlertDescription>{t('Redemption codes are disabled until the administrator confirms compliance terms.')}</AlertDescription></Alert>}
+        ) : (
+          <Alert>
+            <AlertDescription>
+              {t(
+                'Redemption codes are disabled until the administrator confirms compliance terms.'
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
       </TitledCard>
     )
   }
@@ -548,11 +578,11 @@ export function RechargeFormCard({
               {t('Redeem')}
             </Button>
           </div>
-          {topupLink && (
+          {safeTopupLink && (
             <p className='text-muted-foreground text-xs'>
               {t('Need a redemption code?')}{' '}
               <a
-                href={topupLink}
+                href={safeTopupLink}
                 target='_blank'
                 rel='noopener noreferrer'
                 className='inline-flex items-center gap-1 underline-offset-4 hover:underline'

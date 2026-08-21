@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { isSupportedCurrencyCode } from '@/lib/iso-currency'
+
 import { DEFAULT_DISCOUNT_RATE } from '../constants'
 
 // ============================================================================
@@ -59,6 +61,35 @@ export function formatCurrency(amount: number | string): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: Math.abs(numeric) >= 1 ? 2 : 4,
   }).format(numeric)
+}
+
+/** Format a recorded payment without applying the current system exchange rate. */
+export function formatPaymentAmount(
+  amount: number | string,
+  currency: string | null | undefined,
+  locale?: string
+): string {
+  const numeric =
+    typeof amount === 'number' ? amount : Number.parseFloat(String(amount))
+  const normalizedCurrency = currency?.trim().toUpperCase() ?? ''
+  if (
+    !Number.isFinite(numeric) ||
+    !isSupportedCurrencyCode(normalizedCurrency)
+  ) {
+    return '-'
+  }
+
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: normalizedCurrency,
+      currencyDisplay: 'code',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6,
+    }).format(numeric)
+  } catch {
+    return '-'
+  }
 }
 
 /**

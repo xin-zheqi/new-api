@@ -465,6 +465,7 @@ export const STATIC_I18N_KEYS = [
   'Waiting for the user to reply.',
   'This ticket is closed.',
   'This ticket has reached the message limit.',
+  'This ticket has reached the attachment storage limit.',
   'Ticket status changed. Refresh and try again.',
   'Invalid ticket filter.',
   'Enter a valid user ID.',

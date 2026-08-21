@@ -50,6 +50,7 @@ var auditRouteActions = map[string]string{
 	"POST /api/option/payment_compliance":       "option.payment_compliance",
 	"POST /api/option/rest_model_ratio":         "option.reset_ratio",
 	"DELETE /api/option/channel_affinity_cache": "option.clear_affinity_cache",
+	"PUT /api/option/mall":                      "mall.settings_update",
 
 	// 自定义 OAuth（root）
 	"POST /api/custom-oauth-provider/":      "custom_oauth.create",
@@ -91,6 +92,13 @@ var auditRouteActions = map[string]string{
 	"POST /api/subscription/admin/plans":    "subscription.plan_create",
 	"PUT /api/subscription/admin/plans/:id": "subscription.plan_update",
 	"POST /api/subscription/admin/bind":     "subscription.bind",
+
+	// 发票（管理员）
+	"PUT /api/option/invoice":                           "invoice.settings_update",
+	"POST /api/invoice/admin/applications/:id/pdf":      "invoice.pdf_upload",
+	"DELETE /api/invoice/admin/applications/:id/pdf":    "invoice.pdf_delete",
+	"POST /api/invoice/admin/applications/:id/complete": "invoice.complete",
+	"POST /api/invoice/admin/applications/:id/reject":   "invoice.reject",
 
 	// 工单（管理员）
 	"POST /api/ticket/admin/:id/reply": "ticket.reply",

@@ -28,6 +28,9 @@ import {
   renderQuotaWithAmount,
   copy,
   getQuotaPerUnit,
+  openHttpCheckoutUrl,
+  redirectToHttpCheckoutUrl,
+  submitHttpCheckoutForm,
 } from '../../helpers';
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
@@ -39,23 +42,6 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
-
-// Reject non-navigable schemes (e.g. javascript:, data:) and relative URLs.
-// Only http / https are allowed for backend-provided redirect targets.
-// Mirrors isSafeHttpCheckoutUrl in the default frontend's
-// features/wallet/hooks/use-waffo-pancake-payment.ts.
-function isSafeHttpCheckoutUrl(value) {
-  const trimmed = (value || '').trim();
-  if (!trimmed) {
-    return false;
-  }
-  try {
-    const u = new URL(trimmed);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -70,6 +56,8 @@ const TopUp = () => {
     statusState?.status?.min_topup || 1,
   );
   const [topUpLink, setTopUpLink] = useState('');
+  const [mallEnabled, setMallEnabled] = useState(false);
+  const [mallModeKnown, setMallModeKnown] = useState(false);
   const [mallUrl, setMallUrl] = useState('');
   const [enableOnlineTopUp, setEnableOnlineTopUp] = useState(
     statusState?.status?.enable_online_topup || false,
@@ -183,8 +171,7 @@ const TopUp = () => {
           showSuccess(t('兑换成功！'));
           Modal.success({
             title: t('兑换成功！'),
-            content:
-              t('兑换成功，已开通订阅：') + (subscription.title || '-'),
+            content: t('兑换成功，已开通订阅：') + (subscription.title || '-'),
             centered: true,
           });
           await getUserQuota();
@@ -220,7 +207,9 @@ const TopUp = () => {
       showError(t('超级管理员未设置充值链接！'));
       return;
     }
-    window.open(topUpLink, '_blank');
+    if (!openHttpCheckoutUrl(topUpLink)) {
+      showError(t('支付跳转地址不安全'));
+    }
   };
 
   const preTopUp = async (payment) => {
@@ -326,30 +315,16 @@ const TopUp = () => {
         if (message === 'success') {
           if (payWay === 'stripe') {
             // Stripe 支付回调处理
-            window.open(data.pay_link, '_blank');
+            if (!openHttpCheckoutUrl(data.pay_link)) {
+              showError(t('支付跳转地址不安全'));
+              return;
+            }
           } else {
             // 普通支付表单提交
-            let params = data;
-            let url = res.data.url;
-            let form = document.createElement('form');
-            form.action = url;
-            form.method = 'POST';
-            let isSafari =
-              navigator.userAgent.indexOf('Safari') > -1 &&
-              navigator.userAgent.indexOf('Chrome') < 1;
-            if (!isSafari) {
-              form.target = '_blank';
+            if (!submitHttpCheckoutForm(res.data.url, data)) {
+              showError(t('支付跳转地址不安全'));
+              return;
             }
-            for (let key in params) {
-              let input = document.createElement('input');
-              input.type = 'hidden';
-              input.name = key;
-              input.value = params[key];
-              form.appendChild(input);
-            }
-            document.body.appendChild(form);
-            form.submit();
-            document.body.removeChild(form);
           }
         } else {
           const errorMsg =
@@ -429,7 +404,9 @@ const TopUp = () => {
       if (res !== undefined) {
         const { message, data } = res.data;
         if (message === 'success' && data?.payment_url) {
-          window.open(data.payment_url, '_blank');
+          if (!openHttpCheckoutUrl(data.payment_url)) {
+            showError(t('支付跳转地址不安全'));
+          }
         } else {
           showError(data || t('支付请求失败'));
         }
@@ -486,10 +463,9 @@ const TopUp = () => {
         const { message, data } = res.data;
         if (message === 'success') {
           const checkoutUrl = data?.checkout_url || '';
-          if (checkoutUrl && isSafeHttpCheckoutUrl(checkoutUrl)) {
+          if (checkoutUrl && redirectToHttpCheckoutUrl(checkoutUrl)) {
             // In-tab redirect (not window.open) — popup blocker fires after
             // the await loses user-gesture context.
-            window.location.href = checkoutUrl;
           } else if (checkoutUrl) {
             showError(t('支付跳转地址不安全'));
           } else {
@@ -539,7 +515,9 @@ const TopUp = () => {
 
   const processCreemCallback = (data) => {
     // 与 Stripe 保持一致的实现方式
-    window.open(data.checkout_url, '_blank');
+    if (!openHttpCheckoutUrl(data?.checkout_url)) {
+      showError(t('支付跳转地址不安全'));
+    }
   };
 
   const getUserQuota = async () => {
@@ -609,6 +587,7 @@ const TopUp = () => {
 
   // 获取充值配置信息
   const getTopupInfo = async () => {
+    setMallModeKnown(false);
     try {
       const res = await API.get('/api/user/topup/info');
       const { message, data, success } = res.data;
@@ -617,6 +596,9 @@ const TopUp = () => {
           amount_options: data.amount_options || [],
           discount: data.discount || {},
         });
+        setMallEnabled(data.mall_enabled === true);
+        setMallUrl(data.mall_url || '');
+        setMallModeKnown(true);
 
         // 处理支付方式
         let payMethods = data.pay_methods || [];
@@ -695,7 +677,6 @@ const TopUp = () => {
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
           setTopUpLink(data.topup_link || '');
-          setMallUrl(data.mall_url || '');
           setTopupInfo((prev) => ({
             ...prev,
             enable_redemption: data.enable_redemption !== false,
@@ -733,9 +714,15 @@ const TopUp = () => {
           setPresetAmounts(customPresets);
         }
       } else {
+        setMallEnabled(false);
+        setMallModeKnown(false);
+        setMallUrl('');
         showError(data || t('获取充值配置失败'));
       }
     } catch (error) {
+      setMallEnabled(false);
+      setMallModeKnown(false);
+      setMallUrl('');
       showError(t('获取充值配置异常'));
     }
   };
@@ -1033,7 +1020,10 @@ const TopUp = () => {
           reloadSubscriptionSelf={getSubscriptionSelf}
           enableRedemption={topupInfo.enable_redemption !== false}
           walletOnly
+          mallEnabled={mallEnabled}
+          mallModeKnown={mallModeKnown}
           mallUrl={mallUrl}
+          reloadUser={getUserQuota}
         />
         <InvitationCard
           t={t}

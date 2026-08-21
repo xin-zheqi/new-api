@@ -1,7 +1,6 @@
 package model
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -18,7 +17,8 @@ import (
 
 func setupTicketTest(t *testing.T) {
 	t.Helper()
-	require.NoError(t, DB.AutoMigrate(&Ticket{}, &TicketMessage{}, &TicketAttachment{}))
+	require.NoError(t, DB.AutoMigrate(&Option{}, &Ticket{}, &TicketMessage{}, &TicketAttachment{}))
+	require.NoError(t, normalizeTicketActiveSlotIndex())
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&TicketAttachment{}).Error)
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&TicketMessage{}).Error)
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&Ticket{}).Error)
@@ -104,8 +104,70 @@ func TestTicketMessageLimitIsEnforcedBeforeInsert(t *testing.T) {
 	assert.Equal(t, int64(1), count)
 }
 
+func TestTicketAttachmentBudgetIsEnforcedBeforeStateChange(t *testing.T) {
+	setupTicketTest(t)
+	user := createTicketTestUser(t, "ticket-attachment-limit-")
+	admin := createTicketTestUser(t, "ticket-attachment-admin-")
+	ticket, err := CreateTicket(user.Id, "Many screenshots", "Initial message", nil)
+	require.NoError(t, err)
+
+	attachments := make([]TicketAttachment, TicketAttachmentLimit)
+	for index := range attachments {
+		attachments[index] = TicketAttachment{
+			TicketId: ticket.Id, MessageId: 10_000 + index, UploaderId: user.Id,
+			StorageName: fmt.Sprintf("attachment-%d.png", index), FileName: "screenshot.png",
+			MimeType: "image/png", Size: 1, Width: 1, Height: 1,
+		}
+	}
+	require.NoError(t, DB.Create(&attachments).Error)
+
+	_, err = ReplyTicketByAdmin(ticket.Id, admin.Id, "This must not change the ticket state.", &TicketAttachment{Size: 1})
+	require.ErrorIs(t, err, ErrTicketAttachmentLimit)
+	var unchanged Ticket
+	require.NoError(t, DB.First(&unchanged, ticket.Id).Error)
+	assert.Equal(t, TicketStatusWaitingAdmin, unchanged.Status)
+	assert.Equal(t, 1, unchanged.MessageCount)
+	var messageCount int64
+	require.NoError(t, DB.Model(&TicketMessage{}).Where("ticket_id = ?", ticket.Id).Count(&messageCount).Error)
+	assert.Equal(t, int64(1), messageCount)
+
+	byteUser := createTicketTestUser(t, "ticket-attachment-bytes-")
+	byteTicket, err := CreateTicket(byteUser.Id, "Large screenshots", "Initial message", nil)
+	require.NoError(t, err)
+	byteAttachments := make([]TicketAttachment, TicketAttachmentTotalMaxBytes/TicketAttachmentMaxBytes)
+	for index := range byteAttachments {
+		byteAttachments[index] = TicketAttachment{
+			TicketId: byteTicket.Id, MessageId: 20_000 + index, UploaderId: byteUser.Id,
+			StorageName: fmt.Sprintf("attachment-budget-%d.png", index), FileName: "screenshot.png",
+			MimeType: "image/png", Size: TicketAttachmentMaxBytes, Width: 1, Height: 1,
+		}
+	}
+	require.NoError(t, DB.Create(&byteAttachments).Error)
+	_, err = ReplyTicketByAdmin(byteTicket.Id, admin.Id, "This also exceeds the budget.", &TicketAttachment{Size: 1})
+	require.ErrorIs(t, err, ErrTicketAttachmentLimit)
+
+	_, err = ReplyTicketByAdmin(byteTicket.Id, admin.Id, "Text-only replies remain available.", nil)
+	require.NoError(t, err)
+
+	corruptUser := createTicketTestUser(t, "ticket-attachment-corrupt-")
+	corruptTicket, err := CreateTicket(corruptUser.Id, "Corrupt attachment data", "Initial message", nil)
+	require.NoError(t, err)
+	require.NoError(t, DB.Create(&TicketAttachment{
+		TicketId: corruptTicket.Id, MessageId: 30_000, UploaderId: corruptUser.Id,
+		StorageName: "attachment-corrupt.png", FileName: "screenshot.png",
+		MimeType: "image/png", Size: -1, Width: 1, Height: 1,
+	}).Error)
+	_, err = ReplyTicketByAdmin(corruptTicket.Id, admin.Id, "Corrupt totals must fail closed.", &TicketAttachment{Size: 1})
+	require.ErrorIs(t, err, ErrTicketAttachmentLimit)
+}
+
 func TestTicketTextValidationRejectsVisualControlCharacters(t *testing.T) {
-	_, err := NormalizeTicketTitle("safe\u202Egnp.exe")
+	_, err := NormalizeTicketTitle("<script>alert(1)</script>")
+	require.Error(t, err)
+	_, err = NormalizeTicketContent("<img src=x onerror=alert(1)>")
+	require.Error(t, err)
+
+	_, err = NormalizeTicketTitle("safe\u202Egnp.exe")
 	require.Error(t, err)
 	_, err = NormalizeTicketTitle("safe\u200Btitle")
 	require.Error(t, err)
@@ -161,6 +223,83 @@ func TestTicketAdminListFiltersWithoutExposingOtherRows(t *testing.T) {
 	}
 }
 
+func TestNormalizeTicketActiveSlotIndexMigratesLegacyRowsIdempotently(t *testing.T) {
+	originalDB := DB
+	originalMainType := common.MainDatabaseType()
+	t.Cleanup(func() {
+		DB = originalDB
+		common.SetMainDatabaseType(originalMainType)
+		initCol()
+	})
+
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "legacy-tickets.db")), &gorm.Config{})
+	require.NoError(t, err)
+	DB = db
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+	initCol()
+	require.NoError(t, db.AutoMigrate(&Option{}, &Ticket{}))
+	require.False(t, db.Migrator().HasIndex(&Ticket{}, ticketActiveSlotIndexName))
+
+	occupiedSlot := 1
+	legacyTickets := []Ticket{
+		{UserId: 101, Title: "oldest active", Status: TicketStatusWaitingAdmin, MessageCount: 1, LastMessageAt: 100},
+		{UserId: 101, Title: "lower id tie", Status: TicketStatusWaitingUser, MessageCount: 2, LastMessageAt: 200},
+		{UserId: 101, Title: "higher id tie", Status: TicketStatusWaitingAdmin, MessageCount: 3, LastMessageAt: 200},
+		{UserId: 101, Title: "already closed", Status: TicketStatusClosed, ActiveSlot: &occupiedSlot, MessageCount: 4, LastMessageAt: 300, ClosedAt: 77, ClosedBy: 55},
+		{UserId: 202, Title: "other user", Status: TicketStatusWaitingUser, MessageCount: 1, LastMessageAt: 10},
+		{UserId: 303, Title: "existing slot", Status: TicketStatusWaitingAdmin, ActiveSlot: &occupiedSlot, MessageCount: 1, LastMessageAt: 20},
+	}
+	require.NoError(t, db.Create(&legacyTickets).Error)
+
+	// This is the production ordering: AutoMigrate adds columns, normalization
+	// repairs legacy data, and only then is the unique index created.
+	require.NoError(t, db.AutoMigrate(&Ticket{}))
+	require.False(t, db.Migrator().HasIndex(&Ticket{}, ticketActiveSlotIndexName))
+	require.NoError(t, normalizeTicketActiveSlotIndex())
+	require.True(t, db.Migrator().HasIndex(&Ticket{}, ticketActiveSlotIndexName))
+
+	var migrated []Ticket
+	require.NoError(t, db.Order("id ASC").Find(&migrated).Error)
+	require.Len(t, migrated, len(legacyTickets))
+	for index := range migrated {
+		switch index {
+		case 0, 1:
+			assert.Equal(t, TicketStatusClosed, migrated[index].Status)
+			assert.Nil(t, migrated[index].ActiveSlot)
+			assert.Positive(t, migrated[index].ClosedAt)
+			assert.Equal(t, ticketSystemActorId, migrated[index].ClosedBy)
+		case 2, 4, 5:
+			assert.Contains(t, []string{TicketStatusWaitingAdmin, TicketStatusWaitingUser}, migrated[index].Status)
+			require.NotNil(t, migrated[index].ActiveSlot)
+			assert.Equal(t, 1, *migrated[index].ActiveSlot)
+		case 3:
+			assert.Equal(t, TicketStatusClosed, migrated[index].Status)
+			assert.Nil(t, migrated[index].ActiveSlot)
+			assert.Equal(t, int64(77), migrated[index].ClosedAt)
+			assert.Equal(t, 55, migrated[index].ClosedBy)
+		}
+	}
+
+	var migration Option
+	require.NoError(t, db.Where("key = ?", ticketActiveSlotMigrationKey).First(&migration).Error)
+	assert.Equal(t, "completed", migration.Value)
+
+	// A normal restart must neither rewrite audit timestamps nor lose the index.
+	beforeRestart := append([]Ticket(nil), migrated...)
+	require.NoError(t, db.AutoMigrate(&Ticket{}))
+	require.NoError(t, normalizeTicketActiveSlotIndex())
+	require.NoError(t, db.Order("id ASC").Find(&migrated).Error)
+	assert.Equal(t, beforeRestart, migrated)
+	require.True(t, db.Migrator().HasIndex(&Ticket{}, ticketActiveSlotIndexName))
+
+	duplicate := Ticket{UserId: 101, Title: "duplicate after migration", Status: TicketStatusWaitingAdmin, ActiveSlot: &occupiedSlot, MessageCount: 1, LastMessageAt: 400}
+	require.Error(t, db.Create(&duplicate).Error)
+	require.NoError(t, db.Create(&[]Ticket{
+		{UserId: 101, Title: "closed after migration one", Status: TicketStatusClosed, MessageCount: 1, LastMessageAt: 500},
+		{UserId: 101, Title: "closed after migration two", Status: TicketStatusClosed, MessageCount: 1, LastMessageAt: 600},
+	}).Error)
+}
+
 func TestTicketMigrationHasNoForeignKeysAndEnforcesOneActiveSlot(t *testing.T) {
 	originalDB := DB
 	originalMainType := common.MainDatabaseType()
@@ -176,7 +315,8 @@ func TestTicketMigrationHasNoForeignKeysAndEnforcesOneActiveSlot(t *testing.T) {
 	DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	initCol()
-	require.NoError(t, db.AutoMigrate(&User{}, &UserOAuthBinding{}, &Ticket{}, &TicketMessage{}, &TicketAttachment{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &UserOAuthBinding{}, &Option{}, &Ticket{}, &TicketMessage{}, &TicketAttachment{}))
+	require.NoError(t, normalizeTicketActiveSlotIndex())
 
 	for _, table := range []string{"tickets", "ticket_messages", "ticket_attachments"} {
 		var foreignKeys []struct{ Id int }
@@ -268,7 +408,8 @@ func TestConcurrentTicketCreationKeepsSingleActiveTicket(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(8)
-	require.NoError(t, db.AutoMigrate(&User{}, &Ticket{}, &TicketMessage{}, &TicketAttachment{}))
+	require.NoError(t, db.AutoMigrate(&User{}, &Option{}, &Ticket{}, &TicketMessage{}, &TicketAttachment{}))
+	require.NoError(t, normalizeTicketActiveSlotIndex())
 	user := User{Username: "concurrent-user", Password: "password", AffCode: "concurrent-user"}
 	require.NoError(t, db.Create(&user).Error)
 
@@ -294,7 +435,7 @@ func TestConcurrentTicketCreationKeepsSingleActiveTicket(t *testing.T) {
 			successes++
 			continue
 		}
-		assert.True(t, errors.Is(createErr, ErrTicketActiveExists) || strings.Contains(strings.ToLower(createErr.Error()), "locked"), createErr)
+		assert.ErrorIs(t, createErr, ErrTicketActiveExists)
 	}
 	assert.Equal(t, 1, successes)
 	var activeCount int64

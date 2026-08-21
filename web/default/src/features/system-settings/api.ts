@@ -21,6 +21,8 @@ import { api } from '@/lib/api'
 import type {
   ConfirmPaymentComplianceResponse,
   FetchUpstreamRatiosRequest,
+  InvoiceSettingsUpdateRequest,
+  MallSettingsUpdateRequest,
   LogCleanupTask,
   SystemOptionsResponse,
   SystemTaskListResponse,
@@ -37,7 +39,38 @@ export async function getSystemOptions() {
 }
 
 export async function updateSystemOption(request: UpdateOptionRequest) {
-  const res = await api.put<UpdateOptionResponse>('/api/option/', request)
+  const res = await api.put<UpdateOptionResponse>('/api/option/', request, {
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  })
+  if (!res.data.success) {
+    throw new Error(res.data.message || 'Failed to update setting')
+  }
+  return res.data
+}
+
+export async function updateMallSettings(request: MallSettingsUpdateRequest) {
+  const res = await api.put<UpdateOptionResponse>('/api/option/mall', request, {
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  })
+  if (!res.data.success) {
+    throw new Error(res.data.message || 'Failed to update mall settings')
+  }
+  return res.data
+}
+
+export async function updateInvoiceSettings(
+  request: InvoiceSettingsUpdateRequest
+) {
+  const res = await api.put<UpdateOptionResponse>(
+    '/api/option/invoice',
+    request,
+    { skipBusinessError: true, skipErrorHandler: true }
+  )
+  if (!res.data.success) {
+    throw new Error(res.data.message || 'Failed to update invoice settings')
+  }
   return res.data
 }
 

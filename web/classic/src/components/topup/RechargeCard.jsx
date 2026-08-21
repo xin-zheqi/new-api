@@ -44,11 +44,17 @@ import {
   TrendingUp,
   Receipt,
   Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 import { IconGift } from '@douyinfe/semi-icons';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
 import { useActualTheme } from '../../context/Theme';
 import { getCurrencyConfig } from '../../helpers/render';
+import { openHttpCheckoutUrl } from '../../helpers/payment';
+import {
+  canPurchaseBuiltInSubscriptions,
+  isSafeEmbeddedMallUrl,
+} from './mallMode';
 import SubscriptionPlansCard from './SubscriptionPlansCard';
 
 const { Text } = Typography;
@@ -99,7 +105,10 @@ const RechargeCard = ({
   reloadSubscriptionSelf,
   enableRedemption = true,
   walletOnly = false,
+  mallEnabled = false,
+  mallModeKnown = false,
   mallUrl = '',
+  reloadUser,
 }) => {
   const onlineFormApiRef = useRef(null);
   const redeemFormApiRef = useRef(null);
@@ -110,10 +119,31 @@ const RechargeCard = ({
   const shouldShowSubscription =
     !subscriptionLoading && subscriptionPlans.length > 0;
   const regularPayMethods = payMethods || [];
+  const allowBuiltInSubscriptionPurchase = canPurchaseBuiltInSubscriptions(
+    mallModeKnown,
+    mallEnabled,
+  );
+  const showMall =
+    mallModeKnown &&
+    mallEnabled &&
+    isSafeEmbeddedMallUrl(mallUrl, window.location.hostname);
   const mallSandboxPermissions =
-    mallUrl && new URL(mallUrl).origin !== window.location.origin
-      ? 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-storage-access-by-user-activation'
-      : 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts';
+    showMall && new URL(mallUrl).origin === window.location.origin
+      ? 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts'
+      : 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-storage-access-by-user-activation';
+  const mallOpenAction = showMall ? (
+    <Tooltip content={t('在新标签页中打开')}>
+      <Button
+        aria-label={t('在新标签页中打开')}
+        icon={<ExternalLink size={16} />}
+        icononly
+        size='small'
+        type='tertiary'
+        theme='borderless'
+        onClick={() => openHttpCheckoutUrl(mallUrl)}
+      />
+    </Tooltip>
+  ) : null;
 
   useEffect(() => {
     if (initialTabSetRef.current) return;
@@ -128,7 +158,11 @@ const RechargeCard = ({
     }
   }, [shouldShowSubscription, activeTab]);
   const topupContent = (
-    <Space vertical style={{ width: '100%' }} data-wallet-only={walletOnly || undefined}>
+    <Space
+      vertical
+      style={{ width: '100%' }}
+      data-wallet-only={walletOnly || undefined}
+    >
       {/* 统计数据 */}
       <Card
         style={walletOnly ? { display: 'none' } : undefined}
@@ -586,8 +620,8 @@ const RechargeCard = ({
 
       {/* 兑换码充值 */}
       {enableRedemption ? (
-      <Card
-        className='!rounded-xl w-full'
+        <Card
+          className='!rounded-xl w-full'
           title={
             <Text type='tertiary' strong>
               {t('兑换码充值')}
@@ -688,20 +722,63 @@ const RechargeCard = ({
             allSubscriptions={allSubscriptions}
             reloadSubscriptionSelf={reloadSubscriptionSelf}
             withCard={false}
-            mySubscriptionsOnly
+            mySubscriptionsOnly={!allowBuiltInSubscriptionPurchase}
+            userQuota={userState?.user?.quota}
+            onPurchaseSuccess={reloadUser}
           />
+          {showMall ? (
+            <Card
+              className='!rounded-xl'
+              title={t('Card-store mall')}
+              headerExtraContent={mallOpenAction}
+            >
+              <iframe
+                src={mallUrl}
+                title={t('Card-store mall')}
+                className='w-full border-0'
+                style={{ height: 'min(70vh, 720px)' }}
+                sandbox={mallSandboxPermissions}
+                referrerPolicy='no-referrer'
+                allow='payment; storage-access'
+              />
+            </Card>
+          ) : null}
           {topupContent}
         </div>
       ) : shouldShowSubscription ? (
         <Tabs type='card' activeKey={activeTab} onChange={setActiveTab}>
           <TabPane tab={t('订阅套餐')} itemKey='subscription'>
-            <div className='py-2'><SubscriptionPlansCard t={t} loading={subscriptionLoading} plans={subscriptionPlans} payMethods={payMethods} enableOnlineTopUp={enableOnlineTopUp} enableStripeTopUp={enableStripeTopUp} enableCreemTopUp={enableCreemTopUp} billingPreference={billingPreference} onChangeBillingPreference={onChangeBillingPreference} activeSubscriptions={activeSubscriptions} allSubscriptions={allSubscriptions} reloadSubscriptionSelf={reloadSubscriptionSelf} withCard={false} /></div>
+            <div className='py-2'>
+              <SubscriptionPlansCard
+                t={t}
+                loading={subscriptionLoading}
+                plans={subscriptionPlans}
+                payMethods={payMethods}
+                enableOnlineTopUp={enableOnlineTopUp}
+                enableStripeTopUp={enableStripeTopUp}
+                enableCreemTopUp={enableCreemTopUp}
+                billingPreference={billingPreference}
+                onChangeBillingPreference={onChangeBillingPreference}
+                activeSubscriptions={activeSubscriptions}
+                allSubscriptions={allSubscriptions}
+                reloadSubscriptionSelf={reloadSubscriptionSelf}
+                withCard={false}
+              />
+            </div>
           </TabPane>
-          <TabPane tab={t('额度充值')} itemKey='topup'><div className='py-2'>{topupContent}</div></TabPane>
+          <TabPane tab={t('额度充值')} itemKey='topup'>
+            <div className='py-2'>{topupContent}</div>
+          </TabPane>
         </Tabs>
-      ) : topupContent}
-      {mallUrl && (
-        <Card className='!rounded-xl mt-4' title={t('商城')}>
+      ) : (
+        topupContent
+      )}
+      {!walletOnly && showMall ? (
+        <Card
+          className='!rounded-xl mt-4'
+          title={t('商城')}
+          headerExtraContent={mallOpenAction}
+        >
           <iframe
             src={mallUrl}
             title={t('商城')}
@@ -712,7 +789,7 @@ const RechargeCard = ({
             allow='payment; storage-access'
           />
         </Card>
-      )}
+      ) : null}
     </Card>
   );
 };

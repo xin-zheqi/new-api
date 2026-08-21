@@ -1,7 +1,27 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import React, { useEffect, useState } from 'react';
 import { Button, Card, Form, Switch, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess, toBoolean } from '../../../helpers';
+import { getInvoiceErrorMessage } from '../../Invoice/invoice';
 
 const SettingsInvoice = ({ options, refresh }) => {
   const { t } = useTranslation();
@@ -11,6 +31,7 @@ const SettingsInvoice = ({ options, refresh }) => {
     InvoiceLookbackDays: 90,
     InvoiceMonthlyLimit: 1,
   });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setValues({
@@ -25,18 +46,36 @@ const SettingsInvoice = ({ options, refresh }) => {
   }, [options]);
 
   const save = async () => {
+    setSaving(true);
     try {
-      for (const [key, value] of Object.entries(values)) {
-        const response = await API.put('/api/option/', {
-          key,
-          value: String(value),
-        });
-        if (!response.data?.success) throw new Error(response.data?.message);
+      const response = await API.put(
+        '/api/option/invoice',
+        {
+          invoice_enabled: values.InvoiceEnabled,
+          application_day: Number(values.InvoiceApplicationDay),
+          lookback_days: Number(values.InvoiceLookbackDays),
+          monthly_limit: Number(values.InvoiceMonthlyLimit),
+        },
+        { skipErrorHandler: true },
+      );
+      if (!response.data?.success) {
+        showError(
+          getInvoiceErrorMessage(
+            response,
+            t,
+            t('Failed to save invoice settings'),
+          ),
+        );
+        return;
       }
       showSuccess(t('Invoice settings saved'));
       await refresh();
     } catch (error) {
-      showError(error.message || t('Failed to save invoice settings'));
+      showError(
+        getInvoiceErrorMessage(error, t, t('Failed to save invoice settings')),
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -44,7 +83,7 @@ const SettingsInvoice = ({ options, refresh }) => {
     <Card>
       <Typography.Title heading={5}>{t('Invoice settings')}</Typography.Title>
       <Typography.Paragraph type='tertiary'>
-        {t('Configure invoice eligibility and the monthly application window.')}
+        {t('Configure the invoice application window and monthly limits.')}
       </Typography.Paragraph>
       <Form layout='vertical'>
         <div className='mb-4 flex items-center justify-between'>
@@ -92,7 +131,7 @@ const SettingsInvoice = ({ options, refresh }) => {
             setValues((current) => ({ ...current, InvoiceMonthlyLimit: value }))
           }
         />
-        <Button theme='solid' onClick={save}>
+        <Button theme='solid' loading={saving} disabled={saving} onClick={save}>
           {t('Save invoice settings')}
         </Button>
       </Form>

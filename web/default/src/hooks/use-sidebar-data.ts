@@ -55,7 +55,7 @@ export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
   const { status } = useStatus()
   const lotteryEnabled = status?.lottery_enabled !== false
-  const identity = useAuthStore((s) => s.auth.user?.identity)
+  const identity = useAuthStore((state) => state.auth.user?.identity)
   const invoiceEnabled =
     status?.invoice_enabled !== false &&
     (identity === 'university' || identity === 'enterprise')
@@ -195,15 +195,12 @@ export function useSidebarData(): SidebarData {
             url: '/subscriptions',
             icon: CreditCard,
           },
-          ...(status?.invoice_enabled !== false
-            ? [
-                {
-                  title: t('Invoice Center'),
-                  url: '/invoice-center/admin',
-                  icon: FileText,
-                },
-              ]
-            : []),
+          {
+            title: t('Invoice Center'),
+            url: '/invoice-center/admin',
+            icon: FileText,
+            requiredRole: ROLE.ADMIN,
+          },
           {
             title: t('Subscription Management'),
             url: '/subscriptions/users',

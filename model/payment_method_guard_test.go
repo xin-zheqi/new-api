@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -39,14 +40,16 @@ func insertSubscriptionPlanForPaymentGuardTest(t *testing.T, id int) *Subscripti
 func insertSubscriptionOrderForPaymentGuardTest(t *testing.T, tradeNo string, userID int, planID int, paymentProvider string) {
 	t.Helper()
 	order := &SubscriptionOrder{
-		UserId:          userID,
-		PlanId:          planID,
-		Money:           9.99,
-		TradeNo:         tradeNo,
-		PaymentMethod:   paymentProvider,
-		PaymentProvider: paymentProvider,
-		Status:          common.TopUpStatusPending,
-		CreateTime:      time.Now().Unix(),
+		UserId:               userID,
+		PlanId:               planID,
+		Money:                9.99,
+		ExpectedAmountMicros: 9_990_000,
+		ExpectedCurrency:     "USD",
+		TradeNo:              tradeNo,
+		PaymentMethod:        paymentProvider,
+		PaymentProvider:      paymentProvider,
+		Status:               common.TopUpStatusPending,
+		CreateTime:           time.Now().Unix(),
 	}
 	require.NoError(t, order.Insert())
 }
@@ -87,13 +90,44 @@ func getUserQuotaForPaymentGuardTest(t *testing.T, userID int) int {
 	return user.Quota
 }
 
+func TestNormalizePaymentCurrency_RequiresRecognizedISO4217Code(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+		wantErr  bool
+	}{
+		{name: "normalizes valid code", input: " usd ", expected: "USD"},
+		{name: "accepts Chinese yuan", input: "CNY", expected: "CNY"},
+		{name: "rejects unknown alphabetic code", input: "ZZZ", wantErr: true},
+		{name: "rejects another unknown code", input: "ABC", wantErr: true},
+		{name: "rejects no-currency code", input: "XXX", wantErr: true},
+		{name: "rejects test code", input: "XTS", wantErr: true},
+		{name: "rejects malformed code", input: "US1", wantErr: true},
+		{name: "rejects empty code", input: "", wantErr: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			actual, err := NormalizePaymentCurrency(testCase.input)
+			if testCase.wantErr {
+				require.Error(t, err)
+				assert.Empty(t, actual)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, testCase.expected, actual)
+		})
+	}
+}
+
 func TestRechargeWaffoPancake_RejectsMismatchedPaymentMethod(t *testing.T) {
 	truncateTables(t)
 
 	insertUserForPaymentGuardTest(t, 101, 0)
 	insertTopUpForPaymentGuardTest(t, "waffo-pancake-guard", 101, PaymentProviderStripe)
 
-	err := RechargeWaffoPancake("waffo-pancake-guard")
+	err := RechargeWaffoPancake("waffo-pancake-guard", "USD")
 	require.Error(t, err)
 
 	topUp := GetTopUpByTradeNo("waffo-pancake-guard")
@@ -139,6 +173,190 @@ func TestUpdatePendingTopUpStatus_RejectsMismatchedPaymentProvider(t *testing.T)
 	}
 }
 
+func TestTopUpCurrencyAndTerminalUpdatesAreStable(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 175, 0)
+
+	topUp := &TopUp{
+		UserId: 175, Amount: 2, Money: 2, TradeNo: "stripe-terminal-idempotency",
+		PaymentMethod: PaymentMethodStripe, PaymentProvider: PaymentProviderStripe,
+		Currency: " usd ", Status: common.TopUpStatusPending, CreateTime: time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+	assert.Equal(t, TopUpSourceRecharge, topUp.Source)
+	assert.Equal(t, "USD", topUp.Currency)
+
+	require.NoError(t, UpdatePendingTopUpStatus(topUp.TradeNo, PaymentProviderStripe, common.TopUpStatusFailed))
+	require.NoError(t, UpdatePendingTopUpStatus(topUp.TradeNo, PaymentProviderStripe, common.TopUpStatusFailed))
+	assert.Equal(t, common.TopUpStatusFailed, getTopUpStatusForPaymentGuardTest(t, topUp.TradeNo))
+}
+
+func TestStripeRechargeCallbackIsIdempotentAndPersistsCurrency(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 176, 0)
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+
+	topUp := &TopUp{
+		UserId: 176, Amount: 2, Money: 2, TradeNo: "stripe-recharge-idempotency",
+		PaymentMethod: PaymentMethodStripe, PaymentProvider: PaymentProviderStripe,
+		Status: common.TopUpStatusPending, CreateTime: time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+	require.NoError(t, Recharge(topUp.TradeNo, "cus_verified", "127.0.0.1", "usd"))
+	require.NoError(t, Recharge(topUp.TradeNo, "cus_verified", "127.0.0.1", "USD"))
+
+	var stored TopUp
+	require.NoError(t, DB.Where("trade_no = ?", topUp.TradeNo).First(&stored).Error)
+	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
+	assert.Equal(t, TopUpSourceRecharge, stored.Source)
+	assert.Equal(t, "USD", stored.Currency)
+	assert.Equal(t, 200, getUserQuotaForPaymentGuardTest(t, 176))
+	var logCount int64
+	require.NoError(t, LOG_DB.Model(&Log{}).Where("user_id = ? AND type = ?", 176, LogTypeTopup).Count(&logCount).Error)
+	assert.Equal(t, int64(1), logCount)
+}
+
+func TestRechargeEpayValidatesAmountAndIsIdempotent(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 177, 25)
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+
+	topUp := &TopUp{
+		UserId: 177, Amount: 2, Money: 9.99, TradeNo: "epay-recharge-idempotency",
+		PaymentMethod: "alipay", PaymentProvider: PaymentProviderEpay,
+		Currency: "CNY", Status: common.TopUpStatusPending, CreateTime: time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+
+	err := RechargeEpay(topUp.TradeNo, "wechat", "9.98", "127.0.0.1")
+	require.ErrorIs(t, err, ErrTopUpPaymentMismatch)
+	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, topUp.TradeNo))
+	assert.Equal(t, 25, getUserQuotaForPaymentGuardTest(t, topUp.UserId))
+
+	require.NoError(t, RechargeEpay(topUp.TradeNo, "wechat", "9.990000", "127.0.0.1"))
+	require.NoError(t, RechargeEpay(topUp.TradeNo, "alipay", "9.99", "127.0.0.1"))
+
+	var stored TopUp
+	require.NoError(t, DB.Where("trade_no = ?", topUp.TradeNo).First(&stored).Error)
+	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
+	assert.Equal(t, "wechat", stored.PaymentMethod)
+	assert.Equal(t, "CNY", stored.Currency)
+	assert.Positive(t, stored.CompleteTime)
+	assert.Equal(t, 225, getUserQuotaForPaymentGuardTest(t, topUp.UserId))
+
+	var logCount int64
+	require.NoError(t, LOG_DB.Model(&Log{}).Where("user_id = ? AND type = ?", topUp.UserId, LogTypeTopup).Count(&logCount).Error)
+	assert.Equal(t, int64(1), logCount)
+}
+
+func TestRechargeEpayRollsBackOrderWhenUserCreditFails(t *testing.T) {
+	truncateTables(t)
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+
+	topUp := &TopUp{
+		UserId: 999, Amount: 4, Money: 4.50, TradeNo: "epay-recharge-rollback",
+		PaymentMethod: "alipay", PaymentProvider: PaymentProviderEpay,
+		Currency: "CNY", Status: common.TopUpStatusPending, CreateTime: time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+	require.Error(t, RechargeEpay(topUp.TradeNo, "wechat", "4.50", "127.0.0.1"))
+
+	var stored TopUp
+	require.NoError(t, DB.Where("trade_no = ?", topUp.TradeNo).First(&stored).Error)
+	assert.Equal(t, common.TopUpStatusPending, stored.Status)
+	assert.Equal(t, "alipay", stored.PaymentMethod)
+	assert.Zero(t, stored.CompleteTime)
+
+	var logCount int64
+	require.NoError(t, LOG_DB.Model(&Log{}).Where("user_id = ? AND type = ?", topUp.UserId, LogTypeTopup).Count(&logCount).Error)
+	assert.Zero(t, logCount)
+}
+
+func TestRechargeCompletionRollsBackWhenUserDoesNotExist(t *testing.T) {
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+
+	testCases := []struct {
+		name            string
+		paymentProvider string
+		complete        func(tradeNo string) error
+	}{
+		{
+			name:            "stripe",
+			paymentProvider: PaymentProviderStripe,
+			complete: func(tradeNo string) error {
+				return Recharge(tradeNo, "cus_missing", "127.0.0.1", "USD")
+			},
+		},
+		{
+			name:            "creem",
+			paymentProvider: PaymentProviderCreem,
+			complete: func(tradeNo string) error {
+				return RechargeCreem(tradeNo, "", "", "127.0.0.1", "USD")
+			},
+		},
+		{
+			name:            "waffo",
+			paymentProvider: PaymentProviderWaffo,
+			complete: func(tradeNo string) error {
+				return RechargeWaffo(tradeNo, "127.0.0.1")
+			},
+		},
+		{
+			name:            "waffo pancake",
+			paymentProvider: PaymentProviderWaffoPancake,
+			complete: func(tradeNo string) error {
+				return RechargeWaffoPancake(tradeNo, "USD")
+			},
+		},
+		{
+			name:            "manual completion",
+			paymentProvider: PaymentProviderStripe,
+			complete: func(tradeNo string) error {
+				return ManualCompleteTopUp(tradeNo, "127.0.0.1")
+			},
+		},
+	}
+
+	for index, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			truncateTables(t)
+			tradeNo := fmt.Sprintf("missing-user-%d", index)
+			topUp := &TopUp{
+				UserId:          9000 + index,
+				Amount:          2,
+				Money:           2,
+				TradeNo:         tradeNo,
+				PaymentMethod:   testCase.paymentProvider,
+				PaymentProvider: testCase.paymentProvider,
+				Status:          common.TopUpStatusPending,
+				CreateTime:      time.Now().Unix(),
+			}
+			require.NoError(t, topUp.Insert())
+
+			require.Error(t, testCase.complete(tradeNo))
+
+			var stored TopUp
+			require.NoError(t, DB.Where("trade_no = ?", tradeNo).First(&stored).Error)
+			assert.Equal(t, common.TopUpStatusPending, stored.Status)
+			assert.Zero(t, stored.CompleteTime)
+
+			var logCount int64
+			require.NoError(t, LOG_DB.Model(&Log{}).
+				Where("user_id = ? AND type = ?", topUp.UserId, LogTypeTopup).
+				Count(&logCount).Error)
+			assert.Zero(t, logCount)
+		})
+	}
+}
+
 func TestCompleteSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T) {
 	truncateTables(t)
 
@@ -146,7 +364,10 @@ func TestCompleteSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T
 	plan := insertSubscriptionPlanForPaymentGuardTest(t, 301)
 	insertSubscriptionOrderForPaymentGuardTest(t, "sub-guard-order", 202, plan.Id, PaymentProviderStripe)
 
-	err := CompleteSubscriptionOrder("sub-guard-order", `{"provider":"epay"}`, PaymentProviderEpay, "alipay")
+	err := CompleteSubscriptionOrder(
+		"sub-guard-order", `{"provider":"epay"}`, PaymentProviderEpay, "alipay",
+		SubscriptionPaymentSnapshot{AmountMicros: 9_990_000, Currency: "USD"},
+	)
 	require.ErrorIs(t, err, ErrPaymentMethodMismatch)
 
 	order := GetSubscriptionOrderByTradeNo("sub-guard-order")

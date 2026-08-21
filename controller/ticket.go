@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	ticketImageMaxBytes     int64 = 5 * 1024 * 1024
+	ticketImageMaxBytes     int64 = model.TicketAttachmentMaxBytes
 	ticketRequestMaxBytes   int64 = 6 * 1024 * 1024
 	ticketMultipartMemory   int64 = 512 * 1024
 	ticketImageMaxDimension       = 8192
@@ -367,6 +367,8 @@ func writeTicketModelError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "ticket_closed", "message": "ticket is already closed"})
 	case errors.Is(err, model.ErrTicketMessageLimit):
 		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "ticket_message_limit", "message": "ticket has reached the 100 message limit"})
+	case errors.Is(err, model.ErrTicketAttachmentLimit):
+		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "ticket_attachment_limit", "message": "ticket attachment storage limit reached"})
 	case errors.Is(err, model.ErrTicketStateChanged):
 		c.JSON(http.StatusConflict, gin.H{"success": false, "code": "ticket_state_changed", "message": "ticket state changed; refresh and try again"})
 	case errors.Is(err, model.ErrInvalidTicketStatus), errors.Is(err, model.ErrInvalidTicketSearch):

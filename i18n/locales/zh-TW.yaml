@@ -124,6 +124,7 @@ subscription.quota_negative: "總額度不能為負數"
 subscription.group_not_exists: "升級分組不存在"
 subscription.reset_cycle_gt_zero: "自訂重置週期需大於0秒"
 subscription.purchase_max: "已達到該訂閱方案購買上限"
+subscription.mall_mode_enabled: "卡網商城已啟用，請透過商城購買訂閱"
 subscription.invalid_id: "無效的訂閱ID"
 subscription.invalid_user_id: "無效的使用者ID"
 

@@ -25,7 +25,7 @@ import {
   REDEMPTION_VALIDATION,
   getRedemptionFormErrorMessages,
 } from '../constants'
-import { type RedemptionFormData, type Redemption } from '../types'
+import type { RedemptionFormData, Redemption } from '../types'
 
 // ============================================================================
 // Form Schema (use getRedemptionFormSchema(t) in components for i18n messages)
@@ -42,7 +42,6 @@ export function getRedemptionFormSchema(t: TFunction) {
       redeem_type: z.enum(['quota', 'subscription']),
       quota_dollars: z.number().min(0),
       subscription_plan_id: z.number().optional(),
-      invoice_eligible: z.boolean(),
       expired_time: z.date().optional(),
       count: z
         .number()
@@ -78,7 +77,6 @@ export type RedemptionFormValues = {
   redeem_type: 'quota' | 'subscription'
   quota_dollars: number
   subscription_plan_id?: number
-  invoice_eligible: boolean
   expired_time?: Date
   count?: number
 }
@@ -92,7 +90,6 @@ export const REDEMPTION_FORM_DEFAULT_VALUES: RedemptionFormValues = {
   redeem_type: 'quota',
   quota_dollars: 10,
   subscription_plan_id: undefined,
-  invoice_eligible: false,
   expired_time: undefined,
   count: 1,
 }
@@ -113,7 +110,7 @@ export function transformFormDataToPayload(
     quota: isSubscription ? 0 : parseQuotaFromDollars(data.quota_dollars),
     redeem_type: data.redeem_type,
     subscription_plan_id: isSubscription ? data.subscription_plan_id || 0 : 0,
-    invoice_eligible: isSubscription && data.invoice_eligible,
+    invoice_eligible: false,
     expired_time: data.expired_time
       ? Math.floor(data.expired_time.getTime() / 1000)
       : 0,
@@ -137,7 +134,6 @@ export function transformRedemptionToFormDefaults(
       redemption.subscription_plan_id > 0
         ? redemption.subscription_plan_id
         : undefined,
-    invoice_eligible: redemption.invoice_eligible,
     expired_time:
       redemption.expired_time > 0
         ? new Date(redemption.expired_time * 1000)

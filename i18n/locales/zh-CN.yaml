@@ -129,6 +129,7 @@ subscription.quota_negative: "总额度不能为负数"
 subscription.group_not_exists: "升级分组不存在"
 subscription.reset_cycle_gt_zero: "自定义重置周期需大于0秒"
 subscription.purchase_max: "已达到该套餐购买上限"
+subscription.mall_mode_enabled: "卡网商城已启用，请通过商城购买订阅"
 subscription.invalid_id: "无效的订阅ID"
 subscription.invalid_user_id: "无效的用户ID"
 

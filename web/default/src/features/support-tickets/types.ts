@@ -25,6 +25,7 @@ export type TicketErrorCode =
   | 'ticket_waiting_user'
   | 'ticket_closed'
   | 'ticket_message_limit'
+  | 'ticket_attachment_limit'
   | 'ticket_state_changed'
   | 'ticket_invalid_filter'
   | 'ticket_user_id_invalid'

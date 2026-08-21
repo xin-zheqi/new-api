@@ -335,12 +335,12 @@ const EditUserModal = (props) => {
                     <Col span={24}>
                       <Form.Select
                         field='identity'
-                        label={t('Identity')}
+                        label={t('用户身份')}
                         optionList={[
-                          { value: 'personal', label: t('Personal') },
-                          { value: 'student', label: t('Student') },
-                          { value: 'university', label: t('University') },
-                          { value: 'enterprise', label: t('Enterprise') },
+                          { value: 'personal', label: t('个人') },
+                          { value: 'student', label: t('学生') },
+                          { value: 'university', label: t('高校') },
+                          { value: 'enterprise', label: t('企业') },
                         ]}
                       />
                     </Col>

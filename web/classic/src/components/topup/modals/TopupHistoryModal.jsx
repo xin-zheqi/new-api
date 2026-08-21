@@ -37,7 +37,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { Coins } from 'lucide-react';
 import { IconSearch } from '@douyinfe/semi-icons';
-import { API, timestamp2string } from '../../../helpers';
+import { API, formatPaymentAmount, timestamp2string } from '../../../helpers';
 import { isAdmin, isRoot } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 const { Text } = Typography;
@@ -288,7 +288,12 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   const isSubscriptionTopup = (record) => {
     const tradeNo = (record?.trade_no || '').toLowerCase();
-    return Number(record?.amount || 0) === 0 && tradeNo.startsWith('sub');
+    return (
+      record?.source === 'subscription' ||
+      (!record?.source &&
+        Number(record?.amount || 0) === 0 &&
+        tradeNo.startsWith('sub'))
+    );
   };
 
   // 检查是否为管理员
@@ -343,7 +348,11 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         title: t('支付金额'),
         dataIndex: 'money',
         key: 'money',
-        render: (money) => <Text type='danger'>¥{money.toFixed(2)}</Text>,
+        render: (money, record) => (
+          <Text type='danger'>
+            {formatPaymentAmount(money, record.currency)}
+          </Text>
+        ),
       },
       {
         title: t('状态'),
@@ -363,14 +372,14 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
           if (record.status === 'pending') {
             actions.push(
               <Button
-                key="complete"
+                key='complete'
                 size='small'
                 type='primary'
                 theme='outline'
                 onClick={() => confirmAdminComplete(record.trade_no)}
               >
                 {t('补单')}
-              </Button>
+              </Button>,
             );
           }
           return actions.length > 0 ? <>{actions}</> : null;
@@ -448,7 +457,9 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
           size='small'
           empty={
             <Empty
-              image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
+              image={
+                <IllustrationNoResult style={{ width: 150, height: 150 }} />
+              }
               darkModeImage={
                 <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
               }

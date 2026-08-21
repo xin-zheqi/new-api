@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,13 +22,16 @@ type SubscriptionCreemPayRequest struct {
 }
 
 func SubscriptionRequestCreemPay(c *gin.Context) {
+	if rejectSubscriptionPurchaseWhenMallEnabled(c) {
+		return
+	}
 	if !requirePaymentCompliance(c) {
 		return
 	}
 
 	var req SubscriptionCreemPayRequest
 
-	// Keep body for debugging consistency (like RequestCreemPay)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 订阅支付请求读取失败 error=%q", err.Error()))
@@ -84,43 +88,50 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 
 	reference := "sub-creem-ref-" + randstr.String(6)
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference+time.Now().String()+user.Username))
+	currency := operation_setting.QuotaDisplayTypeUSD
+	if operation_setting.GetGeneralSetting().QuotaDisplayType == operation_setting.QuotaDisplayTypeCNY {
+		currency = operation_setting.QuotaDisplayTypeCNY
+	}
+	expectedPayment, err := model.NewSubscriptionPaymentFromMajorUnits(fmt.Sprintf("%.2f", plan.PriceAmount), currency)
+	if err != nil {
+		common.ApiErrorMsg(c, "套餐金额配置错误")
+		return
+	}
 
 	// create pending order first
 	order := &model.SubscriptionOrder{
-		UserId:          userId,
-		PlanId:          plan.Id,
-		Money:           plan.PriceAmount,
-		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodCreem,
-		PaymentProvider: model.PaymentProviderCreem,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+		UserId:               userId,
+		PlanId:               plan.Id,
+		Money:                plan.PriceAmount,
+		TradeNo:              referenceId,
+		PaymentMethod:        model.PaymentMethodCreem,
+		PaymentProvider:      model.PaymentProviderCreem,
+		ExpectedAmountMicros: expectedPayment.AmountMicros,
+		ExpectedCurrency:     expectedPayment.Currency,
+		CreateTime:           time.Now().Unix(),
+		Status:               common.TopUpStatusPending,
 	}
-	if err := order.Insert(); err != nil {
+	if err := model.CreatePendingSubscriptionOrder(order, plan); err != nil {
+		if errors.Is(err, model.ErrSubscriptionPurchaseLimit) {
+			common.ApiErrorMsg(c, "已达到该套餐购买上限")
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
 
 	// Reuse Creem checkout generator by building a lightweight product reference.
-	currency := "USD"
-	switch operation_setting.GetGeneralSetting().QuotaDisplayType {
-	case operation_setting.QuotaDisplayTypeCNY:
-		currency = "CNY"
-	case operation_setting.QuotaDisplayTypeUSD:
-		currency = "USD"
-	default:
-		currency = "USD"
-	}
 	product := &CreemProduct{
 		ProductId: plan.CreemProductId,
 		Name:      plan.Title,
 		Price:     plan.PriceAmount,
-		Currency:  currency,
+		Currency:  expectedPayment.Currency,
 		Quota:     0,
 	}
 
 	checkoutUrl, err := genCreemLink(c.Request.Context(), referenceId, product, user.Email, user.Username)
 	if err != nil {
+		_ = model.ExpireSubscriptionOrder(referenceId, model.PaymentProviderCreem)
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 订阅支付链接创建失败 trade_no=%s product_id=%s error=%q", referenceId, product.ProductId, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return

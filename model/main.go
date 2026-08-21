@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var commonGroupCol string
@@ -316,10 +318,22 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := normalizeTicketActiveSlotIndex(); err != nil {
+		return err
+	}
+	if err := dropInvoiceApplicationUserConstraint(); err != nil {
+		return err
+	}
 	if err := normalizeInvoiceApplicationIndex(); err != nil {
 		return err
 	}
-	if err := migrateLegacyIdentityAndInvoiceData(); err != nil {
+	if err := normalizeInvoiceApplicationItemIndex(); err != nil {
+		return err
+	}
+	if err := migrateInvoicePaymentSnapshots(); err != nil {
+		return err
+	}
+	if err := migrateTopUpSources(); err != nil {
 		return err
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
@@ -414,10 +428,22 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := normalizeTicketActiveSlotIndex(); err != nil {
+		return err
+	}
+	if err := dropInvoiceApplicationUserConstraint(); err != nil {
+		return err
+	}
 	if err := normalizeInvoiceApplicationIndex(); err != nil {
 		return err
 	}
-	if err := migrateLegacyIdentityAndInvoiceData(); err != nil {
+	if err := normalizeInvoiceApplicationItemIndex(); err != nil {
+		return err
+	}
+	if err := migrateInvoicePaymentSnapshots(); err != nil {
+		return err
+	}
+	if err := migrateTopUpSources(); err != nil {
 		return err
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
@@ -436,56 +462,342 @@ func migrateDBFast() error {
 	return nil
 }
 
-// normalizeInvoiceApplicationIndex removes the original unique monthly index.
-// Monthly request limits are configurable, so the database must not enforce a
-// fixed one-application-per-month rule.
-func normalizeInvoiceApplicationIndex() error {
+const invoiceApplicationIndexMigrationKey = "InvoiceApplicationIndexMigrationV1"
+
+// Invoice applications are financial records and remain available after an
+// account is hard-deleted. Older schemas created a user foreign key that made
+// account deletion fail, so remove it before applying invoice index migrations.
+func dropInvoiceApplicationUserConstraint() error {
 	migrator := DB.Migrator()
-	if migrator.HasIndex(&InvoiceApplication{}, "idx_user_invoice_month") {
-		if err := migrator.DropIndex(&InvoiceApplication{}, "idx_user_invoice_month"); err != nil {
-			return err
-		}
+	const constraintName = "fk_invoice_applications_user"
+	if !migrator.HasConstraint(&InvoiceApplication{}, constraintName) {
+		return nil
 	}
-	return migrator.CreateIndex(&InvoiceApplication{}, "idx_user_invoice_month")
+	return migrator.DropConstraint(&InvoiceApplication{}, constraintName)
 }
 
-const legacyIdentityInvoiceMigrationKey = "LegacyIdentityInvoiceMigrationV1"
-
-// migrateLegacyIdentityAndInvoiceData keeps upgrades from the pre-invoice schema
-// deterministic: existing accounts and subscription instances cannot gain
-// invoice eligibility from this release. New records use the normal rules.
-func migrateLegacyIdentityAndInvoiceData() error {
+// normalizeInvoiceApplicationIndex removes the original unique monthly index
+// once. Rebuilding it on every startup causes avoidable schema locks.
+func normalizeInvoiceApplicationIndex() error {
 	var migration Option
-	err := DB.Where("key = ?", legacyIdentityInvoiceMigrationKey).First(&migration).Error
+	err := DB.Where(&Option{Key: invoiceApplicationIndexMigrationKey}).First(&migration).Error
 	if err == nil && migration.Value == "completed" {
 		return nil
 	}
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
+	migrator := DB.Migrator()
+	if migrator.HasIndex(&InvoiceApplication{}, "idx_user_invoice_month") {
+		if err := migrator.DropIndex(&InvoiceApplication{}, "idx_user_invoice_month"); err != nil {
+			return err
+		}
+	}
+	if err := migrator.CreateIndex(&InvoiceApplication{}, "idx_user_invoice_month"); err != nil {
+		return err
+	}
+	return DB.Save(&Option{Key: invoiceApplicationIndexMigrationKey, Value: "completed"}).Error
+}
 
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		updates := map[string]interface{}{
-			"identity":               UserIdentityPersonal,
-			"identity_requested":     "",
-			"identity_review_status": "",
-		}
-		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Model(&User{}).Updates(updates).Error; err != nil {
+const invoiceItemActiveSlotMigrationKey = "InvoiceItemActiveSlotMigrationV2"
+
+func normalizeInvoiceApplicationItemIndex() error {
+	migrator := DB.Migrator()
+	if migrator.HasIndex(&InvoiceApplicationItem{}, "idx_invoice_subscription") {
+		if err := migrator.DropIndex(&InvoiceApplicationItem{}, "idx_invoice_subscription"); err != nil {
 			return err
 		}
-		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Model(&UserSubscription{}).Update("invoice_eligible", false).Error; err != nil {
+	}
+	if err := DB.Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&Option{Key: invoiceItemActiveSlotMigrationKey, Value: "pending"}).Error; err != nil {
+		return err
+	}
+
+	migrated := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		// Only a pending marker can be claimed. A concurrent transaction waits
+		// for this row and then observes running/completed, so it exits without
+		// repeating the data rewrite.
+		claim := tx.Model(&Option{}).
+			Where(commonKeyCol+" = ? AND value = ?", invoiceItemActiveSlotMigrationKey, "pending").
+			Update("value", "running")
+		if claim.Error != nil {
+			return claim.Error
+		}
+		if claim.RowsAffected == 0 {
+			return nil
+		}
+
+		type activeItem struct {
+			Id                 int
+			UserSubscriptionId int
+		}
+		var activeItems []activeItem
+		if err := tx.Table("invoice_application_items AS iai").
+			Select("iai.id, iai.user_subscription_id").
+			Joins("JOIN invoice_applications ia ON ia.id = iai.invoice_application_id").
+			Where("ia.status IN ?", []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).
+			Order("iai.user_subscription_id ASC, ia.created_at DESC, ia.id DESC, iai.id DESC").
+			Find(&activeItems).Error; err != nil {
 			return err
 		}
-		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Model(&Redemption{}).Update("invoice_eligible", false).Error; err != nil {
+
+		// Clear every slot first. Rejected applications must never block a new
+		// request, and this also makes duplicate legacy rows safe to repair.
+		if err := tx.Model(&InvoiceApplicationItem{}).
+			Where("active_slot IS NOT NULL").UpdateColumn("active_slot", nil).Error; err != nil {
 			return err
 		}
-		return tx.Save(&Option{Key: legacyIdentityInvoiceMigrationKey, Value: "completed"}).Error
+		winnerIds := make([]int, 0, len(activeItems))
+		seenSubscriptions := make(map[int]struct{}, len(activeItems))
+		for _, item := range activeItems {
+			if _, exists := seenSubscriptions[item.UserSubscriptionId]; exists {
+				continue
+			}
+			seenSubscriptions[item.UserSubscriptionId] = struct{}{}
+			winnerIds = append(winnerIds, item.Id)
+		}
+		for start := 0; start < len(winnerIds); start += ticketMigrationBatchSize {
+			end := min(start+ticketMigrationBatchSize, len(winnerIds))
+			if err := tx.Model(&InvoiceApplicationItem{}).
+				Where("id IN ?", winnerIds[start:end]).UpdateColumn("active_slot", 1).Error; err != nil {
+				return err
+			}
+		}
+
+		complete := tx.Model(&Option{}).
+			Where(commonKeyCol+" = ? AND value = ?", invoiceItemActiveSlotMigrationKey, "running").
+			Update("value", "completed")
+		if complete.Error != nil {
+			return complete.Error
+		}
+		if complete.RowsAffected != 1 {
+			return errors.New("invoice item active-slot migration lost its database lock")
+		}
+		migrated = true
+		return nil
 	})
 	if err != nil {
 		return err
 	}
-	common.SysLog("legacy identity and invoice data migration completed")
+
+	migrator = DB.Migrator()
+	if !migrator.HasIndex(&invoiceApplicationItemIndex{}, "idx_invoice_subscription_active") {
+		if err := migrator.CreateIndex(&invoiceApplicationItemIndex{}, "idx_invoice_subscription_active"); err != nil {
+			// A failed index build must be retried after the data is normalized.
+			_ = DB.Model(&Option{}).Where(commonKeyCol+" = ?", invoiceItemActiveSlotMigrationKey).Update("value", "pending").Error
+			return err
+		}
+	}
+	if migrated {
+		common.SysLog("invoice application item active-slot migration completed")
+	}
 	return nil
+}
+
+const invoicePaymentSnapshotMigrationKey = "InvoicePaymentSnapshotMigrationV1"
+
+// migrateInvoicePaymentSnapshots deliberately does not infer money from quota
+// or loosely match old subscriptions to orders. Existing subscriptions cannot
+// be proven to have a specific paid amount, and pending applications created
+// from the old quota-based amount must be resubmitted from a verified purchase.
+func migrateInvoicePaymentSnapshots() error {
+	if err := DB.Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&Option{Key: invoicePaymentSnapshotMigrationKey, Value: "pending"}).Error; err != nil {
+		return err
+	}
+
+	migrated := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		// The conditional write is the cross-process migration lock. A second
+		// node waits for this transaction and then observes the completed value.
+		claim := tx.Model(&Option{}).
+			Where(commonKeyCol+" = ? AND value = ?", invoicePaymentSnapshotMigrationKey, "pending").
+			Update("value", "running")
+		if claim.Error != nil {
+			return claim.Error
+		}
+		if claim.RowsAffected == 0 {
+			return nil
+		}
+
+		// Bound destructive normalization to rows that existed when this node
+		// acquired the migration lock. New paid snapshots remain untouched.
+		var maxOrderId, maxSubscriptionId, maxRedemptionId, maxApplicationId, maxItemId int
+		for _, boundary := range []struct {
+			model interface{}
+			value *int
+		}{
+			{model: &SubscriptionOrder{}, value: &maxOrderId},
+			{model: &UserSubscription{}, value: &maxSubscriptionId},
+			{model: &Redemption{}, value: &maxRedemptionId},
+			{model: &InvoiceApplication{}, value: &maxApplicationId},
+			{model: &InvoiceApplicationItem{}, value: &maxItemId},
+		} {
+			if err := tx.Model(boundary.model).Select("COALESCE(MAX(id), 0)").Scan(boundary.value).Error; err != nil {
+				return err
+			}
+		}
+
+		var pendingOrders []SubscriptionOrder
+		if err := tx.Select("id", "plan_id", "money", "payment_provider").
+			Where("id <= ? AND status = ? AND expected_amount_micros = 0", maxOrderId, common.TopUpStatusPending).
+			Find(&pendingOrders).Error; err != nil {
+			return err
+		}
+		stripePlanCurrencies := make(map[int]string)
+		for _, order := range pendingOrders {
+			currency := ""
+			switch order.PaymentProvider {
+			case PaymentProviderEpay:
+				currency = "CNY"
+			case PaymentProviderStripe:
+				planCurrency, ok := stripePlanCurrencies[order.PlanId]
+				if !ok {
+					if err := tx.Model(&SubscriptionPlan{}).Select("currency").Where("id = ?", order.PlanId).Scan(&planCurrency).Error; err != nil {
+						return err
+					}
+					stripePlanCurrencies[order.PlanId] = planCurrency
+				}
+				normalizedCurrency, err := normalizeSubscriptionPaymentCurrency(planCurrency)
+				if err != nil {
+					continue
+				}
+				currency = normalizedCurrency
+			case PaymentProviderWaffoPancake:
+				currency = "USD"
+			case PaymentProviderCreem:
+				// Legacy Creem checkouts selected USD/CNY from the display
+				// setting, which may have changed since checkout creation.
+			default:
+				continue
+			}
+			parseCurrency := currency
+			if parseCurrency == "" {
+				parseCurrency = "USD"
+			}
+			// Match the two-decimal amount used when these legacy checkouts were
+			// created; decimal re-rounding can differ for values such as 1.005.
+			snapshot, err := NewSubscriptionPaymentFromMajorUnits(strconv.FormatFloat(order.Money, 'f', 2, 64), parseCurrency)
+			if err != nil {
+				continue
+			}
+			if err := tx.Model(&SubscriptionOrder{}).Where("id = ? AND expected_amount_micros = 0", order.Id).
+				Updates(map[string]interface{}{
+					"expected_amount_micros": snapshot.AmountMicros,
+					"expected_currency":      currency,
+				}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Model(&UserSubscription{}).
+			Where("id <= ?", maxSubscriptionId).
+			Where("invoice_eligible = ? OR invoice_eligible IS NULL OR paid_amount_micros <> ? OR paid_amount_micros IS NULL OR paid_currency <> ? OR paid_currency IS NULL", true, int64(0), "").
+			Updates(map[string]interface{}{
+				"invoice_eligible":   false,
+				"paid_amount_micros": int64(0),
+				"paid_currency":      "",
+			}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&Redemption{}).
+			Where("id <= ?", maxRedemptionId).
+			Where("invoice_eligible = ? OR invoice_eligible IS NULL", true).
+			Update("invoice_eligible", false).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&InvoiceApplication{}).
+			Where("id <= ?", maxApplicationId).
+			Where("total_amount_micros <> ? OR total_amount_micros IS NULL OR currency <> ? OR currency IS NULL", int64(0), "").
+			Updates(map[string]interface{}{
+				"total_amount_micros": int64(0),
+				"currency":            "",
+			}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&InvoiceApplicationItem{}).
+			Where("id <= ?", maxItemId).
+			Where("paid_amount_micros <> ? OR paid_amount_micros IS NULL OR currency <> ? OR currency IS NULL", int64(0), "").
+			Updates(map[string]interface{}{
+				"paid_amount_micros": int64(0),
+				"currency":           "",
+			}).Error; err != nil {
+			return err
+		}
+		now := common.GetTimestamp()
+		if err := tx.Model(&InvoiceApplication{}).
+			Where("id <= ? AND status = ?", maxApplicationId, InvoiceApplicationStatusPending).
+			Updates(map[string]interface{}{
+				"status":           InvoiceApplicationStatusRejected,
+				"rejection_reason": "Legacy application has no verifiable payment amount; please submit a new request.",
+				"rejected_at":      now,
+				"rejected_by":      0,
+				"updated_at":       now,
+			}).Error; err != nil {
+			return err
+		}
+		rejectedApplicationIds := tx.Model(&InvoiceApplication{}).
+			Select("id").Where("id <= ? AND status = ?", maxApplicationId, InvoiceApplicationStatusRejected)
+		if err := tx.Model(&InvoiceApplicationItem{}).
+			Where("id <= ? AND active_slot IS NOT NULL AND invoice_application_id IN (?)", maxItemId, rejectedApplicationIds).
+			Update("active_slot", nil).Error; err != nil {
+			return err
+		}
+		complete := tx.Model(&Option{}).
+			Where(commonKeyCol+" = ? AND value = ?", invoicePaymentSnapshotMigrationKey, "running").
+			Update("value", "completed")
+		if complete.Error != nil {
+			return complete.Error
+		}
+		if complete.RowsAffected != 1 {
+			return errors.New("invoice payment snapshot migration lost its database lock")
+		}
+		migrated = true
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if migrated {
+		common.SysLog("invoice payment snapshot migration completed")
+	}
+	return nil
+}
+
+const topUpSourceMigrationKey = "TopUpSourceMigrationV1"
+
+func migrateTopUpSources() error {
+	var migration Option
+	err := DB.Where(&Option{Key: topUpSourceMigrationKey}).First(&migration).Error
+	if err == nil && migration.Value == "completed" {
+		return nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if err := DB.Model(&TopUp{}).Where("source = ? OR source IS NULL", "").Update("source", TopUpSourceRecharge).Error; err != nil {
+		return err
+	}
+	subscriptionTradeNos := DB.Model(&SubscriptionOrder{}).Select("trade_no")
+	if err := DB.Model(&TopUp{}).Where("trade_no IN (?)", subscriptionTradeNos).
+		Where("source <> ? OR source IS NULL", TopUpSourceSubscription).
+		Update("source", TopUpSourceSubscription).Error; err != nil {
+		return err
+	}
+	var paidCurrencies []string
+	if err := DB.Model(&SubscriptionOrder{}).Where("paid_currency <> ?", "").
+		Distinct("paid_currency").Pluck("paid_currency", &paidCurrencies).Error; err != nil {
+		return err
+	}
+	for _, currency := range paidCurrencies {
+		tradeNos := DB.Model(&SubscriptionOrder{}).Select("trade_no").Where("paid_currency = ?", currency)
+		if err := DB.Model(&TopUp{}).Where("trade_no IN (?)", tradeNos).
+			Where("currency <> ? OR currency IS NULL", currency).
+			Update("currency", currency).Error; err != nil {
+			return err
+		}
+	}
+	return DB.Save(&Option{Key: topUpSourceMigrationKey, Value: "completed"}).Error
 }
 
 func migrateLOGDB() error {
@@ -712,6 +1024,7 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`sort_order`" + ` integer DEFAULT 0,
 ` + "`allow_balance_pay`" + ` numeric DEFAULT 1,
 ` + "`allow_wallet_overflow`" + ` numeric DEFAULT 1,
+` + "`invoice_eligible`" + ` numeric DEFAULT 0,
 ` + "`stripe_price_id`" + ` varchar(128) DEFAULT '',
 ` + "`creem_product_id`" + ` varchar(128) DEFAULT '',
 ` + "`waffo_pancake_product_id`" + ` varchar(128) DEFAULT '',
@@ -725,7 +1038,9 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
 )`
-		return DB.Exec(createSQL).Error
+		if err := DB.Exec(createSQL).Error; err != nil {
+			return err
+		}
 	}
 	var cols []struct {
 		Name string `gorm:"column:name"`
@@ -749,6 +1064,7 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "sort_order", DDL: "`sort_order` integer DEFAULT 0"},
 		{Name: "allow_balance_pay", DDL: "`allow_balance_pay` numeric DEFAULT 1"},
 		{Name: "allow_wallet_overflow", DDL: "`allow_wallet_overflow` numeric DEFAULT 1"},
+		{Name: "invoice_eligible", DDL: "`invoice_eligible` numeric DEFAULT 0"},
 		{Name: "stripe_price_id", DDL: "`stripe_price_id` varchar(128) DEFAULT ''"},
 		{Name: "creem_product_id", DDL: "`creem_product_id` varchar(128) DEFAULT ''"},
 		{Name: "waffo_pancake_product_id", DDL: "`waffo_pancake_product_id` varchar(128) DEFAULT ''"},
@@ -769,7 +1085,7 @@ PRIMARY KEY (` + "`id`" + `)
 			return err
 		}
 	}
-	return nil
+	return DB.Exec("CREATE INDEX IF NOT EXISTS `idx_subscription_plans_invoice_eligible` ON `" + tableName + "`(`invoice_eligible`)").Error
 }
 
 // migrateTokenModelLimitsToText migrates model_limits column from varchar(1024) to text

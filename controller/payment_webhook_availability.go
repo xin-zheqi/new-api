@@ -34,6 +34,7 @@ func isCreemTopUpEnabled() bool {
 	}
 	products := strings.TrimSpace(setting.CreemProducts)
 	return strings.TrimSpace(setting.CreemApiKey) != "" &&
+		strings.TrimSpace(setting.CreemWebhookSecret) != "" &&
 		products != "" &&
 		products != "[]"
 }

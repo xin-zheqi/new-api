@@ -156,15 +156,15 @@ func setupLogin(user *model.User, c *gin.Context) {
 		"message": "",
 		"success": true,
 		"data": map[string]any{
-			"id":           user.Id,
-			"username":     user.Username,
-			"display_name": user.DisplayName,
-			"identity":     user.Identity,
-			"identity_requested": user.IdentityRequested,
+			"id":                     user.Id,
+			"username":               user.Username,
+			"display_name":           user.DisplayName,
+			"identity":               user.Identity,
+			"identity_requested":     user.IdentityRequested,
 			"identity_review_status": user.IdentityReviewStatus,
-			"role":         user.Role,
-			"status":       user.Status,
-			"group":        user.Group,
+			"role":                   user.Role,
+			"status":                 user.Status,
+			"group":                  user.Group,
 		},
 	})
 }
@@ -512,34 +512,34 @@ func GetSelf(c *gin.Context) {
 
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
-		"id":                user.Id,
-		"username":          user.Username,
-		"display_name":      user.DisplayName,
-		"identity":          user.Identity,
-		"identity_requested": user.IdentityRequested,
+		"id":                     user.Id,
+		"username":               user.Username,
+		"display_name":           user.DisplayName,
+		"identity":               user.Identity,
+		"identity_requested":     user.IdentityRequested,
 		"identity_review_status": user.IdentityReviewStatus,
-		"role":              user.Role,
-		"status":            user.Status,
-		"email":             user.Email,
-		"github_id":         user.GitHubId,
-		"discord_id":        user.DiscordId,
-		"oidc_id":           user.OidcId,
-		"wechat_id":         user.WeChatId,
-		"telegram_id":       user.TelegramId,
-		"group":             user.Group,
-		"quota":             user.Quota,
-		"used_quota":        user.UsedQuota,
-		"request_count":     user.RequestCount,
-		"aff_code":          user.AffCode,
-		"aff_count":         user.AffCount,
-		"aff_quota":         user.AffQuota,
-		"aff_history_quota": user.AffHistoryQuota,
-		"inviter_id":        user.InviterId,
-		"linux_do_id":       user.LinuxDOId,
-		"setting":           user.Setting,
-		"stripe_customer":   user.StripeCustomer,
-		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
-		"permissions":       permissions,                // 新增权限字段
+		"role":                   user.Role,
+		"status":                 user.Status,
+		"email":                  user.Email,
+		"github_id":              user.GitHubId,
+		"discord_id":             user.DiscordId,
+		"oidc_id":                user.OidcId,
+		"wechat_id":              user.WeChatId,
+		"telegram_id":            user.TelegramId,
+		"group":                  user.Group,
+		"quota":                  user.Quota,
+		"used_quota":             user.UsedQuota,
+		"request_count":          user.RequestCount,
+		"aff_code":               user.AffCode,
+		"aff_count":              user.AffCount,
+		"aff_quota":              user.AffQuota,
+		"aff_history_quota":      user.AffHistoryQuota,
+		"inviter_id":             user.InviterId,
+		"linux_do_id":            user.LinuxDOId,
+		"setting":                user.Setting,
+		"stripe_customer":        user.StripeCustomer,
+		"sidebar_modules":        userSetting.SidebarModules, // 正确提取sidebar_modules字段
+		"permissions":            permissions,                // 新增权限字段
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -715,11 +715,28 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	updatedUser.Role = originUser.Role
-	if strings.TrimSpace(updatedUser.Identity) == "" {
+	// Identity review fields are server-owned. An edit payload usually omits
+	// them, so preserve an existing pending application when the identity is
+	// unchanged; an intentional identity change clears the old review state.
+	requestedIdentity := strings.TrimSpace(updatedUser.Identity)
+	if requestedIdentity == "" {
 		updatedUser.Identity = originUser.Identity
-	} else if model.NormalizeUserIdentity(updatedUser.Identity) == "" {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
+		updatedUser.IdentityRequested = originUser.IdentityRequested
+		updatedUser.IdentityReviewStatus = originUser.IdentityReviewStatus
+	} else {
+		updatedIdentity := model.NormalizeUserIdentity(requestedIdentity)
+		if updatedIdentity == "" {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		updatedUser.Identity = updatedIdentity
+		if updatedIdentity == model.NormalizeUserIdentity(originUser.Identity) {
+			updatedUser.IdentityRequested = originUser.IdentityRequested
+			updatedUser.IdentityReviewStatus = originUser.IdentityReviewStatus
+		} else {
+			updatedUser.IdentityRequested = ""
+			updatedUser.IdentityReviewStatus = ""
+		}
 	}
 	myRole := c.GetInt("role")
 	if !canManageTargetRole(myRole, originUser.Role) {
@@ -1059,6 +1076,11 @@ func CreateUser(c *gin.Context) {
 	if user.DisplayName == "" {
 		user.DisplayName = user.Username
 	}
+	identity := model.NormalizeUserIdentity(user.Identity)
+	if strings.TrimSpace(user.Identity) != "" && identity == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
 	myRole := c.GetInt("role")
 	if user.Role >= myRole {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
@@ -1069,6 +1091,7 @@ func CreateUser(c *gin.Context) {
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
+		Identity:    identity,
 		Role:        user.Role, // 保持管理员设置的角色
 	}
 	authzTouched := false
@@ -1093,6 +1116,7 @@ func CreateUser(c *gin.Context) {
 
 	recordManageAuditFor(c, cleanUser.Id, "user.create", map[string]interface{}{
 		"username": cleanUser.Username,
+		"identity": cleanUser.Identity,
 		"role":     cleanUser.Role,
 	})
 	c.JSON(http.StatusOK, gin.H{

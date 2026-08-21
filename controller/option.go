@@ -29,6 +29,13 @@ var completionRatioMetaOptionKeys = []string{
 	"AudioCompletionRatio",
 }
 
+const mallSettingsRequestMaxBytes int64 = 8 * 1024
+
+type mallSettingsUpdateRequest struct {
+	MallEnabled *bool   `json:"mall_enabled"`
+	MallURL     *string `json:"mall_url"`
+}
+
 func isPaymentComplianceOptionKey(key string) bool {
 	return strings.HasPrefix(key, "payment_setting.compliance_")
 }
@@ -40,6 +47,83 @@ func isPositiveOptionValue(value string) bool {
 	}
 	floatValue, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 	return err == nil && floatValue > 0
+}
+
+func normalizeOptionUpdateValue(key, value, applicationHost string) (string, error) {
+	switch key {
+	case "MallURL":
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return "", nil
+		}
+		normalized := safeMallURL(trimmed, applicationHost)
+		if normalized == "" {
+			return "", fmt.Errorf("MallURL must be an external HTTPS URL without credentials and no longer than %d characters", maxMallURLLength)
+		}
+		return normalized, nil
+	case "payment_setting.mall_enabled", "InvoiceEnabled":
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized != "true" && normalized != "false" {
+			return "", fmt.Errorf("%s must be true or false", key)
+		}
+		return normalized, nil
+	case "InvoiceApplicationDay":
+		return normalizeBoundedIntegerOption(key, value, 1, 28)
+	case "InvoiceLookbackDays":
+		return normalizeBoundedIntegerOption(key, value, 1, 3650)
+	case "InvoiceMonthlyLimit":
+		return normalizeBoundedIntegerOption(key, value, 1, 31)
+	default:
+		return value, nil
+	}
+}
+
+func normalizeBoundedIntegerOption(key, value string, minimum, maximum int) (string, error) {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < minimum || parsed > maximum {
+		return "", fmt.Errorf("%s must be an integer between %d and %d", key, minimum, maximum)
+	}
+	return strconv.Itoa(parsed), nil
+}
+
+func normalizeMallSettingsUpdate(request mallSettingsUpdateRequest, applicationHost string) (map[string]string, error) {
+	if request.MallEnabled == nil || request.MallURL == nil {
+		return nil, fmt.Errorf("mall enabled and mall URL are required")
+	}
+	mallURL, err := normalizeOptionUpdateValue("MallURL", *request.MallURL, applicationHost)
+	if err != nil {
+		if *request.MallEnabled {
+			return nil, err
+		}
+		mallURL = ""
+	}
+	if *request.MallEnabled && mallURL == "" {
+		return nil, fmt.Errorf("MallURL is required when the card-store mall is enabled")
+	}
+	return map[string]string{
+		"payment_setting.mall_enabled": strconv.FormatBool(*request.MallEnabled),
+		"MallURL":                      mallURL,
+	}, nil
+}
+
+func UpdateMallSettings(c *gin.Context) {
+	var request mallSettingsUpdateRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, mallSettingsRequestMaxBytes)
+	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid mall settings"})
+		return
+	}
+	values, err := normalizeMallSettingsUpdate(request, c.Request.Host)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if err := model.UpdateOptionsBulk(values); err != nil {
+		common.SysError("failed to update mall settings: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to update mall settings"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
 }
 
 func collectModelNamesFromOptionValue(raw string, modelNames map[string]struct{}) {
@@ -127,6 +211,10 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
+	if option.Key == "MallURL" || option.Key == "payment_setting.mall_enabled" {
+		common.ApiErrorMsg(c, "商城设置必须通过专用接口整体修改")
+		return
+	}
 	switch option.Value.(type) {
 	case bool:
 		option.Value = common.Interface2String(option.Value.(bool))
@@ -148,6 +236,14 @@ func UpdateOption(c *gin.Context) {
 			common.ApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
 			return
 		}
+	}
+	option.Value, err = normalizeOptionUpdateValue(option.Key, option.Value.(string), c.Request.Host)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
 	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":

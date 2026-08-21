@@ -191,7 +191,9 @@ export function SubscriptionPlansCard({
 
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
-  const isAvailable = loading || plans.length > 0 || hasAny
+  const isAvailable = mySubscriptionsOnly
+    ? loading || hasAny
+    : loading || plans.length > 0 || hasAny
   const disablePref = !hasActive
   const isSubPref =
     billingPreference === 'subscription_first' ||
@@ -262,8 +264,14 @@ export function SubscriptionPlansCard({
   return (
     <>
       <TitledCard
-        title={mySubscriptionsOnly ? t('My Subscriptions') : t('Subscription Plans')}
-        description={mySubscriptionsOnly ? t('Your current and past subscriptions') : t('Subscribe to a plan for model access')}
+        title={
+          mySubscriptionsOnly ? t('My Subscriptions') : t('Subscription Plans')
+        }
+        description={
+          mySubscriptionsOnly
+            ? t('Your current and past subscriptions')
+            : t('Subscribe to a plan for model access')
+        }
         icon={<Crown className='h-4 w-4' />}
         iconTone='warning'
         disableHoverEffect
@@ -524,7 +532,7 @@ export function SubscriptionPlansCard({
         </div>
 
         {/* Available plans grid */}
-        {!mySubscriptionsOnly && plans.length > 0 ? (
+        {!mySubscriptionsOnly && plans.length > 0 && (
           <div className='grid grid-cols-1 gap-3 2xl:grid-cols-2 2xl:gap-4'>
             {plans.map((p, index) => {
               const plan = p?.plan
@@ -628,11 +636,12 @@ export function SubscriptionPlansCard({
               )
             })}
           </div>
-        ) : !mySubscriptionsOnly ? (
+        )}
+        {!mySubscriptionsOnly && plans.length === 0 && (
           <p className='text-muted-foreground py-4 text-center text-sm'>
             {t('No plans available')}
           </p>
-        ) : null}
+        )}
       </TitledCard>
 
       <SubscriptionPurchaseDialog

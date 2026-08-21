@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,15 @@ type SubscriptionBalancePayRequest struct {
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
+	mallEnabled, _, err := mallTopUpInfo(c.Request.Host)
+	if err != nil {
+		common.ApiErrorMsg(c, "unable to load payment settings")
+		return
+	}
+	if mallEnabled {
+		common.ApiSuccess(c, []SubscriptionPlanDTO{})
+		return
+	}
 	if !operation_setting.IsPaymentComplianceConfirmed() {
 		common.ApiSuccess(c, []SubscriptionPlanDTO{})
 		return
@@ -98,12 +108,16 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 }
 
 func SubscriptionRequestBalancePay(c *gin.Context) {
+	if rejectSubscriptionPurchaseWhenMallEnabled(c) {
+		return
+	}
 	if !requirePaymentCompliance(c) {
 		return
 	}
 
 	userId := c.GetInt("id")
 	var req SubscriptionBalancePayRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
 		common.ApiErrorMsg(c, "参数错误")
 		return

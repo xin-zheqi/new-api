@@ -28,6 +28,8 @@ const TICKET_ERROR_KEYS: Record<TicketErrorCode, string> = {
   ticket_waiting_user: 'Waiting for the user to reply.',
   ticket_closed: 'This ticket is closed.',
   ticket_message_limit: 'This ticket has reached the message limit.',
+  ticket_attachment_limit:
+    'This ticket has reached the attachment storage limit.',
   ticket_state_changed: 'Ticket status changed. Refresh and try again.',
   ticket_invalid_filter: 'Invalid ticket filter.',
   ticket_user_id_invalid: 'Enter a valid user ID.',

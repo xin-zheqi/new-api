@@ -85,9 +85,18 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       return true;
     }
   }, []);
-  const invoiceEnabled = ['university', 'enterprise'].includes(
-    userState?.user?.identity,
-  ) && (() => { try { return JSON.parse(localStorage.getItem('status') || '{}').invoice_enabled !== false; } catch { return true; } })();
+  const identity = userState?.user?.identity;
+  const invoiceEnabled = useMemo(() => {
+    try {
+      return (
+        ['university', 'enterprise'].includes(identity) &&
+        JSON.parse(localStorage.getItem('status') || '{}').invoice_enabled !==
+          false
+      );
+    } catch {
+      return ['university', 'enterprise'].includes(identity);
+    }
+  }, [identity]);
 
   const workspaceItems = useMemo(() => {
     const items = [
@@ -238,7 +247,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {
-        text: t('身份审核'),
+        text: t('Identity Review'),
         itemKey: 'identity_reviews',
         to: '/identity-reviews',
         configKey: 'user',

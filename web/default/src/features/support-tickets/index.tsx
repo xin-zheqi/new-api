@@ -218,6 +218,16 @@ export function SupportTickets() {
     !listQuery.isError &&
     !createMutation.isPending &&
     activeTicketId === null
+  let createButtonTitle = t('Create support ticket')
+  if (listQuery.isLoading) {
+    createButtonTitle = t('Loading...')
+  } else if (listQuery.isError) {
+    createButtonTitle = t('Failed to load support tickets.')
+  } else if (activeTicketId !== null) {
+    createButtonTitle = t(
+      'Your current ticket must be closed before creating another.'
+    )
+  }
 
   return (
     <>
@@ -228,13 +238,7 @@ export function SupportTickets() {
         <SectionPageLayout.Actions>
           <Button
             disabled={!canCreate}
-            title={
-              canCreate
-                ? t('Create support ticket')
-                : t(
-                    'Your current ticket must be closed before creating another.'
-                  )
-            }
+            title={createButtonTitle}
             onClick={() => setCreateOpen(true)}
           >
             <HugeiconsIcon icon={Add01Icon} data-icon='inline-start' />

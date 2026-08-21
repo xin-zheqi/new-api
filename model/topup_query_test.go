@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -104,4 +105,24 @@ func TestSearchAndAdminTopUps_UseSameDateRangeFilter(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, allTopups, 3)
 	assert.EqualValues(t, 3, allTotal)
+}
+
+func TestCreateManualTopUpSaturatesOversizedQuotaWithoutWrappingNegative(t *testing.T) {
+	truncateTables(t)
+	insertUserForTopUpQueryTest(t, 9005)
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 2
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+
+	topUp, err := CreateManualTopUp(ManualTopUpParams{
+		UserId: 9005, Amount: math.MaxInt64, Money: 1, PaymentMethod: PaymentMethodManual,
+		CreateTime: common.GetTimestamp(), CreditBalance: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, topUp)
+
+	var user User
+	require.NoError(t, DB.First(&user, 9005).Error)
+	assert.Equal(t, common.MaxQuota, user.Quota)
+	assert.Positive(t, user.Quota)
 }

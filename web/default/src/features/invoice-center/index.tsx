@@ -123,7 +123,7 @@ export function InvoiceCenter() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Invoice Center')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <div className='mx-auto w-full max-w-6xl space-y-6'>
+        <div className='mx-auto -mt-1 w-full max-w-6xl space-y-6'>
           {invoiceQuery.isLoading && (
             <div className='space-y-4'>
               <Skeleton className='h-20 w-full' />

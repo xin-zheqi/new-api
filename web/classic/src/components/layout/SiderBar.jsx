@@ -85,19 +85,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       return true;
     }
   }, []);
-  const identity = userState?.user?.identity;
-  const invoiceEnabled = useMemo(() => {
-    try {
-      return (
-        ['university', 'enterprise'].includes(identity) &&
-        JSON.parse(localStorage.getItem('status') || '{}').invoice_enabled !==
-          false
-      );
-    } catch {
-      return ['university', 'enterprise'].includes(identity);
-    }
-  }, [identity]);
-
   const workspaceItems = useMemo(() => {
     const items = [
       {
@@ -183,7 +170,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('发票中心'),
         itemKey: 'invoice',
         to: '/console/invoice',
-        className: invoiceEnabled ? '' : 'tableHiddle',
+        className: '',
       },
       {
         text: t('工单中心'),
@@ -199,7 +186,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     });
 
     return filteredItems;
-  }, [t, isModuleVisible, lotteryEnabled, invoiceEnabled]);
+  }, [t, isModuleVisible, lotteryEnabled]);
 
   const adminItems = useMemo(() => {
     const items = [
@@ -254,7 +241,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {
-        text: t('开票中心'),
+        text: t('发票管理'),
         itemKey: 'invoice_admin',
         configKey: 'invoice',
         to: '/console/invoice/admin',

@@ -71,8 +71,10 @@ const IdentityReviews = () => {
   const labels = { university: t('高校'), enterprise: t('企业') };
   return (
     <div className='w-full max-w-6xl mx-auto p-4 sm:p-6'>
-      <Typography.Title heading={3}>{t('Identity Review')}</Typography.Title>
-      <Typography.Paragraph type='tertiary'>
+      <Typography.Title heading={3} className='mb-4'>
+        {t('Identity Review')}
+      </Typography.Title>
+      <Typography.Paragraph type='tertiary' className='mb-6'>
         {t('University and enterprise identity applications')}
       </Typography.Paragraph>
       {loading ? (

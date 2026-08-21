@@ -41,7 +41,6 @@ import { useTranslation } from 'react-i18next'
 import type { SidebarData } from '@/components/layout/types'
 import { SupportTicketNavIcon } from '@/features/support-tickets/components/support-ticket-nav-icon'
 import { ROLE } from '@/lib/roles'
-import { useAuthStore } from '@/stores/auth-store'
 
 import { useStatus } from './use-status'
 
@@ -55,10 +54,6 @@ export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
   const { status } = useStatus()
   const lotteryEnabled = status?.lottery_enabled !== false
-  const identity = useAuthStore((state) => state.auth.user?.identity)
-  const invoiceEnabled =
-    status?.invoice_enabled !== false &&
-    (identity === 'university' || identity === 'enterprise')
 
   return {
     navGroups: [
@@ -135,15 +130,11 @@ export function useSidebarData(): SidebarData {
             url: '/support-tickets',
             icon: SupportTicketNavIcon,
           },
-          ...(invoiceEnabled
-            ? [
-                {
-                  title: t('Invoice Center'),
-                  url: '/invoice-center',
-                  icon: FileText,
-                },
-              ]
-            : []),
+          {
+            title: t('Invoice Center'),
+            url: '/invoice-center',
+            icon: FileText,
+          },
           ...(lotteryEnabled
             ? [
                 {
@@ -196,7 +187,7 @@ export function useSidebarData(): SidebarData {
             icon: CreditCard,
           },
           {
-            title: t('Invoice Center'),
+            title: t('Invoice Management'),
             url: '/invoice-center/admin',
             icon: FileText,
             requiredRole: ROLE.ADMIN,

@@ -65,52 +65,52 @@ export function IdentityReviews() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Identity Review')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 py-2'>
-          <p className='text-muted-foreground text-sm'>
+        <div className='mx-auto flex w-full max-w-7xl flex-col py-2'>
+          <p className='text-muted-foreground mb-6 text-sm'>
             {t('University and enterprise identity applications')}
           </p>
-          <div className='space-y-3'>
-          {query.data?.map((user) => (
-            <Card key={user.id}>
-              <CardContent className='flex flex-wrap items-center gap-3 p-4'>
-                <div className='min-w-0 flex-1'>
-                  <p className='font-medium'>
-                    {user.display_name || user.username}
-                  </p>
-                  <p className='text-muted-foreground text-xs'>
-                    {user.email || user.username}
-                  </p>
-                </div>
-                <Badge variant='secondary'>
-                  {label(user.identity_requested)}
-                </Badge>
-                <Button
-                  size='sm'
-                  onClick={() =>
-                    review.mutate({ id: user.id, action: 'approve' })
-                  }
-                >
-                  <Check className='mr-1 h-4 w-4' />
-                  {t('Approve')}
-                </Button>
-                <Button
-                  size='sm'
-                  variant='outline'
-                  onClick={() =>
-                    review.mutate({ id: user.id, action: 'reject' })
-                  }
-                >
-                  <X className='mr-1 h-4 w-4' />
-                  {t('Reject')}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-          {!query.data?.length && (
-            <p className='text-muted-foreground text-sm'>
-              {t('No identity applications')}
-            </p>
-          )}
+          <div className='flex flex-col gap-3'>
+            {query.data?.map((user) => (
+              <Card key={user.id}>
+                <CardContent className='flex flex-wrap items-center gap-3 p-4'>
+                  <div className='min-w-0 flex-1'>
+                    <p className='font-medium'>
+                      {user.display_name || user.username}
+                    </p>
+                    <p className='text-muted-foreground text-xs'>
+                      {user.email || user.username}
+                    </p>
+                  </div>
+                  <Badge variant='secondary'>
+                    {label(user.identity_requested)}
+                  </Badge>
+                  <Button
+                    size='sm'
+                    onClick={() =>
+                      review.mutate({ id: user.id, action: 'approve' })
+                    }
+                  >
+                    <Check className='mr-1 h-4 w-4' />
+                    {t('Approve')}
+                  </Button>
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    onClick={() =>
+                      review.mutate({ id: user.id, action: 'reject' })
+                    }
+                  >
+                    <X className='mr-1 h-4 w-4' />
+                    {t('Reject')}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+            {!query.data?.length && (
+              <p className='text-muted-foreground text-sm'>
+                {t('No identity applications')}
+              </p>
+            )}
           </div>
         </div>
       </SectionPageLayout.Content>

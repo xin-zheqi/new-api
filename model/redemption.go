@@ -84,9 +84,9 @@ func (redemption *Redemption) normalizeFields() {
 	case RedemptionTypeSubscription:
 		redemption.Quota = 0
 	}
-	// Quota redemptions are balance grants and have no invoiceable payment
-	// snapshot. Subscription redemptions may opt in to invoicing when their
-	// referenced plan is marked invoice eligible.
+	// Quota redemptions are balance grants; their invoice snapshot is supplied
+	// directly by the redemption code. Subscription redemptions use the same
+	// code-level snapshot when one is configured.
 	if redemption.RedeemType == RedemptionTypeQuota {
 		redemption.InvoiceEligible = false
 	}
@@ -99,6 +99,18 @@ func (redemption *Redemption) AfterFind(tx *gorm.DB) error {
 
 func (redemption *Redemption) BeforeSave(tx *gorm.DB) error {
 	redemption.normalizeFields()
+	if redemption.InvoiceAmountMicros < 0 {
+		return errors.New("invoice amount cannot be negative")
+	}
+	if redemption.InvoiceAmountMicros == 0 {
+		redemption.InvoiceCurrency = ""
+		return nil
+	}
+	currency, err := NormalizePaymentCurrency(redemption.InvoiceCurrency)
+	if err != nil {
+		return err
+	}
+	redemption.InvoiceCurrency = currency
 	return nil
 }
 

@@ -296,16 +296,18 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
-			"title":                      req.Plan.Title,
-			"subtitle":                   req.Plan.Subtitle,
-			"price_amount":               req.Plan.PriceAmount,
-			"currency":                   req.Plan.Currency,
-			"duration_unit":              req.Plan.DurationUnit,
-			"duration_value":             req.Plan.DurationValue,
-			"custom_seconds":             req.Plan.CustomSeconds,
-			"enabled":                    req.Plan.Enabled,
-			"sort_order":                 req.Plan.SortOrder,
-			"invoice_eligible":           req.Plan.InvoiceEligible,
+			"title":          req.Plan.Title,
+			"subtitle":       req.Plan.Subtitle,
+			"price_amount":   req.Plan.PriceAmount,
+			"currency":       req.Plan.Currency,
+			"duration_unit":  req.Plan.DurationUnit,
+			"duration_value": req.Plan.DurationValue,
+			"custom_seconds": req.Plan.CustomSeconds,
+			"enabled":        req.Plan.Enabled,
+			"sort_order":     req.Plan.SortOrder,
+			// SubscriptionPlan.InvoiceEligible is retained only for legacy schema
+			// compatibility. Invoice eligibility now comes from the verified
+			// payment snapshot or redemption-code invoice amount.
 			"stripe_price_id":            req.Plan.StripePriceId,
 			"creem_product_id":           req.Plan.CreemProductId,
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,

@@ -168,7 +168,8 @@ type SubscriptionPlan struct {
 
 	// Allow falling back to wallet balance after subscription quota is exhausted (empty = true)
 	AllowWalletOverflow *bool `json:"allow_wallet_overflow"`
-	// Whether subscriptions created from this plan can be included in an invoice application.
+	// Deprecated compatibility field. New invoice eligibility is determined by
+	// the verified payment snapshot on UserSubscription.
 	InvoiceEligible bool `json:"invoice_eligible" gorm:"index"`
 
 	StripePriceId         string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
@@ -243,11 +244,12 @@ type subscriptionPlanSnapshot struct {
 	UpgradeGroup            string  `json:"upgrade_group"`
 	DowngradeGroup          string  `json:"downgrade_group"`
 	AllowWalletOverflow     *bool   `json:"allow_wallet_overflow"`
-	InvoiceEligible         bool    `json:"invoice_eligible"`
-	MaxPurchasePerUser      int     `json:"max_purchase_per_user"`
-	StripePriceId           string  `json:"stripe_price_id"`
-	CreemProductId          string  `json:"creem_product_id"`
-	WaffoPancakeProductId   string  `json:"waffo_pancake_product_id"`
+	// Deprecated snapshot field retained so historical orders remain readable.
+	InvoiceEligible       bool   `json:"invoice_eligible"`
+	MaxPurchasePerUser    int    `json:"max_purchase_per_user"`
+	StripePriceId         string `json:"stripe_price_id"`
+	CreemProductId        string `json:"creem_product_id"`
+	WaffoPancakeProductId string `json:"waffo_pancake_product_id"`
 }
 
 func validateSubscriptionPlanEntitlements(plan *SubscriptionPlan) error {

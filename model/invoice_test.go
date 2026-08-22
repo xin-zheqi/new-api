@@ -276,6 +276,40 @@ func TestGetInvoiceEligibleSubscriptionsLimitsResponseAndRequiresPaymentSnapshot
 	}
 }
 
+func TestRedemptionBalanceInvoiceUsesConfiguredPaymentAmount(t *testing.T) {
+	setupInvoiceTest(t)
+	require.NoError(t, DB.AutoMigrate(&Redemption{}))
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	t.Cleanup(func() {
+		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	})
+	setInvoiceOptionForTest(t, "InvoiceRedemptionRechargeEnabled", "true")
+	user := User{Username: "invoice-redemption-user", Password: "password", Identity: UserIdentityUniversity, AffCode: "invoice-redemption-user"}
+	require.NoError(t, DB.Create(&user).Error)
+	redemption := Redemption{
+		Name: "invoiceable balance code", Key: "44444444444444444444444444444444",
+		Status: common.RedemptionCodeStatusUsed, RedeemType: RedemptionTypeQuota,
+		Quota: 100, UsedUserId: user.Id, RedeemedTime: common.GetTimestamp(),
+		InvoiceAmountMicros: 7_500_000, InvoiceCurrency: "CNY",
+	}
+	require.NoError(t, DB.Create(&redemption).Error)
+
+	eligible, err := GetInvoiceEligibleSubscriptions(user.Id, GetInvoiceSettings())
+	require.NoError(t, err)
+	require.Len(t, eligible, 1)
+	assert.Equal(t, "redemption_recharge", eligible[0].ItemType)
+	assert.Equal(t, redemption.Id, eligible[0].RedemptionId)
+	assert.Equal(t, int64(7_500_000), eligible[0].PaidAmountMicros)
+	assert.Equal(t, "CNY", eligible[0].PaidCurrency)
+
+	application, err := CreateInvoiceApplication(user.Id, GetInvoiceSettings(), invoiceTestInput("Redemption invoice"), nil, []int{redemption.Id})
+	require.NoError(t, err)
+	require.Len(t, application.Items, 1)
+	assert.Equal(t, int64(7_500_000), application.TotalAmountMicros)
+	assert.Equal(t, "CNY", application.Currency)
+	assert.Equal(t, redemption.Id, application.Items[0].RedemptionId)
+}
+
 func TestListUserInvoiceApplicationsIsPaginated(t *testing.T) {
 	setupInvoiceTest(t)
 	user := User{Username: "invoice-history-page-user", Password: "password", AffCode: "invoice-history-page-user"}

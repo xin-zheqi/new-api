@@ -5,6 +5,7 @@ package tlsfingerprint
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
@@ -30,6 +31,9 @@ type Profile struct {
 	KeyShareGroups      []uint16 // Empty uses [X25519]
 	PSKModes            []uint16 // Empty uses [psk_dhe_ke]
 	Extensions          []uint16 // Extension type IDs in order; empty uses default Node.js 24.x order
+	// InsecureSkipVerify follows the gateway's existing TLS setting. It is kept
+	// profile-scoped so the fingerprint client does not alter global transports.
+	InsecureSkipVerify bool
 }
 
 // Dialer creates TLS connections with custom fingerprints.
@@ -138,29 +142,42 @@ func NewSOCKS5ProxyDialer(profile *Profile, proxyURL *url.URL) *SOCKS5ProxyDiale
 	return &SOCKS5ProxyDialer{profile: profile, proxyURL: proxyURL}
 }
 
+func (d *SOCKS5ProxyDialer) newDialer() (proxy.Dialer, error) {
+	var auth *proxy.Auth
+	if d.proxyURL.User != nil {
+		username := d.proxyURL.User.Username()
+		password, _ := d.proxyURL.User.Password()
+		auth = &proxy.Auth{User: username, Password: password}
+	}
+	proxyAddr := d.proxyURL.Host
+	if d.proxyURL.Port() == "" {
+		proxyAddr = net.JoinHostPort(d.proxyURL.Hostname(), "1080")
+	}
+	return proxy.SOCKS5("tcp", proxyAddr, auth, proxy.Direct)
+}
+
+// DialContext is used for plain HTTP requests, which do not pass through
+// DialTLSContext but must still honor a configured SOCKS5 proxy.
+func (d *SOCKS5ProxyDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	dialer, err := d.newDialer()
+	if err != nil {
+		return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
+	}
+	return dialer.Dial(network, addr)
+}
+
 // DialTLSContext establishes a TLS connection through SOCKS5 proxy with the configured fingerprint.
 // Flow: SOCKS5 CONNECT to target -> TLS handshake with utls on the tunnel
 func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	slog.Debug("tls_fingerprint_socks5_connecting", "proxy", d.proxyURL.Host, "target", addr)
 
 	// Step 1: Create SOCKS5 dialer
-	var auth *proxy.Auth
-	if d.proxyURL.User != nil {
-		username := d.proxyURL.User.Username()
-		password, _ := d.proxyURL.User.Password()
-		auth = &proxy.Auth{
-			User:     username,
-			Password: password,
-		}
-	}
-
-	// Determine proxy address
-	proxyAddr := d.proxyURL.Host
-	if d.proxyURL.Port() == "" {
-		proxyAddr = net.JoinHostPort(d.proxyURL.Hostname(), "1080") // Default SOCKS5 port
-	}
-
-	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, proxy.Direct)
+	socksDialer, err := d.newDialer()
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_dialer_failed", "error", err)
 		return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
@@ -204,6 +221,21 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 		return nil, fmt.Errorf("connect to proxy: %w", err)
 	}
 	slog.Debug("tls_fingerprint_http_proxy_connected", "proxy_addr", proxyAddr)
+	// An https proxy requires TLS to the proxy itself before CONNECT. The
+	// previous implementation sent plaintext CONNECT bytes to port 443, which
+	// made this otherwise valid proxy configuration fail immediately.
+	if d.proxyURL.Scheme == "https" {
+		proxyTLS := tls.Client(conn, &tls.Config{
+			ServerName:         d.proxyURL.Hostname(),
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: d.profile != nil && d.profile.InsecureSkipVerify, //nolint:gosec -- mirrors gateway setting
+		})
+		if err := proxyTLS.HandshakeContext(ctx); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("TLS handshake with proxy: %w", err)
+		}
+		conn = proxyTLS
+	}
 
 	// Step 2: Send CONNECT request to establish tunnel
 	req := &http.Request{
@@ -276,7 +308,10 @@ func performTLSHandshake(ctx context.Context, conn net.Conn, profile *Profile, a
 	}
 
 	spec := buildClientHelloSpecFromProfile(profile)
-	tlsConn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloCustom)
+	tlsConn := utls.UClient(conn, &utls.Config{
+		ServerName:         host,
+		InsecureSkipVerify: profile != nil && profile.InsecureSkipVerify, //nolint:gosec -- explicitly configured gateway behavior
+	}, utls.HelloCustom)
 
 	if err := tlsConn.ApplyPreset(spec); err != nil {
 		_ = conn.Close()

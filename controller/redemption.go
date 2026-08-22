@@ -234,23 +234,25 @@ func validateRedemptionConfig(c *gin.Context, redemption *model.Redemption) erro
 		return model.ErrRedemptionTypeInvalid
 	}
 	redemption.RedeemType = redeemType
+	if redemption.InvoiceAmountMicros < 0 {
+		return errors.New("invoice amount cannot be negative")
+	}
+	if redemption.InvoiceAmountMicros > 0 {
+		if redemption.InvoiceCurrency == "" {
+			return errors.New("invoice amount requires currency")
+		}
+		currency, err := model.NormalizePaymentCurrency(redemption.InvoiceCurrency)
+		if err != nil {
+			return err
+		}
+		redemption.InvoiceCurrency = currency
+	} else {
+		redemption.InvoiceCurrency = ""
+	}
 	switch redeemType {
 	case model.RedemptionTypeQuota:
 		if redemption.Quota <= 0 {
 			return model.ErrRedemptionQuotaInvalid
-		}
-		if redemption.InvoiceAmountMicros < 0 {
-			return errors.New("invoice amount cannot be negative")
-		}
-		if redemption.InvoiceAmountMicros > 0 {
-			if redemption.InvoiceCurrency == "" {
-				return errors.New("invoice amount requires currency")
-			}
-			currency, err := model.NormalizePaymentCurrency(redemption.InvoiceCurrency)
-			if err != nil {
-				return err
-			}
-			redemption.InvoiceCurrency = currency
 		}
 		redemption.SubscriptionPlanId = 0
 	case model.RedemptionTypeSubscription:

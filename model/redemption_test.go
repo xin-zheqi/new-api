@@ -100,6 +100,35 @@ func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
 	}
 }
 
+func TestRedemptionInvoiceSnapshotValidation(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Redemption{}))
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	t.Cleanup(func() {
+		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	})
+
+	valid := Redemption{
+		Name: "invoice snapshot", Key: "11111111111111111111111111111111",
+		Quota: 100, InvoiceAmountMicros: 12_500_000, InvoiceCurrency: "cny",
+	}
+	require.NoError(t, DB.Create(&valid).Error)
+	var stored Redemption
+	require.NoError(t, DB.First(&stored, valid.Id).Error)
+	assert.Equal(t, "CNY", stored.InvoiceCurrency)
+
+	negative := Redemption{
+		Name: "negative invoice", Key: "22222222222222222222222222222222",
+		Quota: 100, InvoiceAmountMicros: -1, InvoiceCurrency: "CNY",
+	}
+	require.ErrorContains(t, DB.Create(&negative).Error, "invoice amount cannot be negative")
+
+	invalidCurrency := Redemption{
+		Name: "invalid invoice", Key: "33333333333333333333333333333333",
+		Quota: 100, InvoiceAmountMicros: 1_000_000, InvoiceCurrency: "NOT-A-CURRENCY",
+	}
+	require.Error(t, DB.Create(&invalidCurrency).Error)
+}
+
 func setupRedeemFixture(t *testing.T, quota int) (userId int, key string) {
 	t.Helper()
 	require.NoError(t, DB.AutoMigrate(&Redemption{}))

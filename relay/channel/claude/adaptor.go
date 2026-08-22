@@ -247,6 +247,11 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, err
 	}
+	if info != nil && info.ChannelOtherSettings.ClaudeCodeMimic {
+		if claudeRequest, ok := result.Value.(*dto.ClaudeRequest); ok {
+			applyClaudeCodeMimicBody(claudeRequest)
+		}
+	}
 	return result.Value, nil
 }
 

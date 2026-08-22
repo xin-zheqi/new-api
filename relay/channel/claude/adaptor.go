@@ -12,6 +12,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/pkg/tlsfingerprint"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service/relayconvert"
@@ -264,6 +265,13 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if info != nil && info.ChannelOtherSettings.ClaudeCodeMimic && info.UpstreamHTTPClient == nil {
+		client, err := tlsfingerprint.NewHTTPClient(info.ChannelSetting.Proxy, 0)
+		if err != nil {
+			return nil, fmt.Errorf("create Claude Code TLS client: %w", err)
+		}
+		info.UpstreamHTTPClient = client
+	}
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 

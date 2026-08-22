@@ -491,7 +491,9 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	var client *http.Client
 	var cancelTransportRequest func() bool
 	var err error
-	if info.ChannelSetting.Proxy != "" {
+	if info != nil && info.UpstreamHTTPClient != nil {
+		client = info.UpstreamHTTPClient
+	} else if info != nil && info.ChannelSetting.Proxy != "" {
 		client, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
 		if err != nil {
 			return nil, fmt.Errorf("new proxy http client failed: %w", err)
@@ -503,7 +505,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	if c != nil && c.Request != nil {
 		req = req.WithContext(c.Request.Context())
 	}
-	if info != nil && info.IsChannelTest && c != nil && c.Request != nil {
+	if info != nil && info.UpstreamHTTPClient == nil && info.IsChannelTest && c != nil && c.Request != nil {
 		if _, hasDeadline := c.Request.Context().Deadline(); hasDeadline {
 			req.Close = true
 			req.Header.Set("Connection", "close")

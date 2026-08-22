@@ -212,7 +212,7 @@ func TestCreateInvoiceApplicationRejectsTotalAmountOverflow(t *testing.T) {
 	assert.Zero(t, count)
 }
 
-func TestCreateInvoiceApplicationRejectsIneligibleSubscription(t *testing.T) {
+func TestCreateInvoiceApplicationAllowsPaidSubscriptionWithoutPlanFlag(t *testing.T) {
 	setupInvoiceTest(t)
 	plan := SubscriptionPlan{Title: "Non-invoice plan", DurationValue: 1, DurationUnit: SubscriptionDurationMonth, TotalAmount: 1000}
 	require.NoError(t, DB.Create(&plan).Error)
@@ -224,8 +224,12 @@ func TestCreateInvoiceApplicationRejectsIneligibleSubscription(t *testing.T) {
 	}
 	require.NoError(t, DB.Create(&subscription).Error)
 
-	_, err := CreateInvoiceApplication(user.Id, GetInvoiceSettings(), invoiceTestInput("Example University"), []int{subscription.Id})
-	require.ErrorContains(t, err, "not eligible")
+	application, err := CreateInvoiceApplication(user.Id, GetInvoiceSettings(), invoiceTestInput("Example University"), []int{subscription.Id})
+	require.NoError(t, err)
+	require.NotNil(t, application)
+	require.Len(t, application.Items, 1)
+	assert.Equal(t, int64(10_000_000), application.Items[0].PaidAmountMicros)
+	assert.Equal(t, "USD", application.Items[0].Currency)
 }
 
 func TestCreateInvoiceApplicationRejectsMixedCurrencies(t *testing.T) {

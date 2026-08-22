@@ -99,15 +99,16 @@ func AddRedemption(c *gin.Context) {
 	for i := 0; i < redemption.Count; i++ {
 		key := common.GetUUID()
 		cleanRedemption := model.Redemption{
-			UserId:             c.GetInt("id"),
-			Name:               redemption.Name,
-			Key:                key,
-			CreatedTime:        common.GetTimestamp(),
-			Quota:              redemption.Quota,
-			RedeemType:         redemption.RedeemType,
-			SubscriptionPlanId: redemption.SubscriptionPlanId,
-			InvoiceEligible:    redemption.InvoiceEligible,
-			ExpiredTime:        redemption.ExpiredTime,
+			UserId:              c.GetInt("id"),
+			Name:                redemption.Name,
+			Key:                 key,
+			CreatedTime:         common.GetTimestamp(),
+			Quota:               redemption.Quota,
+			RedeemType:          redemption.RedeemType,
+			SubscriptionPlanId:  redemption.SubscriptionPlanId,
+			InvoiceAmountMicros: redemption.InvoiceAmountMicros,
+			InvoiceCurrency:     redemption.InvoiceCurrency,
+			ExpiredTime:         redemption.ExpiredTime,
 		}
 		err = cleanRedemption.Insert()
 		if err != nil {
@@ -179,7 +180,8 @@ func UpdateRedemption(c *gin.Context) {
 		cleanRedemption.Quota = redemption.Quota
 		cleanRedemption.RedeemType = redemption.RedeemType
 		cleanRedemption.SubscriptionPlanId = redemption.SubscriptionPlanId
-		cleanRedemption.InvoiceEligible = redemption.InvoiceEligible
+		cleanRedemption.InvoiceAmountMicros = redemption.InvoiceAmountMicros
+		cleanRedemption.InvoiceCurrency = redemption.InvoiceCurrency
 		cleanRedemption.ExpiredTime = redemption.ExpiredTime
 		if err = validateRedemptionConfig(c, cleanRedemption); err != nil {
 			handleRedemptionValidationError(c, err)
@@ -236,6 +238,19 @@ func validateRedemptionConfig(c *gin.Context, redemption *model.Redemption) erro
 	case model.RedemptionTypeQuota:
 		if redemption.Quota <= 0 {
 			return model.ErrRedemptionQuotaInvalid
+		}
+		if redemption.InvoiceAmountMicros < 0 {
+			return errors.New("invoice amount cannot be negative")
+		}
+		if redemption.InvoiceAmountMicros > 0 {
+			if redemption.InvoiceCurrency == "" {
+				return errors.New("invoice amount requires currency")
+			}
+			currency, err := model.NormalizePaymentCurrency(redemption.InvoiceCurrency)
+			if err != nil {
+				return err
+			}
+			redemption.InvoiceCurrency = currency
 		}
 		redemption.SubscriptionPlanId = 0
 	case model.RedemptionTypeSubscription:

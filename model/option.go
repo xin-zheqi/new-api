@@ -99,6 +99,10 @@ func InitOptionMap() {
 	common.OptionMap["InvoiceEnabled"] = "true"
 	common.OptionMap["InvoiceLookbackDays"] = "90"
 	common.OptionMap["InvoiceMonthlyLimit"] = "1"
+	common.OptionMap["InvoiceSystemRechargeEnabled"] = "true"
+	common.OptionMap["InvoiceRedemptionRechargeEnabled"] = "true"
+	common.OptionMap["InvoiceSystemSubscriptionEnabled"] = "true"
+	common.OptionMap["InvoiceRedemptionSubscriptionEnabled"] = "true"
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
 	common.OptionMap["EmailAliasRestrictionEnabled"] = strconv.FormatBool(common.EmailAliasRestrictionEnabled)

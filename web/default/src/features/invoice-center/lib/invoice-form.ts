@@ -93,8 +93,8 @@ export function createInvoiceApplicationSchema(
       t('This field contains unsupported characters')
     ),
     subscription_ids: z
-      .array(z.number().int().positive())
-      .min(1, t('Select at least one eligible subscription'))
+      .array(z.number().int().refine((value) => value !== 0))
+      .min(0)
       .max(100, t('Select no more than 100 subscriptions')),
   })
 }

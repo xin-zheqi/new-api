@@ -52,6 +52,10 @@ const OPERATIONS_SECTIONS = [
           InvoiceApplicationDay: settings.InvoiceApplicationDay,
           InvoiceLookbackDays: settings.InvoiceLookbackDays,
           InvoiceMonthlyLimit: settings.InvoiceMonthlyLimit,
+          InvoiceSystemRechargeEnabled: settings.InvoiceSystemRechargeEnabled,
+          InvoiceRedemptionRechargeEnabled: settings.InvoiceRedemptionRechargeEnabled,
+          InvoiceSystemSubscriptionEnabled: settings.InvoiceSystemSubscriptionEnabled,
+          InvoiceRedemptionSubscriptionEnabled: settings.InvoiceRedemptionSubscriptionEnabled,
         }}
       />
     ),

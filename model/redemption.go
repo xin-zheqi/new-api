@@ -18,15 +18,19 @@ const (
 )
 
 type Redemption struct {
-	Id                    int            `json:"id"`
-	UserId                int            `json:"user_id"`
-	Key                   string         `json:"key" gorm:"type:char(32);uniqueIndex"`
-	Status                int            `json:"status" gorm:"default:1"`
-	Name                  string         `json:"name" gorm:"index"`
-	Quota                 int            `json:"quota" gorm:"default:100"`
-	RedeemType            string         `json:"redeem_type" gorm:"type:varchar(32);not null;default:'quota'"`
-	SubscriptionPlanId    int            `json:"subscription_plan_id" gorm:"index;default:0"`
-	InvoiceEligible       bool           `json:"invoice_eligible" gorm:"index"`
+	Id                 int    `json:"id"`
+	UserId             int    `json:"user_id"`
+	Key                string `json:"key" gorm:"type:char(32);uniqueIndex"`
+	Status             int    `json:"status" gorm:"default:1"`
+	Name               string `json:"name" gorm:"index"`
+	Quota              int    `json:"quota" gorm:"default:100"`
+	RedeemType         string `json:"redeem_type" gorm:"type:varchar(32);not null;default:'quota'"`
+	SubscriptionPlanId int    `json:"subscription_plan_id" gorm:"index;default:0"`
+	// InvoiceEligible is retained for schema compatibility; invoiceability is
+	// determined solely by InvoiceAmountMicros > 0.
+	InvoiceEligible       bool           `json:"-" gorm:"index"`
+	InvoiceAmountMicros   int64          `json:"invoice_amount_micros" gorm:"type:bigint;not null;default:0"`
+	InvoiceCurrency       string         `json:"invoice_currency" gorm:"type:varchar(8);not null;default:''"`
 	SubscriptionPlanTitle string         `json:"subscription_plan_title,omitempty" gorm:"-:all"`
 	CreatedTime           int64          `json:"created_time" gorm:"bigint"`
 	RedeemedTime          int64          `json:"redeemed_time" gorm:"bigint"`
@@ -80,9 +84,12 @@ func (redemption *Redemption) normalizeFields() {
 	case RedemptionTypeSubscription:
 		redemption.Quota = 0
 	}
-	// Redemption codes do not prove a monetary payment, so subscriptions
-	// created from them must never become invoice eligible.
-	redemption.InvoiceEligible = false
+	// Quota redemptions are balance grants and have no invoiceable payment
+	// snapshot. Subscription redemptions may opt in to invoicing when their
+	// referenced plan is marked invoice eligible.
+	if redemption.RedeemType == RedemptionTypeQuota {
+		redemption.InvoiceEligible = false
+	}
 }
 
 func (redemption *Redemption) AfterFind(tx *gorm.DB) error {
@@ -331,7 +338,11 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 			redeemResult.Quota = redemption.Quota
 			logMessage = fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id)
 		case RedemptionTypeSubscription:
-			subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption", nil)
+			var payment *SubscriptionPaymentSnapshot
+			if redemption.InvoiceAmountMicros > 0 && redemption.InvoiceCurrency != "" {
+				payment = &SubscriptionPaymentSnapshot{AmountMicros: redemption.InvoiceAmountMicros, Currency: redemption.InvoiceCurrency}
+			}
+			subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption", payment)
 			if err != nil {
 				return err
 			}
@@ -385,7 +396,7 @@ func (redemption *Redemption) SelectUpdate() error {
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (redemption *Redemption) Update() error {
 	var err error
-	err = DB.Model(redemption).Select("name", "status", "quota", "redeem_type", "subscription_plan_id", "invoice_eligible", "redeemed_time", "expired_time").Updates(redemption).Error
+	err = DB.Model(redemption).Select("name", "status", "quota", "redeem_type", "subscription_plan_id", "invoice_eligible", "invoice_amount_micros", "invoice_currency", "redeemed_time", "expired_time").Updates(redemption).Error
 	return err
 }
 

@@ -77,13 +77,14 @@ const IdentityReviews = () => {
       <Typography.Paragraph type='tertiary' className='mb-6'>
         {t('University and enterprise identity applications')}
       </Typography.Paragraph>
-      {loading ? (
-        <Spin />
-      ) : users.length === 0 ? (
-        <Empty description={t('No identity applications')} />
-      ) : (
-        users.map((user) => (
-          <Card key={user.id} className='mb-3'>
+      <div className='mt-4'>
+        {loading ? (
+          <Spin />
+        ) : users.length === 0 ? (
+          <Empty description={t('No identity applications')} />
+        ) : (
+          users.map((user) => (
+            <Card key={user.id} className='mb-3'>
             <div className='flex flex-wrap items-center gap-3'>
               <div className='flex-1 min-w-[180px]'>
                 <Typography.Text strong>
@@ -107,9 +108,10 @@ const IdentityReviews = () => {
                 {t('Reject')}
               </Button>
             </div>
-          </Card>
-        ))
-      )}
+            </Card>
+          ))
+        )}
+      </div>
     </div>
   );
 };

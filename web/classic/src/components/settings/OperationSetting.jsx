@@ -89,6 +89,10 @@ const OperationSetting = () => {
     InvoiceApplicationDay: 25,
     InvoiceLookbackDays: 90,
     InvoiceMonthlyLimit: 1,
+    InvoiceSystemRechargeEnabled: true,
+    InvoiceRedemptionRechargeEnabled: true,
+    InvoiceSystemSubscriptionEnabled: true,
+    InvoiceRedemptionSubscriptionEnabled: true,
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,

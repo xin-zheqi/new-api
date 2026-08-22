@@ -282,10 +282,14 @@ export function AdminInvoiceDetailSheet(props: {
                       >
                         <div className='min-w-0'>
                           <p className='font-medium [overflow-wrap:anywhere] break-words'>
-                            {item.plan_title || t('Subscription')}
+                            {item.item_type === 'top_up'
+                              ? t('Balance recharge')
+                              : item.item_type === 'redemption_recharge'
+                                ? t('Redemption code balance recharge')
+                                : item.plan_title || t('Subscription')}
                           </p>
                           <p className='text-muted-foreground text-xs'>
-                            #{item.user_subscription_id}
+                            #{item.top_up_id || item.redemption_id || item.user_subscription_id}
                           </p>
                         </div>
                         <span className='shrink-0 tabular-nums'>

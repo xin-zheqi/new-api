@@ -95,20 +95,32 @@ export function InvoiceApplicationForm(props: {
   const submit = async (values: InvoiceApplicationFormValues) => {
     try {
       const parsed = schema.parse(values)
-      const currencies = new Set(
-        props.subscriptions
-          .filter((subscription) =>
-            parsed.subscription_ids.includes(subscription.id)
-          )
-          .map((subscription) => subscription.paid_currency)
+      const selectedItems = props.subscriptions.filter((item) =>
+        parsed.subscription_ids.includes(item.id)
       )
+      if (selectedItems.length === 0) {
+        form.setError('subscription_ids', {
+          message: t('Select at least one eligible subscription'),
+        })
+        return
+      }
+      const currencies = new Set(selectedItems.map((item) => item.paid_currency))
       if (currencies.size !== 1) {
         form.setError('subscription_ids', {
           message: t('Each invoice application can include only one currency.'),
         })
         return
       }
-      await props.onSubmit(parsed)
+      await props.onSubmit({
+        ...parsed,
+        redemption_ids: selectedItems
+          .filter((item) => item.item_type === 'redemption_recharge')
+          .map((item) => item.redemption_id)
+          .filter((id): id is number => typeof id === 'number' && id > 0),
+        subscription_ids: selectedItems
+          .filter((item) => item.item_type !== 'redemption_recharge')
+          .map((item) => item.id),
+      })
       form.reset(defaultValues)
     } catch {
       // The form or mutation already presents the actionable error.
@@ -223,7 +235,11 @@ export function InvoiceApplicationForm(props: {
                         />
                         <span className='min-w-0 flex-1'>
                           <span className='block font-medium [overflow-wrap:anywhere]'>
-                            {subscription.plan_title || t('Subscription')}
+                            {subscription.item_type === 'top_up'
+                              ? t('Balance recharge')
+                              : subscription.item_type === 'redemption_recharge'
+                                ? t('Redemption code balance recharge')
+                              : subscription.plan_title || t('Subscription')}
                           </span>
                           <span className='text-muted-foreground block text-xs'>
                             {new Date(

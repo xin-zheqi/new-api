@@ -548,7 +548,7 @@ const AdminInvoiceCenter = () => {
   );
 
   return (
-    <div className='mt-[60px] w-full px-2 pb-6'>
+    <div className='w-full px-2 pb-6'>
       <input
         ref={uploadInputRef}
         type='file'
@@ -563,7 +563,7 @@ const AdminInvoiceCenter = () => {
           <div className='flex flex-wrap items-start justify-between gap-2'>
             <div>
               <Title heading={4} className='m-0'>
-                {t('Invoice Management Center')}
+                {t('Invoice Management')}
               </Title>
               <Text type='secondary'>
                 {t(

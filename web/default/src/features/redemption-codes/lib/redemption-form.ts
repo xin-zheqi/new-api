@@ -41,6 +41,8 @@ export function getRedemptionFormSchema(t: TFunction) {
         .max(REDEMPTION_VALIDATION.NAME_MAX_LENGTH, msg.NAME_LENGTH_INVALID),
       redeem_type: z.enum(['quota', 'subscription']),
       quota_dollars: z.number().min(0),
+      invoice_amount: z.number().min(0),
+      invoice_currency: z.string().trim().max(8),
       subscription_plan_id: z.number().optional(),
       expired_time: z.date().optional(),
       count: z
@@ -76,6 +78,8 @@ export type RedemptionFormValues = {
   name: string
   redeem_type: 'quota' | 'subscription'
   quota_dollars: number
+  invoice_amount: number
+  invoice_currency: string
   subscription_plan_id?: number
   expired_time?: Date
   count?: number
@@ -89,6 +93,8 @@ export const REDEMPTION_FORM_DEFAULT_VALUES: RedemptionFormValues = {
   name: '',
   redeem_type: 'quota',
   quota_dollars: 10,
+  invoice_amount: 0,
+  invoice_currency: 'USD',
   subscription_plan_id: undefined,
   expired_time: undefined,
   count: 1,
@@ -110,7 +116,9 @@ export function transformFormDataToPayload(
     quota: isSubscription ? 0 : parseQuotaFromDollars(data.quota_dollars),
     redeem_type: data.redeem_type,
     subscription_plan_id: isSubscription ? data.subscription_plan_id || 0 : 0,
-    invoice_eligible: false,
+    invoice_amount_micros: Math.round(Math.max(0, data.invoice_amount) * 1_000_000),
+    invoice_currency: data.invoice_amount > 0 ? data.invoice_currency.trim().toUpperCase() : '',
+    invoice_eligible: data.invoice_amount > 0,
     expired_time: data.expired_time
       ? Math.floor(data.expired_time.getTime() / 1000)
       : 0,
@@ -130,6 +138,8 @@ export function transformRedemptionToFormDefaults(
     redeem_type: redeemType,
     quota_dollars:
       redeemType === 'quota' ? quotaUnitsToDollars(redemption.quota) : 0,
+    invoice_amount: (redemption.invoice_amount_micros || 0) / 1_000_000,
+    invoice_currency: redemption.invoice_currency || 'USD',
     subscription_plan_id:
       redemption.subscription_plan_id > 0
         ? redemption.subscription_plan_id

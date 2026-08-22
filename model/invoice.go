@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +41,10 @@ var invoiceSettingOptionKeys = []string{
 	"InvoiceApplicationDay",
 	"InvoiceLookbackDays",
 	"InvoiceMonthlyLimit",
+	"InvoiceSystemRechargeEnabled",
+	"InvoiceRedemptionRechargeEnabled",
+	"InvoiceSystemSubscriptionEnabled",
+	"InvoiceRedemptionSubscriptionEnabled",
 }
 
 type InvoiceRequestError struct {
@@ -93,6 +98,9 @@ type InvoiceApplicationItem struct {
 	Id                   int    `json:"id"`
 	InvoiceApplicationId int    `json:"invoice_application_id" gorm:"index"`
 	UserSubscriptionId   int    `json:"user_subscription_id"`
+	TopUpId              int    `json:"top_up_id,omitempty" gorm:"index"`
+	RedemptionId         int    `json:"redemption_id,omitempty" gorm:"index"`
+	ItemType             string `json:"item_type" gorm:"type:varchar(16);not null;default:'subscription'"`
 	ActiveSlot           *int   `json:"-"`
 	PlanTitle            string `json:"plan_title" gorm:"type:varchar(255)"`
 	LegacyAmountTotal    int64  `json:"-" gorm:"column:amount_total;type:bigint;not null;default:0"`
@@ -117,7 +125,11 @@ func (invoiceApplicationItemIndex) TableName() string {
 
 type InvoiceEligibleSubscription struct {
 	UserSubscription
-	PlanTitle string `json:"plan_title"`
+	PlanTitle    string `json:"plan_title"`
+	Source       string `json:"source,omitempty"`
+	TopUpId      int    `json:"top_up_id,omitempty"`
+	RedemptionId int    `json:"redemption_id,omitempty"`
+	ItemType     string `json:"item_type,omitempty"`
 }
 
 type InvoiceApplicationInput struct {
@@ -134,10 +146,14 @@ type InvoiceAdminFilter struct {
 }
 
 type InvoiceSettings struct {
-	Enabled        bool
-	ApplicationDay int
-	LookbackDays   int
-	MonthlyLimit   int
+	Enabled                       bool
+	ApplicationDay                int
+	LookbackDays                  int
+	MonthlyLimit                  int
+	SystemRechargeEnabled         bool
+	RedemptionRechargeEnabled     bool
+	SystemSubscriptionEnabled     bool
+	RedemptionSubscriptionEnabled bool
 }
 
 func parseInvoiceSettingInt(values map[string]string, key string, minimum, maximum, fallback int, rejectInvalid bool) (int, error) {
@@ -156,7 +172,9 @@ func parseInvoiceSettingInt(values map[string]string, key string, minimum, maxim
 }
 
 func invoiceSettingsFromValues(values map[string]string, rejectInvalid bool) (InvoiceSettings, error) {
-	settings := InvoiceSettings{Enabled: true, ApplicationDay: 25, LookbackDays: 90, MonthlyLimit: 1}
+	settings := InvoiceSettings{Enabled: true, ApplicationDay: 25, LookbackDays: 90, MonthlyLimit: 1,
+		SystemRechargeEnabled: true, RedemptionRechargeEnabled: true,
+		SystemSubscriptionEnabled: true, RedemptionSubscriptionEnabled: true}
 	if value, exists := values["InvoiceEnabled"]; exists {
 		switch strings.ToLower(strings.TrimSpace(value)) {
 		case "true":
@@ -181,6 +199,29 @@ func invoiceSettingsFromValues(values map[string]string, rejectInvalid bool) (In
 	settings.MonthlyLimit, err = parseInvoiceSettingInt(values, "InvoiceMonthlyLimit", 1, 31, settings.MonthlyLimit, rejectInvalid)
 	if err != nil {
 		return InvoiceSettings{}, err
+	}
+	boolSettings := []struct {
+		key string
+		out *bool
+	}{
+		{"InvoiceSystemRechargeEnabled", &settings.SystemRechargeEnabled},
+		{"InvoiceRedemptionRechargeEnabled", &settings.RedemptionRechargeEnabled},
+		{"InvoiceSystemSubscriptionEnabled", &settings.SystemSubscriptionEnabled},
+		{"InvoiceRedemptionSubscriptionEnabled", &settings.RedemptionSubscriptionEnabled},
+	}
+	for _, item := range boolSettings {
+		if value, exists := values[item.key]; exists {
+			switch strings.ToLower(strings.TrimSpace(value)) {
+			case "true":
+				*item.out = true
+			case "false":
+				*item.out = false
+			default:
+				if rejectInvalid {
+					return InvoiceSettings{}, fmt.Errorf("invalid %s setting", item.key)
+				}
+			}
+		}
 	}
 	return settings, nil
 }
@@ -290,35 +331,123 @@ func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]In
 	}
 	cutoff := common.GetTimestamp() - int64(settings.LookbackDays)*24*60*60
 	var subscriptions []InvoiceEligibleSubscription
-	err := DB.Table("user_subscriptions AS us").
+	query := DB.Table("user_subscriptions AS us").
 		Select("us.*, COALESCE(NULLIF(us.plan_title_snapshot, ''), sp.title, '') AS plan_title").
 		Joins("LEFT JOIN subscription_plans AS sp ON sp.id = us.plan_id").
-		Where("us.user_id = ? AND us.invoice_eligible = ? AND us.paid_amount_micros > 0 AND us.paid_currency <> ? AND us.created_at >= ?", userId, true, "", cutoff).
-		Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai WHERE iai.user_subscription_id = us.id AND iai.active_slot = ?)", 1).
-		Order("us.created_at DESC, us.id DESC").Limit(InvoiceSubscriptionLimit).Find(&subscriptions).Error
-	return subscriptions, err
+		Where("us.user_id = ? AND us.paid_amount_micros > 0 AND us.paid_currency <> ? AND us.created_at >= ?", userId, "", cutoff).
+		Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai WHERE iai.user_subscription_id = us.id AND iai.active_slot = ?)", 1)
+	if settings.SystemSubscriptionEnabled && settings.RedemptionSubscriptionEnabled {
+		query = query.Where("us.source IN ?", []string{"order", "balance", "redemption"})
+	} else if settings.SystemSubscriptionEnabled {
+		query = query.Where("us.source IN ?", []string{"order", "balance"})
+	} else if settings.RedemptionSubscriptionEnabled {
+		query = query.Where("us.source = ?", "redemption")
+	} else {
+		query = query.Where("1 = 0")
+	}
+	err := query.Order("us.created_at DESC, us.id DESC").Limit(InvoiceSubscriptionLimit).Find(&subscriptions).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range subscriptions {
+		subscriptions[i].ItemType = "subscription"
+	}
+	var topUps []TopUp
+	if settings.SystemRechargeEnabled {
+		if err := DB.Table("top_ups").Where("user_id = ? AND status = ? AND source = ? AND complete_time >= ?", userId, common.TopUpStatusSuccess, TopUpSourceRecharge, cutoff).
+			Where("expected_amount_micros > 0 AND expected_currency <> ''").
+			Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai JOIN invoice_applications ia ON ia.id = iai.invoice_application_id WHERE iai.top_up_id = top_ups.id AND ia.status IN ?)", []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).
+			Order("complete_time DESC, id DESC").Limit(InvoiceSubscriptionLimit).Find(&topUps).Error; err != nil {
+			return nil, err
+		}
+		for _, topUp := range topUps {
+			amount, currency, valid := invoiceTopUpPaymentSnapshot(topUp)
+			if !valid {
+				continue
+			}
+			topUpsub := InvoiceEligibleSubscription{
+				UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime},
+				PlanTitle:        "Balance recharge", Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: "top_up",
+			}
+			subscriptions = append(subscriptions, topUpsub)
+		}
+	}
+	if settings.RedemptionRechargeEnabled {
+		var redemptions []Redemption
+		if err := DB.Table("redemptions").Where("used_user_id = ? AND status = ? AND redeem_type = ? AND redeemed_time >= ? AND quota > ? AND invoice_amount_micros > 0 AND invoice_currency <> ''", userId, common.RedemptionCodeStatusUsed, RedemptionTypeQuota, cutoff, 0).
+			Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai JOIN invoice_applications ia ON ia.id = iai.invoice_application_id WHERE iai.redemption_id = redemptions.id AND ia.status IN ?)", []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).
+			Order("redeemed_time DESC, id DESC").Limit(InvoiceSubscriptionLimit).Find(&redemptions).Error; err != nil {
+			return nil, err
+		}
+		for _, redemption := range redemptions {
+			if redemption.InvoiceAmountMicros <= 0 || strings.TrimSpace(redemption.InvoiceCurrency) == "" {
+				continue
+			}
+			subscriptions = append(subscriptions, InvoiceEligibleSubscription{
+				UserSubscription: UserSubscription{Id: -1000000000 - redemption.Id, UserId: userId, PaidAmountMicros: redemption.InvoiceAmountMicros, PaidCurrency: redemption.InvoiceCurrency, CreatedAt: redemption.RedeemedTime},
+				PlanTitle:        "Redemption code balance recharge", Source: "redemption_recharge", RedemptionId: redemption.Id, ItemType: "redemption_recharge",
+			})
+		}
+	}
+	sort.SliceStable(subscriptions, func(i, j int) bool {
+		if subscriptions[i].CreatedAt != subscriptions[j].CreatedAt {
+			return subscriptions[i].CreatedAt > subscriptions[j].CreatedAt
+		}
+		return subscriptions[i].Id > subscriptions[j].Id
+	})
+	if len(subscriptions) > InvoiceSubscriptionLimit {
+		subscriptions = subscriptions[:InvoiceSubscriptionLimit]
+	}
+	return subscriptions, nil
 }
 
-func CreateInvoiceApplication(userId int, settings InvoiceSettings, input InvoiceApplicationInput, subscriptionIds []int) (*InvoiceApplication, error) {
-	if userId <= 0 || len(subscriptionIds) == 0 {
+func invoiceTopUpPaymentSnapshot(topUp TopUp) (int64, string, bool) {
+	if topUp.ExpectedAmountMicros <= 0 || strings.TrimSpace(topUp.ExpectedCurrency) == "" {
+		return 0, "", false
+	}
+	currency, err := normalizeSubscriptionPaymentCurrency(topUp.ExpectedCurrency)
+	if err != nil || currency != topUp.ExpectedCurrency {
+		return 0, "", false
+	}
+	return topUp.ExpectedAmountMicros, currency, true
+}
+
+func CreateInvoiceApplication(userId int, settings InvoiceSettings, input InvoiceApplicationInput, subscriptionIds []int, redemptionIds ...[]int) (*InvoiceApplication, error) {
+	requestedRedemptionCount := 0
+	if len(redemptionIds) > 0 {
+		requestedRedemptionCount = len(redemptionIds[0])
+	}
+	if userId <= 0 || len(subscriptionIds)+requestedRedemptionCount == 0 {
 		return nil, invoiceRequestError("invoice title and subscriptions are required")
 	}
 	input, err := normalizeInvoiceInput(input)
 	if err != nil {
 		return nil, err
 	}
-	if len(subscriptionIds) > InvoiceSubscriptionLimit {
+	if len(subscriptionIds)+requestedRedemptionCount > InvoiceSubscriptionLimit {
 		return nil, invoiceRequestError("too many subscriptions in one invoice application")
 	}
 	seenSubscriptionIds := make(map[int]struct{}, len(subscriptionIds))
 	for _, subscriptionId := range subscriptionIds {
-		if subscriptionId <= 0 {
+		if subscriptionId == 0 {
 			return nil, invoiceRequestError("invalid subscription id")
 		}
 		if _, exists := seenSubscriptionIds[subscriptionId]; exists {
 			return nil, invoiceRequestError("duplicate subscription id")
 		}
 		seenSubscriptionIds[subscriptionId] = struct{}{}
+	}
+	seenRedemptionIds := make(map[int]struct{}, requestedRedemptionCount)
+	if len(redemptionIds) > 0 {
+		for _, redemptionId := range redemptionIds[0] {
+			if redemptionId <= 0 {
+				return nil, invoiceRequestError("invalid redemption id")
+			}
+			if _, exists := seenRedemptionIds[redemptionId]; exists {
+				return nil, invoiceRequestError("duplicate redemption id")
+			}
+			seenRedemptionIds[redemptionId] = struct{}{}
+		}
 	}
 
 	var application *InvoiceApplication
@@ -342,15 +471,74 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 		}
 
 		var subscriptions []InvoiceEligibleSubscription
-		if err := tx.Table("user_subscriptions AS us").Select("us.*, COALESCE(NULLIF(us.plan_title_snapshot, ''), sp.title, '') AS plan_title").
-			Joins("LEFT JOIN subscription_plans AS sp ON sp.id = us.plan_id").
-			Where("us.user_id = ? AND us.id IN ? AND us.invoice_eligible = ? AND us.paid_amount_micros > 0 AND us.paid_currency <> ? AND us.created_at >= ?", userId, subscriptionIds, true, "", common.GetTimestamp()-int64(settings.LookbackDays)*24*60*60).
-			Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai WHERE iai.user_subscription_id = us.id AND iai.active_slot = ?)", 1).
-			Find(&subscriptions).Error; err != nil {
-			return err
+		var subscriptionIDs, topUpIDs, redemptionIDsInput []int
+		for _, itemID := range subscriptionIds {
+			if itemID > 0 {
+				subscriptionIDs = append(subscriptionIDs, itemID)
+			} else {
+				topUpIDs = append(topUpIDs, -itemID)
+			}
 		}
-		if len(subscriptions) != len(subscriptionIds) {
-			return invoiceRequestError("one or more subscriptions are not eligible for invoicing")
+		if len(redemptionIds) > 0 {
+			redemptionIDsInput = append(redemptionIDsInput, redemptionIds[0]...)
+		}
+		if len(subscriptionIDs) > 0 {
+			subscriptionQuery := tx.Table("user_subscriptions AS us").Select("us.*, COALESCE(NULLIF(us.plan_title_snapshot, ''), sp.title, '') AS plan_title").
+				Joins("LEFT JOIN subscription_plans AS sp ON sp.id = us.plan_id").
+				Where("us.user_id = ? AND us.id IN ? AND us.paid_amount_micros > 0 AND us.paid_currency <> ? AND us.created_at >= ?", userId, subscriptionIDs, "", common.GetTimestamp()-int64(settings.LookbackDays)*24*60*60).
+				Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai WHERE iai.user_subscription_id = us.id AND iai.active_slot = ?)", 1)
+			if settings.SystemSubscriptionEnabled && settings.RedemptionSubscriptionEnabled {
+				subscriptionQuery = subscriptionQuery.Where("us.source IN ?", []string{"order", "balance", "redemption"})
+			} else if settings.SystemSubscriptionEnabled {
+				subscriptionQuery = subscriptionQuery.Where("us.source IN ?", []string{"order", "balance"})
+			} else if settings.RedemptionSubscriptionEnabled {
+				subscriptionQuery = subscriptionQuery.Where("us.source = ?", "redemption")
+			} else {
+				subscriptionQuery = subscriptionQuery.Where("1 = 0")
+			}
+			if err := subscriptionQuery.Find(&subscriptions).Error; err != nil {
+				return err
+			}
+		}
+		for i := range subscriptions {
+			subscriptions[i].ItemType = "subscription"
+		}
+		if len(topUpIDs) > 0 {
+			if !settings.SystemRechargeEnabled {
+				return invoiceRequestError("one or more invoice items are not eligible for invoicing")
+			}
+			var topUps []TopUp
+			if err := tx.Table("top_ups").Where("user_id = ? AND id IN ? AND status = ? AND source = ? AND complete_time >= ?", userId, topUpIDs, common.TopUpStatusSuccess, TopUpSourceRecharge, common.GetTimestamp()-int64(settings.LookbackDays)*24*60*60).
+				Where("expected_amount_micros > 0 AND expected_currency <> ''").
+				Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai JOIN invoice_applications ia ON ia.id = iai.invoice_application_id WHERE iai.top_up_id = top_ups.id AND ia.status IN ?)", []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).Find(&topUps).Error; err != nil {
+				return err
+			}
+			for _, topUp := range topUps {
+				amount, currency, valid := invoiceTopUpPaymentSnapshot(topUp)
+				if !valid {
+					continue
+				}
+				subscriptions = append(subscriptions, InvoiceEligibleSubscription{UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime}, PlanTitle: "Balance recharge", Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: "top_up"})
+			}
+		}
+		if len(redemptionIDsInput) > 0 {
+			if !settings.RedemptionRechargeEnabled {
+				return invoiceRequestError("one or more invoice items are not eligible for invoicing")
+			}
+			var redemptions []Redemption
+			if err := tx.Table("redemptions").Where("used_user_id = ? AND id IN ? AND status = ? AND redeem_type = ? AND redeemed_time >= ? AND quota > ? AND invoice_amount_micros > 0 AND invoice_currency <> ''", userId, redemptionIDsInput, common.RedemptionCodeStatusUsed, RedemptionTypeQuota, common.GetTimestamp()-int64(settings.LookbackDays)*24*60*60, 0).
+				Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai JOIN invoice_applications ia ON ia.id = iai.invoice_application_id WHERE iai.redemption_id = redemptions.id AND ia.status IN ?)", []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).Find(&redemptions).Error; err != nil {
+				return err
+			}
+			for _, redemption := range redemptions {
+				if redemption.InvoiceAmountMicros <= 0 || strings.TrimSpace(redemption.InvoiceCurrency) == "" {
+					continue
+				}
+				subscriptions = append(subscriptions, InvoiceEligibleSubscription{UserSubscription: UserSubscription{Id: -1000000000 - redemption.Id, UserId: userId, PaidAmountMicros: redemption.InvoiceAmountMicros, PaidCurrency: redemption.InvoiceCurrency, CreatedAt: redemption.RedeemedTime}, PlanTitle: "Redemption code balance recharge", Source: "redemption_recharge", RedemptionId: redemption.Id, ItemType: "redemption_recharge"})
+			}
+		}
+		if len(subscriptions) != len(subscriptionIds)+len(redemptionIDsInput) {
+			return invoiceRequestError("one or more invoice items are not eligible for invoicing")
 		}
 
 		application = &InvoiceApplication{
@@ -376,9 +564,16 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 				return invoiceRequestError("subscription amount is invalid")
 			}
 			activeSlot := 1
+			userSubscriptionID := subscription.Id
+			var activeSlotPointer = &activeSlot
+			if subscription.ItemType == "top_up" || subscription.ItemType == "redemption_recharge" {
+				userSubscriptionID = 0
+				activeSlotPointer = nil
+			}
 			application.TotalAmountMicros += subscription.PaidAmountMicros
 			application.Items = append(application.Items, InvoiceApplicationItem{
-				UserSubscriptionId: subscription.Id, ActiveSlot: &activeSlot,
+				UserSubscriptionId: userSubscriptionID, TopUpId: subscription.TopUpId, RedemptionId: subscription.RedemptionId,
+				ItemType: subscription.ItemType, ActiveSlot: activeSlotPointer,
 				PlanTitle: subscription.PlanTitle, PaidAmountMicros: subscription.PaidAmountMicros,
 				Currency:  currency,
 				StartTime: subscription.StartTime, EndTime: subscription.EndTime,

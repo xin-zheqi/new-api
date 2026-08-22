@@ -49,6 +49,10 @@ export type InvoiceSettingsUpdateRequest = {
   application_day: number
   lookback_days: number
   monthly_limit: number
+  system_recharge_enabled: boolean
+  redemption_recharge_enabled: boolean
+  system_subscription_enabled: boolean
+  redemption_subscription_enabled: boolean
 }
 
 export type ConfirmPaymentComplianceResponse = {
@@ -361,6 +365,10 @@ export type OperationsSettings = {
   InvoiceEnabled: boolean
   InvoiceLookbackDays: number
   InvoiceMonthlyLimit: number
+  InvoiceSystemRechargeEnabled: boolean
+  InvoiceRedemptionRechargeEnabled: boolean
+  InvoiceSystemSubscriptionEnabled: boolean
+  InvoiceRedemptionSubscriptionEnabled: boolean
   ChannelDisableThreshold: string
   QuotaRemindThreshold: string
   AutomaticDisableChannelEnabled: boolean

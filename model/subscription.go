@@ -1161,13 +1161,13 @@ func createUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		if err := validateSubscriptionPaymentSnapshot(*payment); err != nil {
 			return nil, err
 		}
-		if source != "order" {
+		if source != "order" && source != "redemption" {
 			return nil, errors.New("subscription source cannot carry a payment snapshot")
 		}
 		paidAmountMicros = payment.AmountMicros
 		paidCurrency = payment.Currency
-		invoiceEligible = plan.InvoiceEligible
-		verifiedPaidOrder = true
+		invoiceEligible = true
+		verifiedPaidOrder = source == "order"
 	}
 	// Serialize subscription creation per user so concurrent payment callbacks
 	// and non-payment grants cannot both pass MaxPurchasePerUser before either

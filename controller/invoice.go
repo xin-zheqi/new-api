@@ -27,6 +27,7 @@ type invoiceApplicationRequest struct {
 	BankName        string `json:"bank_name"`
 	Remark          string `json:"remark"`
 	SubscriptionIds []int  `json:"subscription_ids"`
+	RedemptionIds   []int  `json:"redemption_ids"`
 }
 
 type invoiceRejectRequest struct {
@@ -34,10 +35,14 @@ type invoiceRejectRequest struct {
 }
 
 type invoiceSettingsUpdateRequest struct {
-	InvoiceEnabled *bool `json:"invoice_enabled"`
-	ApplicationDay *int  `json:"application_day"`
-	LookbackDays   *int  `json:"lookback_days"`
-	MonthlyLimit   *int  `json:"monthly_limit"`
+	InvoiceEnabled                *bool `json:"invoice_enabled"`
+	ApplicationDay                *int  `json:"application_day"`
+	LookbackDays                  *int  `json:"lookback_days"`
+	MonthlyLimit                  *int  `json:"monthly_limit"`
+	SystemRechargeEnabled         *bool `json:"system_recharge_enabled"`
+	RedemptionRechargeEnabled     *bool `json:"redemption_recharge_enabled"`
+	SystemSubscriptionEnabled     *bool `json:"system_subscription_enabled"`
+	RedemptionSubscriptionEnabled *bool `json:"redemption_subscription_enabled"`
 }
 
 const (
@@ -203,7 +208,7 @@ func CreateInvoiceApplication(c *gin.Context) {
 	application, err := model.CreateInvoiceApplication(c.GetInt("id"), settings, model.InvoiceApplicationInput{
 		InvoiceTitle: request.InvoiceTitle, TaxpayerId: request.TaxpayerId,
 		BankName: request.BankName, Remark: request.Remark,
-	}, request.SubscriptionIds)
+	}, request.SubscriptionIds, request.RedemptionIds)
 	if err != nil {
 		if model.IsInvoiceRequestError(err) {
 			common.ApiErrorMsg(c, err.Error())
@@ -258,11 +263,32 @@ func UpdateInvoiceSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invoice settings are outside the allowed range"})
 		return
 	}
+	current := model.GetInvoiceSettings()
+	systemRecharge := current.SystemRechargeEnabled
+	redemptionRecharge := current.RedemptionRechargeEnabled
+	systemSubscription := current.SystemSubscriptionEnabled
+	redemptionSubscription := current.RedemptionSubscriptionEnabled
+	if request.SystemRechargeEnabled != nil {
+		systemRecharge = *request.SystemRechargeEnabled
+	}
+	if request.RedemptionRechargeEnabled != nil {
+		redemptionRecharge = *request.RedemptionRechargeEnabled
+	}
+	if request.SystemSubscriptionEnabled != nil {
+		systemSubscription = *request.SystemSubscriptionEnabled
+	}
+	if request.RedemptionSubscriptionEnabled != nil {
+		redemptionSubscription = *request.RedemptionSubscriptionEnabled
+	}
 	if err := model.UpdateOptionsBulk(map[string]string{
-		"InvoiceEnabled":        strconv.FormatBool(*request.InvoiceEnabled),
-		"InvoiceApplicationDay": strconv.Itoa(*request.ApplicationDay),
-		"InvoiceLookbackDays":   strconv.Itoa(*request.LookbackDays),
-		"InvoiceMonthlyLimit":   strconv.Itoa(*request.MonthlyLimit),
+		"InvoiceEnabled":                       strconv.FormatBool(*request.InvoiceEnabled),
+		"InvoiceApplicationDay":                strconv.Itoa(*request.ApplicationDay),
+		"InvoiceLookbackDays":                  strconv.Itoa(*request.LookbackDays),
+		"InvoiceMonthlyLimit":                  strconv.Itoa(*request.MonthlyLimit),
+		"InvoiceSystemRechargeEnabled":         strconv.FormatBool(systemRecharge),
+		"InvoiceRedemptionRechargeEnabled":     strconv.FormatBool(redemptionRecharge),
+		"InvoiceSystemSubscriptionEnabled":     strconv.FormatBool(systemSubscription),
+		"InvoiceRedemptionSubscriptionEnabled": strconv.FormatBool(redemptionSubscription),
 	}); err != nil {
 		common.SysError("failed to update invoice settings: " + err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to update invoice settings"})

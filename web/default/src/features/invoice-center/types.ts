@@ -26,12 +26,19 @@ export type InvoiceSubscription = {
   start_time: number
   end_time: number
   created_at: number
+  source?: string
+  top_up_id?: number
+  redemption_id?: number
+  item_type?: 'subscription' | 'top_up' | 'redemption_recharge'
 }
 
 export type InvoiceItem = {
   id: number
   invoice_application_id?: number
   user_subscription_id: number
+  top_up_id?: number
+  redemption_id?: number
+  item_type?: 'subscription' | 'top_up' | 'redemption_recharge'
   plan_title: string
   paid_amount_micros: number
   currency: string
@@ -94,6 +101,7 @@ export type InvoiceApplicationPayload = {
   bank_name: string
   remark: string
   subscription_ids: number[]
+  redemption_ids: number[]
 }
 
 export type AdminInvoiceListParams = {

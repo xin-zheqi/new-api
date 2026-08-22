@@ -30,6 +30,10 @@ const SettingsInvoice = ({ options, refresh }) => {
     InvoiceApplicationDay: 25,
     InvoiceLookbackDays: 90,
     InvoiceMonthlyLimit: 1,
+    InvoiceSystemRechargeEnabled: true,
+    InvoiceRedemptionRechargeEnabled: true,
+    InvoiceSystemSubscriptionEnabled: true,
+    InvoiceRedemptionSubscriptionEnabled: true,
   });
   const [saving, setSaving] = useState(false);
 
@@ -42,6 +46,10 @@ const SettingsInvoice = ({ options, refresh }) => {
       InvoiceApplicationDay: Number(options.InvoiceApplicationDay || 25),
       InvoiceLookbackDays: Number(options.InvoiceLookbackDays || 90),
       InvoiceMonthlyLimit: Number(options.InvoiceMonthlyLimit || 1),
+      InvoiceSystemRechargeEnabled: options.InvoiceSystemRechargeEnabled === undefined ? true : toBoolean(options.InvoiceSystemRechargeEnabled),
+      InvoiceRedemptionRechargeEnabled: options.InvoiceRedemptionRechargeEnabled === undefined ? true : toBoolean(options.InvoiceRedemptionRechargeEnabled),
+      InvoiceSystemSubscriptionEnabled: options.InvoiceSystemSubscriptionEnabled === undefined ? true : toBoolean(options.InvoiceSystemSubscriptionEnabled),
+      InvoiceRedemptionSubscriptionEnabled: options.InvoiceRedemptionSubscriptionEnabled === undefined ? true : toBoolean(options.InvoiceRedemptionSubscriptionEnabled),
     });
   }, [options]);
 
@@ -55,6 +63,10 @@ const SettingsInvoice = ({ options, refresh }) => {
           application_day: Number(values.InvoiceApplicationDay),
           lookback_days: Number(values.InvoiceLookbackDays),
           monthly_limit: Number(values.InvoiceMonthlyLimit),
+          system_recharge_enabled: values.InvoiceSystemRechargeEnabled,
+          redemption_recharge_enabled: values.InvoiceRedemptionRechargeEnabled,
+          system_subscription_enabled: values.InvoiceSystemSubscriptionEnabled,
+          redemption_subscription_enabled: values.InvoiceRedemptionSubscriptionEnabled,
         },
         { skipErrorHandler: true },
       );
@@ -98,6 +110,20 @@ const SettingsInvoice = ({ options, refresh }) => {
             }
           />
         </div>
+        {[
+          ['InvoiceSystemRechargeEnabled', 'System balance recharge'],
+          ['InvoiceRedemptionRechargeEnabled', 'Redemption code balance recharge'],
+          ['InvoiceSystemSubscriptionEnabled', 'System subscription purchase'],
+          ['InvoiceRedemptionSubscriptionEnabled', 'Redemption code subscription'],
+        ].map(([field, label]) => (
+          <div key={field} className='mb-4 flex items-center justify-between'>
+            <Typography.Text>{t(label)}</Typography.Text>
+            <Switch
+              checked={values[field]}
+              onChange={(checked) => setValues((current) => ({ ...current, [field]: checked }))}
+            />
+          </div>
+        ))}
         <Form.InputNumber
           field='InvoiceApplicationDay'
           label={t('Application day of each month')}

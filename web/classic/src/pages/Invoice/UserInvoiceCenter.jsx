@@ -289,9 +289,13 @@ const UserInvoiceCenter = () => {
     {
       title: t('Subscription plan'),
       dataIndex: 'plan_title',
-      render: (value) => (
+      render: (value, record) => (
         <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 280 }}>
-          {value || t('Subscription')}
+          {record?.item_type === 'top_up'
+            ? t('Balance recharge')
+            : record?.item_type === 'redemption_recharge'
+              ? t('Redemption code balance recharge')
+            : value || t('Subscription')}
         </Text>
       ),
     },

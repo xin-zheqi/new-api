@@ -244,6 +244,41 @@ export function RedemptionsMutateDrawer({
                 )}
               />
 
+              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                <FormField
+                  control={form.control}
+                  name='invoice_amount'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Invoiceable amount')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          step={0.01}
+                          placeholder={t('0 means not invoiceable')}
+                          onChange={(e) => field.onChange(Number.parseFloat(e.target.value) || 0)}
+                        />
+                      </FormControl>
+                      <FormDescription>{t('Actual amount to be invoiced; 0 disables invoicing.')}</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name='invoice_currency'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Invoice currency')}</FormLabel>
+                      <FormControl><Input {...field} maxLength={8} placeholder='USD' /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
               <FormField
                 control={form.control}
                 name='expired_time'

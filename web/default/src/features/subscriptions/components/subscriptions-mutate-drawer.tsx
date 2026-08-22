@@ -579,17 +579,6 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name='invoice_eligible'
-                  render={({ field }) => (
-                    <FormItem className={sideDrawerSwitchItemClassName()}>
-                      <FormLabel className='!mt-0'>{t('Invoice eligible')}</FormLabel>
-                      <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                      <FormDescription>{t('Subscriptions created from this plan can be included in invoice applications.')}</FormDescription>
-                    </FormItem>
-                  )}
-                />
               </div>
             </SideDrawerSection>
 

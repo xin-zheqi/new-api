@@ -46,6 +46,10 @@ const schema = z.object({
   InvoiceApplicationDay: z.number().int().min(1).max(28),
   InvoiceLookbackDays: z.number().int().min(1).max(3650),
   InvoiceMonthlyLimit: z.number().int().min(1).max(31),
+  InvoiceSystemRechargeEnabled: z.boolean(),
+  InvoiceRedemptionRechargeEnabled: z.boolean(),
+  InvoiceSystemSubscriptionEnabled: z.boolean(),
+  InvoiceRedemptionSubscriptionEnabled: z.boolean(),
 })
 
 type Values = z.infer<typeof schema>
@@ -66,6 +70,10 @@ export function InvoiceSettingsSection({
         application_day: values.InvoiceApplicationDay,
         lookback_days: values.InvoiceLookbackDays,
         monthly_limit: values.InvoiceMonthlyLimit,
+        system_recharge_enabled: values.InvoiceSystemRechargeEnabled,
+        redemption_recharge_enabled: values.InvoiceRedemptionRechargeEnabled,
+        system_subscription_enabled: values.InvoiceSystemSubscriptionEnabled,
+        redemption_subscription_enabled: values.InvoiceRedemptionSubscriptionEnabled,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['system-options'] })
@@ -118,6 +126,26 @@ export function InvoiceSettingsSection({
               </FormItem>
             )}
           />
+          {([
+            ['InvoiceSystemRechargeEnabled', 'System balance recharge'],
+            ['InvoiceRedemptionRechargeEnabled', 'Redemption code balance recharge'],
+            ['InvoiceSystemSubscriptionEnabled', 'System subscription purchase'],
+            ['InvoiceRedemptionSubscriptionEnabled', 'Redemption code subscription'],
+          ] as const).map(([name, label]) => (
+            <FormField
+              key={name}
+              control={form.control}
+              name={name}
+              render={({ field }) => (
+                <FormItem className='flex items-center justify-between rounded-md border p-3'>
+                  <FormLabel>{t(label)}</FormLabel>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          ))}
           <FormField
             control={form.control}
             name='InvoiceApplicationDay'

@@ -73,6 +73,8 @@ const EditRedemptionModal = (props) => {
     quota: 100000,
     amount: Number(quotaToDisplayAmount(100000).toFixed(6)),
     subscription_plan_id: undefined,
+    invoice_amount: 0,
+    invoice_currency: getCurrencyConfig().type === 'CNY' ? 'CNY' : 'USD',
     count: 1,
     expired_time: null,
   });
@@ -112,6 +114,8 @@ const EditRedemptionModal = (props) => {
       }
       data.redeem_type = data.redeem_type || 'quota';
       data.amount = Number(quotaToDisplayAmount(data.quota || 0).toFixed(6));
+      data.invoice_amount = Number((data.invoice_amount_micros || 0) / 1000000);
+      data.invoice_currency = data.invoice_currency || (getCurrencyConfig().type === 'CNY' ? 'CNY' : 'USD');
       formApiRef.current?.setValues({ ...getInitValues(), ...data });
     } else {
       showError(message);
@@ -192,6 +196,12 @@ const EditRedemptionModal = (props) => {
       }
     }
     localInputs.name = name;
+    const invoiceAmount = Number(localInputs.invoice_amount || 0);
+    localInputs.invoice_amount_micros = Math.round(Math.max(0, invoiceAmount) * 1000000);
+    localInputs.invoice_currency = invoiceAmount > 0
+      ? String(localInputs.invoice_currency || 'USD').trim().toUpperCase()
+      : '';
+    delete localInputs.invoice_amount;
     if (!localInputs.expired_time) {
       localInputs.expired_time = 0;
     } else {
@@ -478,6 +488,28 @@ const EditRedemptionModal = (props) => {
                         </div>
                       </Col>
                     )}
+                    <Col span={24}>
+                      <Form.InputNumber
+                        field='invoice_amount'
+                        label={t('Invoiceable amount')}
+                        min={0}
+                        step={0.01}
+                        precision={6}
+                        placeholder={t('0 means not invoiceable')}
+                        style={{ width: '100%' }}
+                        showClear
+                      />
+                      <Form.Input
+                        field='invoice_currency'
+                        label={t('Invoice currency')}
+                        maxLength={8}
+                        placeholder='USD'
+                        style={{ width: '100%' }}
+                      />
+                      <div className='text-xs text-gray-500 mt-1'>
+                        {t('Actual amount to be invoiced; 0 disables invoicing.')}
+                      </div>
+                    </Col>
                     {!isEdit && (
                       <Col span={12}>
                         <Form.InputNumber

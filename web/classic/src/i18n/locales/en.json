@@ -4217,6 +4217,16 @@
     "Identity review failed": "Identity review failed",
     "No identity applications": "No identity applications",
     "University and enterprise identity applications": "University and enterprise identity applications",
-    "此工单已达到图片存储上限，请继续使用文字回复。": "This ticket has reached the image storage limit. Continue with a text reply."
+    "此工单已达到图片存储上限，请继续使用文字回复。": "This ticket has reached the image storage limit. Continue with a text reply.",
+    "发票设置": "Invoice settings",
+    "发票管理": "Invoice management",
+    "系统充值余额": "System balance recharge",
+    "兑换码充值余额": "Redemption code balance recharge",
+    "系统开通订阅": "System subscription purchase",
+    "兑换码开通订阅": "Redemption code subscription",
+    "Invoiceable amount": "Invoiceable amount",
+    "Invoice currency": "Invoice currency",
+    "0 means not invoiceable": "0 means not invoiceable",
+    "Actual amount to be invoiced; 0 disables invoicing.": "Actual amount to be invoiced; 0 disables invoicing."
   }
 }

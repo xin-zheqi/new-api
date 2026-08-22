@@ -36,7 +36,6 @@ const SettingsInvoice = ({ options, refresh }) => {
     InvoiceRedemptionSubscriptionEnabled: true,
   });
   const [saving, setSaving] = useState(false);
-
   useEffect(() => {
     setValues({
       InvoiceEnabled:
@@ -98,7 +97,7 @@ const SettingsInvoice = ({ options, refresh }) => {
         {t('Configure the invoice application window and monthly limits.')}
       </Typography.Paragraph>
       <Form layout='vertical'>
-        <div className='mb-4 flex items-center justify-between'>
+        <div className='mb-3 flex max-w-xl items-center justify-between gap-6'>
           <Typography.Text>{t('Enable invoice center')}</Typography.Text>
           <Switch
             checked={values.InvoiceEnabled}
@@ -111,12 +110,12 @@ const SettingsInvoice = ({ options, refresh }) => {
           />
         </div>
         {[
-          ['InvoiceSystemRechargeEnabled', 'System balance recharge'],
-          ['InvoiceRedemptionRechargeEnabled', 'Redemption code balance recharge'],
-          ['InvoiceSystemSubscriptionEnabled', 'System subscription purchase'],
-          ['InvoiceRedemptionSubscriptionEnabled', 'Redemption code subscription'],
+          ['InvoiceSystemRechargeEnabled', '系统充值余额'],
+          ['InvoiceRedemptionRechargeEnabled', '兑换码充值余额'],
+          ['InvoiceSystemSubscriptionEnabled', '系统开通订阅'],
+          ['InvoiceRedemptionSubscriptionEnabled', '兑换码开通订阅'],
         ].map(([field, label]) => (
-          <div key={field} className='mb-4 flex items-center justify-between'>
+          <div key={field} className='mb-3 flex max-w-xl items-center justify-between gap-6'>
             <Typography.Text>{t(label)}</Typography.Text>
             <Switch
               checked={values[field]}

@@ -4059,6 +4059,16 @@
     "Identity review failed": "Échec de la vérification d’identité",
     "No identity applications": "Aucune demande d’identité",
     "University and enterprise identity applications": "Demandes d’identité universitaires et professionnelles",
-    "此工单已达到图片存储上限，请继续使用文字回复。": "Ce ticket a atteint la limite de stockage des images. Continuez par une réponse textuelle."
+    "此工单已达到图片存储上限，请继续使用文字回复。": "Ce ticket a atteint la limite de stockage des images. Continuez par une réponse textuelle.",
+    "发票设置": "Paramètres de facturation",
+    "发票管理": "Gestion des factures",
+    "系统充值余额": "Recharge de solde système",
+    "兑换码充值余额": "Recharge de solde par code",
+    "系统开通订阅": "Achat d’abonnement système",
+    "兑换码开通订阅": "Abonnement par code",
+    "Invoiceable amount": "Montant facturable",
+    "Invoice currency": "Devise de facturation",
+    "0 means not invoiceable": "0 signifie non facturable",
+    "Actual amount to be invoiced; 0 disables invoicing.": "Montant réel à facturer ; 0 désactive la facturation."
   }
 }

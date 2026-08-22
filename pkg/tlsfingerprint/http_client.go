@@ -18,7 +18,10 @@ func NewHTTPClient(proxyURL string, timeout time.Duration) (*http.Client, error)
 	profile := &Profile{
 		Name:               "nodejs-24-claude-code",
 		EnableGREASE:       true,
-		ALPNProtocols:      []string{"h2", "http/1.1"},
+		// Keep the negotiated protocol on HTTP/1.1. net/http cannot safely
+		// drive HTTP/2 over a uTLS socket unless its HTTP/2 transport is
+		// explicitly configured, which otherwise becomes a generic request error.
+		ALPNProtocols:      []string{"http/1.1"},
 		InsecureSkipVerify: common.TLSInsecureSkipVerify,
 	}
 	var dialTLS func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -51,7 +54,7 @@ func NewHTTPClient(proxyURL string, timeout time.Duration) (*http.Client, error)
 		}
 	}
 	transport := &http.Transport{
-		ForceAttemptHTTP2: true,
+		ForceAttemptHTTP2: false,
 		MaxIdleConns:      100,
 		IdleConnTimeout:   90 * time.Second,
 		DialContext:       dialContext,

@@ -4062,6 +4062,16 @@
     "Identity review failed": "身分審核失敗",
     "No identity applications": "暫無身分申請",
     "University and enterprise identity applications": "大專院校與企業使用者身分申請",
-    "此工单已达到图片存储上限，请继续使用文字回复。": "此工單已達到圖片儲存上限，請繼續使用文字回覆。"
+    "此工单已达到图片存储上限，请继续使用文字回复。": "此工單已達到圖片儲存上限，請繼續使用文字回覆。",
+    "发票设置": "發票設定",
+    "发票管理": "發票管理",
+    "系统充值余额": "系統儲值餘額",
+    "兑换码充值余额": "兌換碼儲值餘額",
+    "系统开通订阅": "系統開通訂閱",
+    "兑换码开通订阅": "兌換碼開通訂閱",
+    "Invoiceable amount": "可開票金額",
+    "Invoice currency": "開票幣別",
+    "0 means not invoiceable": "0 表示不可開票",
+    "Actual amount to be invoiced; 0 disables invoicing.": "實際開票金額；設為 0 將不可開票。"
   }
 }

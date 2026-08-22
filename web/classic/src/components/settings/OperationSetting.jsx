@@ -28,7 +28,6 @@ import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
 import SettingsLottery from '../../pages/Setting/Operation/SettingsLottery';
-import SettingsInvoice from '../../pages/Setting/Operation/SettingsInvoice';
 import { API, showError, toBoolean } from '../../helpers';
 
 const OperationSetting = () => {
@@ -85,14 +84,6 @@ const OperationSetting = () => {
 
     /* 抽奖设置 */
     LotteryEnabled: false,
-    InvoiceEnabled: true,
-    InvoiceApplicationDay: 25,
-    InvoiceLookbackDays: 90,
-    InvoiceMonthlyLimit: 1,
-    InvoiceSystemRechargeEnabled: true,
-    InvoiceRedemptionRechargeEnabled: true,
-    InvoiceSystemSubscriptionEnabled: true,
-    InvoiceRedemptionSubscriptionEnabled: true,
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,
@@ -174,9 +165,6 @@ const OperationSetting = () => {
         <Card style={{ marginTop: '10px' }}>
           <SettingsLottery options={inputs} refresh={onRefresh} />
         </Card>
-        <div style={{ marginTop: '10px' }}>
-          <SettingsInvoice options={inputs} refresh={onRefresh} />
-        </div>
       </Spin>
     </>
   );

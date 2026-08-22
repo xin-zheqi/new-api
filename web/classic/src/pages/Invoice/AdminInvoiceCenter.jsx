@@ -563,7 +563,7 @@ const AdminInvoiceCenter = () => {
           <div className='flex flex-wrap items-start justify-between gap-2'>
             <div>
               <Title heading={4} className='m-0'>
-                {t('Invoice Management')}
+                {t('发票管理')}
               </Title>
               <Text type='secondary'>
                 {t(

@@ -4593,6 +4593,16 @@
     "Identity review failed": "Duyệt danh tính thất bại",
     "No identity applications": "Không có yêu cầu danh tính",
     "University and enterprise identity applications": "Yêu cầu danh tính của trường đại học và doanh nghiệp",
-    "此工单已达到图片存储上限，请继续使用文字回复。": "Phiếu hỗ trợ này đã đạt giới hạn lưu trữ hình ảnh. Hãy tiếp tục trả lời bằng văn bản."
+    "此工单已达到图片存储上限，请继续使用文字回复。": "Phiếu hỗ trợ này đã đạt giới hạn lưu trữ hình ảnh. Hãy tiếp tục trả lời bằng văn bản.",
+    "发票设置": "Cài đặt hóa đơn",
+    "发票管理": "Quản lý hóa đơn",
+    "系统充值余额": "Nạp số dư hệ thống",
+    "兑换码充值余额": "Nạp số dư bằng mã",
+    "系统开通订阅": "Mua gói đăng ký hệ thống",
+    "兑换码开通订阅": "Gói đăng ký bằng mã",
+    "Invoiceable amount": "Số tiền có thể xuất hóa đơn",
+    "Invoice currency": "Tiền tệ hóa đơn",
+    "0 means not invoiceable": "0 nghĩa là không thể xuất hóa đơn",
+    "Actual amount to be invoiced; 0 disables invoicing.": "Số tiền thực tế xuất hóa đơn; 0 sẽ tắt xuất hóa đơn."
   }
 }

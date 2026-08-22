@@ -3038,6 +3038,16 @@
     "Identity review failed": "身份审核失败",
     "No identity applications": "暂无身份申请",
     "University and enterprise identity applications": "高校和企业用户身份申请",
-    "此工单已达到图片存储上限，请继续使用文字回复。": "此工单已达到图片存储上限，请继续使用文字回复。"
+    "此工单已达到图片存储上限，请继续使用文字回复。": "此工单已达到图片存储上限，请继续使用文字回复。",
+    "发票设置": "发票设置",
+    "发票管理": "发票管理",
+    "系统充值余额": "系统充值余额",
+    "兑换码充值余额": "兑换码充值余额",
+    "系统开通订阅": "系统开通订阅",
+    "兑换码开通订阅": "兑换码开通订阅",
+    "Invoiceable amount": "可开票金额",
+    "Invoice currency": "开票币种",
+    "0 means not invoiceable": "0 表示不可开票",
+    "Actual amount to be invoiced; 0 disables invoicing.": "实际开票金额；设置为 0 将不可开票。"
   }
 }

@@ -310,6 +310,33 @@ func TestRedemptionBalanceInvoiceUsesConfiguredPaymentAmount(t *testing.T) {
 	assert.Equal(t, redemption.Id, application.Items[0].RedemptionId)
 }
 
+func TestRedeemedBalanceCodeCanBeInvoicedEndToEnd(t *testing.T) {
+	setupInvoiceTest(t)
+	setInvoiceOptionForTest(t, "InvoiceRedemptionRechargeEnabled", "true")
+	require.NoError(t, DB.AutoMigrate(&Redemption{}))
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	user := User{Username: "invoice-redeem-e2e", Password: "password", Status: common.UserStatusEnabled, Identity: UserIdentityUniversity, AffCode: "invoice-redeem-e2e"}
+	require.NoError(t, DB.Create(&user).Error)
+	code := Redemption{
+		Name: "invoiceable balance code", Key: "66666666666666666666666666666666",
+		Status: common.RedemptionCodeStatusEnabled, RedeemType: RedemptionTypeQuota,
+		Quota: 500, CreatedTime: common.GetTimestamp(), InvoiceAmountMicros: 8_800_000, InvoiceCurrency: "CNY",
+	}
+	require.NoError(t, DB.Create(&code).Error)
+	_, err := Redeem(code.Key, user.Id)
+	require.NoError(t, err)
+
+	eligible, err := GetInvoiceEligibleSubscriptions(user.Id, GetInvoiceSettings())
+	require.NoError(t, err)
+	require.Len(t, eligible, 1)
+	require.Equal(t, InvoiceItemTypeRedemptionRecharge, eligible[0].ItemType)
+	application, err := CreateInvoiceApplication(user.Id, GetInvoiceSettings(), invoiceTestInput("Redeemed balance invoice"), nil, []int{eligible[0].RedemptionId})
+	require.NoError(t, err)
+	require.Len(t, application.Items, 1)
+	assert.Equal(t, code.Id, application.Items[0].RedemptionId)
+	assert.Equal(t, int64(8_800_000), application.TotalAmountMicros)
+}
+
 func TestInvoiceApplicationSupportsAllConfiguredItemTypes(t *testing.T) {
 	setupInvoiceTest(t)
 	setInvoiceOptionForTest(t, "InvoiceSystemRechargeEnabled", "true")

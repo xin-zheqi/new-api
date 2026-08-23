@@ -325,6 +325,9 @@ func TestRedeemedBalanceCodeCanBeInvoicedEndToEnd(t *testing.T) {
 	require.NoError(t, DB.Create(&code).Error)
 	_, err := Redeem(code.Key, user.Id)
 	require.NoError(t, err)
+	// Eligibility is based on the paid invoice snapshot, not the remaining
+	// quota value on the redeemed code.
+	require.NoError(t, DB.Model(&Redemption{}).Where("id = ?", code.Id).Update("quota", 0).Error)
 
 	eligible, err := GetInvoiceEligibleSubscriptions(user.Id, GetInvoiceSettings())
 	require.NoError(t, err)

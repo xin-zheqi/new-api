@@ -402,7 +402,7 @@ func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]In
 	}
 	if settings.RedemptionRechargeEnabled {
 		var redemptions []Redemption
-		if err := DB.Table("redemptions").Where("used_user_id = ? AND status = ? AND redeem_type = ? AND redeemed_time >= ? AND quota > ? AND invoice_amount_micros > 0 AND invoice_currency <> ''", userId, common.RedemptionCodeStatusUsed, RedemptionTypeQuota, cutoff, 0).
+		if err := DB.Table("redemptions").Where("used_user_id = ? AND status = ? AND redeem_type = ? AND redeemed_time >= ? AND invoice_amount_micros > 0 AND invoice_currency <> ''", userId, common.RedemptionCodeStatusUsed, RedemptionTypeQuota, cutoff).
 			Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai JOIN invoice_applications ia ON ia.id = iai.invoice_application_id WHERE iai.redemption_id = redemptions.id AND ia.status IN ?)", []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).
 			Order("redeemed_time DESC, id DESC").Limit(InvoiceSubscriptionLimit).Find(&redemptions).Error; err != nil {
 			return nil, err
@@ -591,7 +591,7 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 				return invoiceRequestError("one or more invoice items are not eligible for invoicing")
 			}
 			var redemptions []Redemption
-			if err := tx.Table("redemptions").Where("used_user_id = ? AND id IN ? AND status = ? AND redeem_type = ? AND redeemed_time >= ? AND quota > ? AND invoice_amount_micros > 0 AND invoice_currency <> ''", userId, redemptionIDsInput, common.RedemptionCodeStatusUsed, RedemptionTypeQuota, common.GetTimestamp()-int64(settings.LookbackDays)*24*60*60, 0).
+			if err := tx.Table("redemptions").Where("used_user_id = ? AND id IN ? AND status = ? AND redeem_type = ? AND redeemed_time >= ? AND invoice_amount_micros > 0 AND invoice_currency <> ''", userId, redemptionIDsInput, common.RedemptionCodeStatusUsed, RedemptionTypeQuota, common.GetTimestamp()-int64(settings.LookbackDays)*24*60*60).
 				Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai JOIN invoice_applications ia ON ia.id = iai.invoice_application_id WHERE iai.redemption_id = redemptions.id AND ia.status IN ?)", []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).Find(&redemptions).Error; err != nil {
 				return err
 			}

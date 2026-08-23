@@ -194,6 +194,12 @@ func CreateInvoiceApplication(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	// Check identity eligibility before validating form fields so unauthorized
+	// callers cannot learn or bypass invoice requirements with malformed input.
+	if _, eligibilityErr := model.GetInvoiceEligibleSubscriptions(c.GetInt("id"), settings); errors.Is(eligibilityErr, model.ErrInvoiceIdentityRequired) {
+		writeInvoiceModelError(c, eligibilityErr)
+		return
+	}
 	var request invoiceApplicationRequest
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, invoiceApplicationRequestMaxBytes)
 	if err := common.DecodeJson(c.Request.Body, &request); err != nil {

@@ -310,6 +310,46 @@ func TestRedemptionBalanceInvoiceUsesConfiguredPaymentAmount(t *testing.T) {
 	assert.Equal(t, redemption.Id, application.Items[0].RedemptionId)
 }
 
+func TestInvoiceApplicationSupportsAllConfiguredItemTypes(t *testing.T) {
+	setupInvoiceTest(t)
+	setInvoiceOptionForTest(t, "InvoiceSystemRechargeEnabled", "true")
+	setInvoiceOptionForTest(t, "InvoiceRedemptionRechargeEnabled", "true")
+	setInvoiceOptionForTest(t, "InvoiceSystemSubscriptionEnabled", "true")
+	setInvoiceOptionForTest(t, "InvoiceRedemptionSubscriptionEnabled", "true")
+	require.NoError(t, DB.AutoMigrate(&TopUp{}, &Redemption{}))
+
+	plan := SubscriptionPlan{Title: "All source plan", DurationValue: 1, DurationUnit: SubscriptionDurationMonth, TotalAmount: 1000}
+	require.NoError(t, DB.Create(&plan).Error)
+	user := User{Username: "invoice-all-sources-user", Password: "password", Identity: UserIdentityUniversity, AffCode: "invoice-all-sources-user"}
+	require.NoError(t, DB.Create(&user).Error)
+	systemSubscription := UserSubscription{UserId: user.Id, PlanId: plan.Id, AmountTotal: 1000, Status: "active", Source: "order", PaidAmountMicros: 1_000_000, PaidCurrency: "CNY"}
+	redemptionSubscription := UserSubscription{UserId: user.Id, PlanId: plan.Id, AmountTotal: 1000, Status: "active", Source: "redemption", PaidAmountMicros: 2_000_000, PaidCurrency: "CNY"}
+	require.NoError(t, DB.Create(&systemSubscription).Error)
+	require.NoError(t, DB.Create(&redemptionSubscription).Error)
+	now := common.GetTimestamp()
+	topUp := TopUp{UserId: user.Id, Amount: 100, Money: 3, PaymentMethod: "支付宝", PaymentProvider: PaymentProviderManual, Source: TopUpSourceRecharge, Status: common.TopUpStatusSuccess, CompleteTime: now, CreateTime: now, InvoiceAmountMicros: 3_000_000, InvoiceCurrency: "CNY"}
+	require.NoError(t, DB.Create(&topUp).Error)
+	redemption := Redemption{Name: "all-source-code", Key: "55555555555555555555555555555555", Status: common.RedemptionCodeStatusUsed, RedeemType: RedemptionTypeQuota, Quota: 100, UsedUserId: user.Id, RedeemedTime: now, InvoiceAmountMicros: 4_000_000, InvoiceCurrency: "CNY"}
+	require.NoError(t, DB.Create(&redemption).Error)
+
+	eligible, err := GetInvoiceEligibleSubscriptions(user.Id, GetInvoiceSettings())
+	require.NoError(t, err)
+	require.Len(t, eligible, 4)
+	application, err := CreateInvoiceApplication(user.Id, GetInvoiceSettings(), invoiceTestInput("All source invoice"), []int{systemSubscription.Id, redemptionSubscription.Id, -topUp.Id}, []int{redemption.Id})
+	require.NoError(t, err)
+	require.Len(t, application.Items, 4)
+	assert.Equal(t, int64(10_000_000), application.TotalAmountMicros)
+	assert.Equal(t, "CNY", application.Currency)
+	itemTypes := make([]string, 0, len(application.Items))
+	for _, item := range application.Items {
+		itemTypes = append(itemTypes, item.ItemType)
+	}
+	assert.ElementsMatch(t, []string{InvoiceItemTypeSubscription, InvoiceItemTypeSubscription, InvoiceItemTypeTopUp, InvoiceItemTypeRedemptionRecharge}, itemTypes)
+	var storedTopUp InvoiceApplicationItem
+	require.NoError(t, DB.Where("invoice_application_id = ? AND top_up_id = ?", application.Id, topUp.Id).First(&storedTopUp).Error)
+	assert.Equal(t, "支付宝", storedTopUp.PlanTitle)
+}
+
 func TestListUserInvoiceApplicationsIsPaginated(t *testing.T) {
 	setupInvoiceTest(t)
 	user := User{Username: "invoice-history-page-user", Password: "password", AffCode: "invoice-history-page-user"}

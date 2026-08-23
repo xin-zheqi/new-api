@@ -57,7 +57,7 @@ const IdentitySelectionModal = () => {
       <Typography.Paragraph type='tertiary'>
         {t('选择身份后即可完成账户设置，提交后不可跳过。')}
       </Typography.Paragraph>
-      <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+      <div className='grid grid-cols-1 gap-3 pb-2 sm:grid-cols-2'>
         {identities.map((identity) => (
           <Button
             key={identity.value}

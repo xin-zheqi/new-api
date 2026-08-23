@@ -65,7 +65,7 @@ export function IdentitySelectionDialog() {
             {t('Select an identity to finish setting up your account.')}
           </DialogDescription>
         </DialogHeader>
-        <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+        <div className='grid grid-cols-1 gap-3 pb-2 sm:grid-cols-2'>
           {identities.map((identity) => {
             const Icon = identityIcons[identity]
             return (

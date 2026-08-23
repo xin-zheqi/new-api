@@ -123,7 +123,11 @@ const InvoiceDetails = ({ application, admin = false, t }) => {
               className='flex flex-wrap items-center justify-between gap-2 py-2 text-sm'
             >
               <span className='min-w-0' style={{ overflowWrap: 'anywhere' }}>
-                {item.plan_title || t('Subscription')}
+                {item.item_type === 'redemption_recharge'
+                  ? t('Redemption code balance recharge')
+                  : item.item_type === 'top_up'
+                    ? item.plan_title || t('Balance recharge')
+                    : item.plan_title || t('Subscription')}
               </span>
               <Text strong>
                 {formatInvoiceMoney(

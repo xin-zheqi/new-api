@@ -24,6 +24,7 @@ import {
   Card,
   Empty,
   Input,
+  Modal,
   Spin,
   Table,
   TextArea,
@@ -233,24 +234,38 @@ const UserInvoiceCenter = () => {
       showError(t('Each invoice application can include only one currency.'));
       return;
     }
-    setSubmitting(true);
-    try {
-      const selectedItems = selectedSubscriptions;
-      const response = await API.post(
+    const selectedItems = selectedSubscriptions;
+    const payload = {
+      invoice_title: invoiceTitle,
+      taxpayer_id: taxpayerId,
+      bank_name: form.bank_name.trim(),
+      remark: form.remark.trim(),
+      subscription_ids: selectedItems
+        .filter((item) => item.item_type !== 'redemption_recharge')
+        .map((item) => item.id),
+      redemption_ids: selectedItems
+        .filter((item) => item.item_type === 'redemption_recharge')
+        .map((item) => item.redemption_id)
+        .filter((id) => Number.isInteger(id) && id > 0),
+    };
+    Modal.confirm({
+      title: t('确认操作'),
+      content: (
+        <div>
+          <p>{t('Please verify the invoice details carefully. Completed invoices cannot be changed or reissued.')}</p>
+          <p><strong>{t('Invoice title')}:</strong> {invoiceTitle}</p>
+          <p><strong>{t('Taxpayer ID')}:</strong> {taxpayerId}</p>
+          <p><strong>{t('Invoiceable amount')}:</strong> {formatInvoiceMoney(selectedSubscriptions.reduce((sum, item) => sum + item.paid_amount_micros, 0), selectedItems[0]?.paid_currency, i18n.resolvedLanguage)}</p>
+        </div>
+      ),
+      okText: t('Apply for invoice'),
+      cancelText: t('Cancel'),
+      onOk: async () => {
+        setSubmitting(true);
+        try {
+          const response = await API.post(
         '/api/user/invoice/apply',
-        {
-          invoice_title: invoiceTitle,
-          taxpayer_id: taxpayerId,
-          bank_name: form.bank_name.trim(),
-          remark: form.remark.trim(),
-          subscription_ids: selectedItems
-            .filter((item) => item.item_type !== 'redemption_recharge')
-            .map((item) => item.id),
-          redemption_ids: selectedItems
-            .filter((item) => item.item_type === 'redemption_recharge')
-            .map((item) => item.redemption_id)
-            .filter((id) => Number.isInteger(id) && id > 0),
-        },
+            payload,
         { skipErrorHandler: true },
       );
       if (!response.data?.success) {
@@ -276,7 +291,7 @@ const UserInvoiceCenter = () => {
         remark: '',
       });
       await loadData(1, applicationPageSize);
-    } catch (error) {
+        } catch (error) {
       showError(
         getInvoiceErrorMessage(
           error,
@@ -284,9 +299,11 @@ const UserInvoiceCenter = () => {
           t('Failed to submit invoice application'),
         ),
       );
-    } finally {
-      setSubmitting(false);
-    }
+        } finally {
+          setSubmitting(false);
+        }
+      },
+    });
   };
 
   const downloadInvoice = async (application) => {

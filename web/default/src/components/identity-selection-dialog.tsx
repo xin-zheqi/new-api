@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { Building2, GraduationCap, UserRound, UsersRound } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -20,6 +21,7 @@ const identityLabels = {
   university: 'University',
   enterprise: 'Enterprise',
 } as const
+const identityIcons = { personal: UserRound, student: GraduationCap, university: Building2, enterprise: UsersRound } as const
 
 export function IdentitySelectionDialog() {
   const { t } = useTranslation()
@@ -63,17 +65,19 @@ export function IdentitySelectionDialog() {
             {t('Select an identity to finish setting up your account.')}
           </DialogDescription>
         </DialogHeader>
-        <div className='grid gap-2'>
+        <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
           {identities.map((identity) => {
+            const Icon = identityIcons[identity]
             return (
               <Button
                 key={identity}
                 variant='outline'
-                className='justify-start'
+                className='h-auto min-h-20 justify-start gap-3 px-4 py-4 text-left'
                 disabled={saving}
                 onClick={() => chooseIdentity(identity)}
               >
-                {t(identityLabels[identity])}
+                <Icon className='size-5 shrink-0 text-primary' />
+                <span className='font-medium'>{t(identityLabels[identity])}</span>
               </Button>
             )
           })}

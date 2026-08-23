@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { SentIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -40,6 +40,16 @@ import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 import {
   formatInvoiceMoney,
@@ -64,6 +74,7 @@ export function InvoiceApplicationForm(props: {
 }) {
   const { t, i18n } = useTranslation()
   const userId = useAuthStore((state) => state.auth.user?.id ?? 0)
+  const [pendingPayload, setPendingPayload] = useState<InvoiceApplicationPayload | null>(null)
   const schema = useMemo(() => createInvoiceApplicationSchema(t), [t])
   const form = useForm<InvoiceApplicationFormValues>({
     resolver: zodResolver(schema),
@@ -132,7 +143,7 @@ export function InvoiceApplicationForm(props: {
         })
         return
       }
-      await props.onSubmit({
+      setPendingPayload({
         ...parsed,
         redemption_ids: selectedItems
           .filter((item) => item.item_type === 'redemption_recharge')
@@ -142,23 +153,14 @@ export function InvoiceApplicationForm(props: {
           .filter((item) => item.item_type !== 'redemption_recharge')
           .map((item) => item.id),
       })
-      localStorage.setItem(
-        invoiceDefaultsKey,
-        JSON.stringify({
-          invoice_title: parsed.invoice_title,
-          taxpayer_id: parsed.taxpayer_id,
-          bank_name: parsed.bank_name,
-          remark: parsed.remark,
-        })
-      )
-      form.reset(defaultValues)
     } catch {
       // The form or mutation already presents the actionable error.
     }
   }
 
   return (
-    <Form {...form}>
+    <>
+      <Form {...form}>
       <form
         className='space-y-5 rounded-md border p-4 sm:p-5'
         onSubmit={form.handleSubmit(submit)}
@@ -414,6 +416,52 @@ export function InvoiceApplicationForm(props: {
           </div>
         </div>
       </form>
-    </Form>
+      </Form>
+      <AlertDialog
+        open={pendingPayload !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingPayload(null)
+        }}
+      >
+        <AlertDialogContent size='sm'>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('Confirm invoice application')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('Please verify the invoice details carefully. Completed invoices cannot be changed or reissued.')}
+            </AlertDialogDescription>
+            {pendingPayload ? (
+              <div className='w-full space-y-1 text-sm'>
+                <p><strong>{t('Invoice title')}:</strong> {pendingPayload.invoice_title}</p>
+                <p><strong>{t('Taxpayer ID')}:</strong> {pendingPayload.taxpayer_id}</p>
+                <p><strong>{t('Selected {{count}}', { count: pendingPayload.subscription_ids.length + pendingPayload.redemption_ids.length })}</strong></p>
+              </div>
+            ) : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!pendingPayload) return
+                const payload = pendingPayload
+                setPendingPayload(null)
+                await props.onSubmit(payload)
+                localStorage.setItem(
+                  invoiceDefaultsKey,
+                  JSON.stringify({
+                    invoice_title: payload.invoice_title,
+                    taxpayer_id: payload.taxpayer_id,
+                    bank_name: payload.bank_name,
+                    remark: payload.remark,
+                  })
+                )
+                form.reset(defaultValues)
+              }}
+            >
+              {t('Submit application')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

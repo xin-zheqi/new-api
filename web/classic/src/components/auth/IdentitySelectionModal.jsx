@@ -1,5 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { Button, Modal, Space, Typography } from '@douyinfe/semi-ui';
+import { Building2, GraduationCap, UserRound, UsersRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { API, showError } from '../../helpers';
 import { UserContext } from '../../context/User';
@@ -10,6 +11,7 @@ const identities = [
   { value: 'university', label: '高校' },
   { value: 'enterprise', label: '企业' },
 ];
+const identityIcons = { personal: UserRound, student: GraduationCap, university: Building2, enterprise: UsersRound };
 
 const IdentitySelectionModal = () => {
   const { t } = useTranslation();
@@ -55,20 +57,22 @@ const IdentitySelectionModal = () => {
       <Typography.Paragraph type='tertiary'>
         {t('选择身份后即可完成账户设置，提交后不可跳过。')}
       </Typography.Paragraph>
-      <Space vertical align='start' spacing='medium' className='w-full'>
+      <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
         {identities.map((identity) => (
           <Button
             key={identity.value}
             block
-            theme='solid'
+            theme='light'
             type='tertiary'
+            className='!h-auto !justify-start !px-4 !py-4 text-left'
             loading={saving}
             onClick={() => chooseIdentity(identity.value)}
           >
+            {React.createElement(identityIcons[identity.value], { size: 20, className: 'mr-3 text-blue-500' })}
             {t(identity.label)}
           </Button>
         ))}
-      </Space>
+      </div>
     </Modal>
   );
 };

@@ -235,6 +235,7 @@ const UserInvoiceCenter = () => {
     }
     setSubmitting(true);
     try {
+      const selectedItems = selectedSubscriptions;
       const response = await API.post(
         '/api/user/invoice/apply',
         {
@@ -242,7 +243,13 @@ const UserInvoiceCenter = () => {
           taxpayer_id: taxpayerId,
           bank_name: form.bank_name.trim(),
           remark: form.remark.trim(),
-          subscription_ids: selected,
+          subscription_ids: selectedItems
+            .filter((item) => item.item_type !== 'redemption_recharge')
+            .map((item) => item.id),
+          redemption_ids: selectedItems
+            .filter((item) => item.item_type === 'redemption_recharge')
+            .map((item) => item.redemption_id)
+            .filter((id) => Number.isInteger(id) && id > 0),
         },
         { skipErrorHandler: true },
       );

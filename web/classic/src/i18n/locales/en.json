@@ -4232,5 +4232,7 @@
     "上传发票文件": "Upload invoice file",
     "Enter the taxpayer ID": "Enter the taxpayer ID",
     "Letters and numbers only": "Letters and numbers only"
-  }
+  },
+  "Balance recharge": "Balance recharge",
+  "Redemption code balance recharge": "Redemption code balance recharge"
 }

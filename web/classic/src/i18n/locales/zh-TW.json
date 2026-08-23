@@ -4073,5 +4073,7 @@
     "Invoice currency": "開票幣別",
     "0 means not invoiceable": "0 表示不可開票",
     "Actual amount to be invoiced; 0 disables invoicing.": "實際開票金額；設為 0 將不可開票。"
-  }
+  },
+  "Balance recharge": "餘額充值",
+  "Redemption code balance recharge": "兌換碼充值餘額"
 }

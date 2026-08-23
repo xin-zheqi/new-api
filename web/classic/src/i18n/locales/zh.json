@@ -3053,5 +3053,7 @@
     "上传发票文件": "上传发票文件",
     "Enter the taxpayer ID": "请输入税号",
     "Letters and numbers only": "仅限字母和数字"
-  }
+  },
+  "Balance recharge": "余额充值",
+  "Redemption code balance recharge": "兑换码充值余额"
 }

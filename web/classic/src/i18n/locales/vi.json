@@ -4604,5 +4604,7 @@
     "Invoice currency": "Tiền tệ hóa đơn",
     "0 means not invoiceable": "0 nghĩa là không thể xuất hóa đơn",
     "Actual amount to be invoiced; 0 disables invoicing.": "Số tiền thực tế xuất hóa đơn; 0 sẽ tắt xuất hóa đơn."
-  }
+  },
+  "Balance recharge": "Nạp số dư",
+  "Redemption code balance recharge": "Nạp số dư bằng mã đổi thưởng"
 }

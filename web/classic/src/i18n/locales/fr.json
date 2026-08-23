@@ -4070,5 +4070,7 @@
     "Invoice currency": "Devise de facturation",
     "0 means not invoiceable": "0 signifie non facturable",
     "Actual amount to be invoiced; 0 disables invoicing.": "Montant réel à facturer ; 0 désactive la facturation."
-  }
+  },
+  "Balance recharge": "Recharge de solde",
+  "Redemption code balance recharge": "Recharge de solde par code"
 }

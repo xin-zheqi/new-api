@@ -4041,5 +4041,7 @@
     "Invoice currency": "請求通貨",
     "0 means not invoiceable": "0 は請求不可を意味します",
     "Actual amount to be invoiced; 0 disables invoicing.": "実際の請求額です。0 にすると請求できません。"
-  }
+  },
+  "Balance recharge": "残高チャージ",
+  "Redemption code balance recharge": "コードによる残高チャージ"
 }

@@ -282,13 +282,18 @@ export function AdminInvoiceDetailSheet(props: {
                       >
                         <div className='min-w-0'>
                           <p className='font-medium [overflow-wrap:anywhere] break-words'>
-                            {item.item_type === 'redemption_recharge' ||
-                                  item.source === 'redemption_recharge' ||
-                                  item.plan_title === 'Redemption code balance recharge'
+                            {String(item.item_type || item.source || '')
+                                  .trim()
+                                  .toLowerCase()
+                                  .includes('redemption') ||
+                                String(item.plan_title || '')
+                                  .trim()
+                                  .toLowerCase() === 'redemption code balance recharge'
                                 ? t('Redemption code balance recharge')
-                                : item.plan_title === 'Balance recharge' || !item.plan_title
+                                : String(item.plan_title || '').trim().toLowerCase() === 'balance recharge' ||
+                                    !String(item.plan_title || '').trim()
                                   ? t('Balance recharge')
-                                  : item.plan_title}
+                                  : String(item.plan_title).trim()}
                           </p>
                           <p className='text-muted-foreground text-xs'>
                             #{item.top_up_id || item.redemption_id || item.user_subscription_id}

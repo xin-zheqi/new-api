@@ -110,6 +110,23 @@ type InvoiceApplicationItem struct {
 	EndTime              int64  `json:"end_time" gorm:"bigint"`
 }
 
+// AfterFind normalizes rows written by older invoice implementations. Those
+// rows may have the default subscription item type even though they reference
+// a top-up or redemption record. Keeping the canonical type in the API
+// response lets both frontends render the same stable contract without
+// inspecting translated labels or legacy source text.
+func (item *InvoiceApplicationItem) AfterFind(tx *gorm.DB) error {
+	switch {
+	case item.RedemptionId > 0:
+		item.ItemType = InvoiceItemTypeRedemptionRecharge
+	case item.TopUpId > 0:
+		item.ItemType = InvoiceItemTypeTopUp
+	case item.UserSubscriptionId > 0:
+		item.ItemType = InvoiceItemTypeSubscription
+	}
+	return nil
+}
+
 // invoiceApplicationItemIndex is used only after legacy invoice rows have
 // been normalized. Keeping the unique index off the runtime model prevents
 // AutoMigrate from attempting to build it while duplicate historical rows
@@ -466,23 +483,32 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 		seenSubscriptionIds[subscriptionId] = struct{}{}
 	}
 	seenRedemptionIds := make(map[int]struct{}, requestedRedemptionCount)
+	legacyRedemptionSet := make(map[int]struct{}, len(legacyRedemptionIds))
 	for _, redemptionId := range legacyRedemptionIds {
 		if redemptionId <= 0 {
 			return nil, invoiceRequestError("invalid redemption id")
 		}
 		seenRedemptionIds[redemptionId] = struct{}{}
+		legacyRedemptionSet[redemptionId] = struct{}{}
 	}
 	if len(redemptionIds) > 0 {
+		normalizedRedemptionIds := make([]int, 0, len(redemptionIds[0]))
 		for _, redemptionId := range redemptionIds[0] {
 			if redemptionId <= 0 {
 				return nil, invoiceRequestError("invalid redemption id")
 			}
 			if _, exists := seenRedemptionIds[redemptionId]; exists {
+				if _, isLegacy := legacyRedemptionSet[redemptionId]; isLegacy {
+					continue
+				}
 				return nil, invoiceRequestError("duplicate redemption id")
 			}
 			seenRedemptionIds[redemptionId] = struct{}{}
+			normalizedRedemptionIds = append(normalizedRedemptionIds, redemptionId)
 		}
+		redemptionIds[0] = normalizedRedemptionIds
 	}
+	requestedRedemptionCount = len(seenRedemptionIds)
 
 	var application *InvoiceApplication
 	err = DB.Transaction(func(tx *gorm.DB) error {

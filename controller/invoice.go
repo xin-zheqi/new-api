@@ -70,6 +70,12 @@ type invoiceApplicationAdminResponse struct {
 }
 
 func newInvoiceApplicationAdminResponse(application model.InvoiceApplication) invoiceApplicationAdminResponse {
+	if (application.User == nil || application.User.Id != application.UserId) && model.DB != nil && application.UserId > 0 {
+		var user model.User
+		if err := model.DB.Unscoped().Select("id", "username", "display_name", "email", "identity").First(&user, application.UserId).Error; err == nil {
+			application.User = &user
+		}
+	}
 	response := invoiceApplicationAdminResponse{InvoiceApplication: application}
 	if application.User == nil {
 		return response

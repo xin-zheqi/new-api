@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { SentIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -39,6 +39,7 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   formatInvoiceMoney,
@@ -62,11 +63,31 @@ export function InvoiceApplicationForm(props: {
   onSubmit: (payload: InvoiceApplicationPayload) => Promise<void>
 }) {
   const { t, i18n } = useTranslation()
+  const userId = useAuthStore((state) => state.auth.user?.id ?? 0)
   const schema = useMemo(() => createInvoiceApplicationSchema(t), [t])
   const form = useForm<InvoiceApplicationFormValues>({
     resolver: zodResolver(schema),
     defaultValues,
   })
+
+  const invoiceDefaultsKey = `invoice-form-defaults-${userId}`
+  useEffect(() => {
+    if (userId <= 0) return
+    try {
+      const saved = localStorage.getItem(invoiceDefaultsKey)
+      if (!saved) return
+      const parsed = JSON.parse(saved) as Partial<InvoiceApplicationFormValues>
+      form.reset({
+        ...defaultValues,
+        invoice_title: parsed.invoice_title?.trim() || '',
+        taxpayer_id: parsed.taxpayer_id?.trim().toUpperCase() || '',
+        bank_name: parsed.bank_name?.trim() || '',
+        remark: parsed.remark?.trim() || '',
+      })
+    } catch {
+      localStorage.removeItem(invoiceDefaultsKey)
+    }
+  }, [form, invoiceDefaultsKey, userId])
   const selectedIds =
     useWatch({ control: form.control, name: 'subscription_ids' }) ??
     defaultValues.subscription_ids
@@ -121,6 +142,15 @@ export function InvoiceApplicationForm(props: {
           .filter((item) => item.item_type !== 'redemption_recharge')
           .map((item) => item.id),
       })
+      localStorage.setItem(
+        invoiceDefaultsKey,
+        JSON.stringify({
+          invoice_title: parsed.invoice_title,
+          taxpayer_id: parsed.taxpayer_id,
+          bank_name: parsed.bank_name,
+          remark: parsed.remark,
+        })
+      )
       form.reset(defaultValues)
     } catch {
       // The form or mutation already presents the actionable error.

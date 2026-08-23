@@ -430,10 +430,21 @@ func invoiceTopUpPaymentSnapshot(topUp TopUp) (int64, string, bool) {
 }
 
 func CreateInvoiceApplication(userId int, settings InvoiceSettings, input InvoiceApplicationInput, subscriptionIds []int, redemptionIds ...[]int) (*InvoiceApplication, error) {
+	legacyRedemptionIds := make([]int, 0)
+	normalizedSubscriptionIds := make([]int, 0, len(subscriptionIds))
+	for _, itemID := range subscriptionIds {
+		if itemID <= -1000000000 {
+			legacyRedemptionIds = append(legacyRedemptionIds, -1000000000-itemID)
+			continue
+		}
+		normalizedSubscriptionIds = append(normalizedSubscriptionIds, itemID)
+	}
+	subscriptionIds = normalizedSubscriptionIds
 	requestedRedemptionCount := 0
 	if len(redemptionIds) > 0 {
 		requestedRedemptionCount = len(redemptionIds[0])
 	}
+	requestedRedemptionCount += len(legacyRedemptionIds)
 	if userId <= 0 || len(subscriptionIds)+requestedRedemptionCount == 0 {
 		return nil, invoiceRequestError("invoice title and subscriptions are required")
 	}
@@ -455,6 +466,12 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 		seenSubscriptionIds[subscriptionId] = struct{}{}
 	}
 	seenRedemptionIds := make(map[int]struct{}, requestedRedemptionCount)
+	for _, redemptionId := range legacyRedemptionIds {
+		if redemptionId <= 0 {
+			return nil, invoiceRequestError("invalid redemption id")
+		}
+		seenRedemptionIds[redemptionId] = struct{}{}
+	}
 	if len(redemptionIds) > 0 {
 		for _, redemptionId := range redemptionIds[0] {
 			if redemptionId <= 0 {
@@ -499,6 +516,7 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 		if len(redemptionIds) > 0 {
 			redemptionIDsInput = append(redemptionIDsInput, redemptionIds[0]...)
 		}
+		redemptionIDsInput = append(legacyRedemptionIds, redemptionIDsInput...)
 		if len(subscriptionIDs) > 0 {
 			subscriptionQuery := tx.Table("user_subscriptions AS us").Select("us.*, COALESCE(NULLIF(us.plan_title_snapshot, ''), sp.title, '') AS plan_title").
 				Joins("LEFT JOIN subscription_plans AS sp ON sp.id = us.plan_id").

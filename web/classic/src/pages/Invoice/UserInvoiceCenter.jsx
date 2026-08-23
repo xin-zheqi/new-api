@@ -314,15 +314,19 @@ const UserInvoiceCenter = () => {
     {
       title: t('Subscription plan'),
       dataIndex: 'plan_title',
-      render: (value, record) => (
-        <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 280 }}>
-          {record?.item_type === 'top_up'
-            ? t('Balance recharge')
-            : record?.item_type === 'redemption_recharge'
-              ? t('Redemption code balance recharge')
-            : value || t('Subscription')}
-        </Text>
-      ),
+      render: (value, record) => {
+        const itemType = record?.item_type || record?.source;
+        const title = itemType === 'top_up' || itemType === 'recharge' || value === 'Balance recharge'
+          ? t('Balance recharge')
+          : itemType === 'redemption_recharge' || value === 'Redemption code balance recharge'
+            ? t('Redemption code balance recharge')
+            : value || t('Subscription');
+        return (
+          <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 280 }}>
+            {title}
+          </Text>
+        );
+      },
     },
     {
       title: t('Purchased at'),

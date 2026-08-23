@@ -235,11 +235,16 @@ export function InvoiceApplicationForm(props: {
                         />
                         <span className='min-w-0 flex-1'>
                           <span className='block font-medium [overflow-wrap:anywhere]'>
-                            {subscription.item_type === 'top_up'
+                            {subscription.item_type === 'top_up' ||
+                            subscription.item_type === 'recharge' ||
+                            subscription.source === 'recharge' ||
+                            subscription.plan_title === 'Balance recharge'
                               ? t('Balance recharge')
-                              : subscription.item_type === 'redemption_recharge'
+                              : subscription.item_type === 'redemption_recharge' ||
+                                  subscription.source === 'redemption_recharge' ||
+                                  subscription.plan_title === 'Redemption code balance recharge'
                                 ? t('Redemption code balance recharge')
-                              : subscription.plan_title || t('Subscription')}
+                                : subscription.plan_title || t('Subscription')}
                           </span>
                           <span className='text-muted-foreground block text-xs'>
                             {new Date(

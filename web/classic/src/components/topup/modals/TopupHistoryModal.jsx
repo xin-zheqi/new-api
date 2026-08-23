@@ -86,6 +86,8 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     payment_method: 'bank_transfer',
     amount: 1,
     money: 0,
+    invoice_amount: 0,
+    invoice_currency: 'USD',
     create_time: new Date(),
     credit_balance: false,
   });
@@ -233,6 +235,8 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       payment_method: String(manualForm.payment_method || '').trim(),
       amount: Number(manualForm.amount || 0),
       money: Number(manualForm.money || 0),
+      invoice_amount: Number(manualForm.invoice_amount || 0),
+      invoice_currency: String(manualForm.invoice_currency || '').trim().toUpperCase(),
       create_time: getManualCreateTimestamp(),
       credit_balance: !!manualForm.credit_balance,
     };
@@ -241,6 +245,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       !payload.payment_method ||
       payload.amount <= 0 ||
       payload.money < 0 ||
+      payload.invoice_amount < 0 ||
       payload.create_time <= 0
     ) {
       Toast.error({ content: t('请完整填写充值记录信息') });
@@ -248,6 +253,10 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     }
     if (payload.payment_method.length > 50) {
       Toast.error({ content: t('支付方式不能超过 50 个字符') });
+      return;
+    }
+    if (payload.invoice_amount > 0 && !payload.invoice_currency) {
+      Toast.error({ content: t('请填写开票币种') });
       return;
     }
 
@@ -545,6 +554,31 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
                   onChange={(value) =>
                     setManualForm({ ...manualForm, money: value })
                   }
+                />
+              </div>
+            </div>
+
+            <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+              <div>
+                <Text strong>{t('开票金额')}</Text>
+                <Input
+                  className='mt-2'
+                  type='number'
+                  min={0}
+                  step={0.01}
+                  value={manualForm.invoice_amount}
+                  onChange={(value) => setManualForm({ ...manualForm, invoice_amount: value })}
+                />
+                <Text type='tertiary' size='small'>{t('0 表示不可开票')}</Text>
+              </div>
+              <div>
+                <Text strong>{t('开票币种')}</Text>
+                <Input
+                  className='mt-2'
+                  maxLength={8}
+                  value={manualForm.invoice_currency}
+                  onChange={(value) => setManualForm({ ...manualForm, invoice_currency: value.toUpperCase() })}
+                  placeholder='USD'
                 />
               </div>
             </div>

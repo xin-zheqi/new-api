@@ -26,6 +26,8 @@ type TopUp struct {
 	Currency             string  `json:"currency" gorm:"type:varchar(8);not null;default:''"`
 	ExpectedAmountMicros int64   `json:"expected_amount_micros" gorm:"type:bigint;not null;default:0"`
 	ExpectedCurrency     string  `json:"expected_currency" gorm:"type:varchar(8);not null;default:''"`
+	InvoiceAmountMicros  int64   `json:"invoice_amount_micros" gorm:"type:bigint;not null;default:0"`
+	InvoiceCurrency      string  `json:"invoice_currency" gorm:"type:varchar(8);not null;default:''"`
 	CreateTime           int64   `json:"create_time" gorm:"index"`
 	CompleteTime         int64   `json:"complete_time"`
 	Status               string  `json:"status"`
@@ -64,13 +66,15 @@ var (
 )
 
 type ManualTopUpParams struct {
-	UserId        int
-	Amount        int64
-	Money         float64
-	PaymentMethod string
-	CreateTime    int64
-	CallerIp      string
-	CreditBalance bool
+	UserId              int
+	Amount              int64
+	Money               float64
+	PaymentMethod       string
+	CreateTime          int64
+	CallerIp            string
+	CreditBalance       bool
+	InvoiceAmountMicros int64
+	InvoiceCurrency     string
 }
 
 func (topUp *TopUp) Insert() error {
@@ -102,6 +106,19 @@ func (topUp *TopUp) BeforeSave(tx *gorm.DB) error {
 	}
 	if topUp.ExpectedAmountMicros > 0 && topUp.ExpectedCurrency == "" {
 		return errors.New("expected topup currency is required")
+	}
+	if topUp.InvoiceAmountMicros < 0 {
+		return errors.New("invalid invoice topup amount")
+	}
+	if topUp.InvoiceCurrency != "" {
+		currency, err := NormalizePaymentCurrency(topUp.InvoiceCurrency)
+		if err != nil {
+			return err
+		}
+		topUp.InvoiceCurrency = currency
+	}
+	if topUp.InvoiceAmountMicros > 0 && topUp.InvoiceCurrency == "" {
+		return errors.New("invoice topup currency is required")
 	}
 	return nil
 }
@@ -754,15 +771,17 @@ func CreateManualTopUp(params ManualTopUpParams) (*TopUp, error) {
 	}
 
 	topUp := &TopUp{
-		UserId:          params.UserId,
-		Amount:          params.Amount,
-		Money:           params.Money,
-		TradeNo:         tradeNo,
-		PaymentMethod:   params.PaymentMethod,
-		PaymentProvider: PaymentProviderManual,
-		CreateTime:      params.CreateTime,
-		CompleteTime:    params.CreateTime,
-		Status:          common.TopUpStatusSuccess,
+		UserId:              params.UserId,
+		Amount:              params.Amount,
+		Money:               params.Money,
+		TradeNo:             tradeNo,
+		PaymentMethod:       params.PaymentMethod,
+		PaymentProvider:     PaymentProviderManual,
+		CreateTime:          params.CreateTime,
+		CompleteTime:        params.CreateTime,
+		Status:              common.TopUpStatusSuccess,
+		InvoiceAmountMicros: params.InvoiceAmountMicros,
+		InvoiceCurrency:     params.InvoiceCurrency,
 	}
 
 	err := DB.Transaction(func(tx *gorm.DB) error {

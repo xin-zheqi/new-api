@@ -357,7 +357,7 @@ func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]In
 	var topUps []TopUp
 	if settings.SystemRechargeEnabled {
 		if err := DB.Table("top_ups").Where("user_id = ? AND status = ? AND source = ? AND complete_time >= ?", userId, common.TopUpStatusSuccess, TopUpSourceRecharge, cutoff).
-			Where("expected_amount_micros > 0 AND expected_currency <> ''").
+			Where("((invoice_amount_micros > 0 AND invoice_currency <> '') OR (payment_provider <> ? AND expected_amount_micros > 0 AND expected_currency <> ''))", PaymentProviderManual).
 			Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai JOIN invoice_applications ia ON ia.id = iai.invoice_application_id WHERE iai.top_up_id = top_ups.id AND ia.status IN ?)", []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).
 			Order("complete_time DESC, id DESC").Limit(InvoiceSubscriptionLimit).Find(&topUps).Error; err != nil {
 			return nil, err
@@ -369,7 +369,10 @@ func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]In
 			}
 			topUpsub := InvoiceEligibleSubscription{
 				UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime},
-				PlanTitle:        "Balance recharge", Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: "top_up",
+				PlanTitle:        topUp.PaymentMethod, Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: "top_up",
+			}
+			if strings.TrimSpace(topUpsub.PlanTitle) == "" {
+				topUpsub.PlanTitle = "Balance recharge"
 			}
 			subscriptions = append(subscriptions, topUpsub)
 		}
@@ -404,6 +407,12 @@ func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]In
 }
 
 func invoiceTopUpPaymentSnapshot(topUp TopUp) (int64, string, bool) {
+	if topUp.InvoiceAmountMicros > 0 && strings.TrimSpace(topUp.InvoiceCurrency) != "" {
+		currency, err := normalizeSubscriptionPaymentCurrency(topUp.InvoiceCurrency)
+		if err == nil && currency == topUp.InvoiceCurrency {
+			return topUp.InvoiceAmountMicros, currency, true
+		}
+	}
 	if topUp.ExpectedAmountMicros <= 0 || strings.TrimSpace(topUp.ExpectedCurrency) == "" {
 		return 0, "", false
 	}
@@ -511,7 +520,7 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 			}
 			var topUps []TopUp
 			if err := tx.Table("top_ups").Where("user_id = ? AND id IN ? AND status = ? AND source = ? AND complete_time >= ?", userId, topUpIDs, common.TopUpStatusSuccess, TopUpSourceRecharge, common.GetTimestamp()-int64(settings.LookbackDays)*24*60*60).
-				Where("expected_amount_micros > 0 AND expected_currency <> ''").
+				Where("((invoice_amount_micros > 0 AND invoice_currency <> '') OR (payment_provider <> ? AND expected_amount_micros > 0 AND expected_currency <> ''))", PaymentProviderManual).
 				Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai JOIN invoice_applications ia ON ia.id = iai.invoice_application_id WHERE iai.top_up_id = top_ups.id AND ia.status IN ?)", []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}).Find(&topUps).Error; err != nil {
 				return err
 			}
@@ -520,7 +529,11 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 				if !valid {
 					continue
 				}
-				subscriptions = append(subscriptions, InvoiceEligibleSubscription{UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime}, PlanTitle: "Balance recharge", Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: "top_up"})
+				planTitle := strings.TrimSpace(topUp.PaymentMethod)
+				if planTitle == "" {
+					planTitle = "Balance recharge"
+				}
+				subscriptions = append(subscriptions, InvoiceEligibleSubscription{UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime}, PlanTitle: planTitle, Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: "top_up"})
 			}
 		}
 		if len(redemptionIDsInput) > 0 {

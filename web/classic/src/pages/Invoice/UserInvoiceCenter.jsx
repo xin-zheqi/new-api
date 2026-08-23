@@ -315,15 +315,11 @@ const UserInvoiceCenter = () => {
       title: t('Subscription plan'),
       dataIndex: 'plan_title',
       render: (value, record) => {
-        const itemType = String(record?.item_type || record?.source || '').trim().toLowerCase();
-        const planTitle = String(value || '').trim();
-        const normalizedTitle = planTitle.toLowerCase();
-        const isRedemption = itemType.includes('redemption') || normalizedTitle === 'redemption code balance recharge';
-        const title = isRedemption
+        const title = record?.item_type === 'redemption_recharge'
             ? t('Redemption code balance recharge')
-            : normalizedTitle === 'balance recharge' || !planTitle
-              ? t('Balance recharge')
-            : planTitle;
+            : record?.item_type === 'top_up'
+              ? value || t('Balance recharge')
+              : value || t('Subscription');
         return (
           <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 280 }}>
             {title}

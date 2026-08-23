@@ -132,6 +132,12 @@ type InvoiceEligibleSubscription struct {
 	ItemType     string `json:"item_type,omitempty"`
 }
 
+const (
+	InvoiceItemTypeSubscription       = "subscription"
+	InvoiceItemTypeTopUp              = "top_up"
+	InvoiceItemTypeRedemptionRecharge = "redemption_recharge"
+)
+
 type InvoiceApplicationInput struct {
 	InvoiceTitle string
 	TaxpayerId   string
@@ -352,7 +358,7 @@ func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]In
 		return nil, err
 	}
 	for i := range subscriptions {
-		subscriptions[i].ItemType = "subscription"
+		subscriptions[i].ItemType = InvoiceItemTypeSubscription
 	}
 	var topUps []TopUp
 	if settings.SystemRechargeEnabled {
@@ -369,7 +375,7 @@ func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]In
 			}
 			topUpsub := InvoiceEligibleSubscription{
 				UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime},
-				PlanTitle:        topUp.PaymentMethod, Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: "top_up",
+				PlanTitle:        topUp.PaymentMethod, Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: InvoiceItemTypeTopUp,
 			}
 			if strings.TrimSpace(topUpsub.PlanTitle) == "" {
 				topUpsub.PlanTitle = "Balance recharge"
@@ -390,7 +396,7 @@ func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]In
 			}
 			subscriptions = append(subscriptions, InvoiceEligibleSubscription{
 				UserSubscription: UserSubscription{Id: -1000000000 - redemption.Id, UserId: userId, PaidAmountMicros: redemption.InvoiceAmountMicros, PaidCurrency: redemption.InvoiceCurrency, CreatedAt: redemption.RedeemedTime},
-				PlanTitle:        "Redemption code balance recharge", Source: "redemption_recharge", RedemptionId: redemption.Id, ItemType: "redemption_recharge",
+				PlanTitle:        "", Source: InvoiceItemTypeRedemptionRecharge, RedemptionId: redemption.Id, ItemType: InvoiceItemTypeRedemptionRecharge,
 			})
 		}
 	}
@@ -512,7 +518,7 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 			}
 		}
 		for i := range subscriptions {
-			subscriptions[i].ItemType = "subscription"
+			subscriptions[i].ItemType = InvoiceItemTypeSubscription
 		}
 		if len(topUpIDs) > 0 {
 			if !settings.SystemRechargeEnabled {
@@ -533,7 +539,7 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 				if planTitle == "" {
 					planTitle = "Balance recharge"
 				}
-				subscriptions = append(subscriptions, InvoiceEligibleSubscription{UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime}, PlanTitle: planTitle, Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: "top_up"})
+				subscriptions = append(subscriptions, InvoiceEligibleSubscription{UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime}, PlanTitle: planTitle, Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: InvoiceItemTypeTopUp})
 			}
 		}
 		if len(redemptionIDsInput) > 0 {
@@ -549,7 +555,7 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 				if redemption.InvoiceAmountMicros <= 0 || strings.TrimSpace(redemption.InvoiceCurrency) == "" {
 					continue
 				}
-				subscriptions = append(subscriptions, InvoiceEligibleSubscription{UserSubscription: UserSubscription{Id: -1000000000 - redemption.Id, UserId: userId, PaidAmountMicros: redemption.InvoiceAmountMicros, PaidCurrency: redemption.InvoiceCurrency, CreatedAt: redemption.RedeemedTime}, PlanTitle: "Redemption code balance recharge", Source: "redemption_recharge", RedemptionId: redemption.Id, ItemType: "redemption_recharge"})
+				subscriptions = append(subscriptions, InvoiceEligibleSubscription{UserSubscription: UserSubscription{Id: -1000000000 - redemption.Id, UserId: userId, PaidAmountMicros: redemption.InvoiceAmountMicros, PaidCurrency: redemption.InvoiceCurrency, CreatedAt: redemption.RedeemedTime}, PlanTitle: "", Source: InvoiceItemTypeRedemptionRecharge, RedemptionId: redemption.Id, ItemType: InvoiceItemTypeRedemptionRecharge})
 			}
 		}
 		if len(subscriptions) != len(subscriptionIds)+len(redemptionIDsInput) {
@@ -581,7 +587,7 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 			activeSlot := 1
 			userSubscriptionID := subscription.Id
 			var activeSlotPointer = &activeSlot
-			if subscription.ItemType == "top_up" || subscription.ItemType == "redemption_recharge" {
+			if subscription.ItemType == InvoiceItemTypeTopUp || subscription.ItemType == InvoiceItemTypeRedemptionRecharge {
 				userSubscriptionID = 0
 				activeSlotPointer = nil
 			}

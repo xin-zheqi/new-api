@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Card, Form, Switch, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess, toBoolean } from '../../../helpers';
@@ -36,8 +36,9 @@ const SettingsInvoice = ({ options, refresh }) => {
     InvoiceRedemptionSubscriptionEnabled: true,
   });
   const [saving, setSaving] = useState(false);
+  const formApiRef = useRef(null);
   useEffect(() => {
-    setValues({
+    const nextValues = {
       InvoiceEnabled:
         options.InvoiceEnabled === undefined
           ? true
@@ -49,7 +50,9 @@ const SettingsInvoice = ({ options, refresh }) => {
       InvoiceRedemptionRechargeEnabled: options.InvoiceRedemptionRechargeEnabled === undefined ? true : toBoolean(options.InvoiceRedemptionRechargeEnabled),
       InvoiceSystemSubscriptionEnabled: options.InvoiceSystemSubscriptionEnabled === undefined ? true : toBoolean(options.InvoiceSystemSubscriptionEnabled),
       InvoiceRedemptionSubscriptionEnabled: options.InvoiceRedemptionSubscriptionEnabled === undefined ? true : toBoolean(options.InvoiceRedemptionSubscriptionEnabled),
-    });
+    };
+    setValues(nextValues);
+    formApiRef.current?.setValues(nextValues);
   }, [options]);
 
   const save = async () => {
@@ -96,7 +99,7 @@ const SettingsInvoice = ({ options, refresh }) => {
       <Typography.Paragraph type='tertiary'>
         {t('Configure the invoice application window and monthly limits.')}
       </Typography.Paragraph>
-      <Form layout='vertical'>
+        <Form layout='vertical' initValues={values} getFormApi={(api) => (formApiRef.current = api)}>
         <div className='mb-3 flex max-w-xl items-center justify-between gap-6'>
           <Typography.Text>{t('Enable invoice center')}</Typography.Text>
           <Switch

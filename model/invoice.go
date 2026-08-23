@@ -297,6 +297,8 @@ func normalizeInvoiceInput(input InvoiceApplicationInput) (InvoiceApplicationInp
 	if err != nil {
 		return InvoiceApplicationInput{}, err
 	}
+	// Keep model-level compatibility for historical/internal callers; the HTTP
+	// application endpoint enforces taxpayer ID as a required field.
 	input.TaxpayerId, err = normalizeInvoiceText(input.TaxpayerId, "taxpayer id", InvoiceTaxpayerIdMaxLength, false, false)
 	if err != nil {
 		return InvoiceApplicationInput{}, err

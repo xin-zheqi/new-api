@@ -3048,6 +3048,10 @@
     "Invoiceable amount": "可开票金额",
     "Invoice currency": "开票币种",
     "0 means not invoiceable": "0 表示不可开票",
-    "Actual amount to be invoiced; 0 disables invoicing.": "实际开票金额；设置为 0 将不可开票。"
+    "Actual amount to be invoiced; 0 disables invoicing.": "实际开票金额；设置为 0 将不可开票。",
+    "替换发票文件": "替换发票文件",
+    "上传发票文件": "上传发票文件",
+    "Enter the taxpayer ID": "请输入税号",
+    "Letters and numbers only": "仅限字母和数字"
   }
 }

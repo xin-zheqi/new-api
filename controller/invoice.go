@@ -205,6 +205,10 @@ func CreateInvoiceApplication(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid invoice application"})
 		return
 	}
+	if strings.TrimSpace(request.TaxpayerId) == "" {
+		common.ApiErrorMsg(c, "taxpayer id is required")
+		return
+	}
 	application, err := model.CreateInvoiceApplication(c.GetInt("id"), settings, model.InvoiceApplicationInput{
 		InvoiceTitle: request.InvoiceTitle, TaxpayerId: request.TaxpayerId,
 		BankName: request.BankName, Remark: request.Remark,

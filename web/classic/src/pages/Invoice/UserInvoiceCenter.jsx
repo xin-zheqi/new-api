@@ -74,6 +74,7 @@ const UserInvoiceCenter = () => {
   const [submitting, setSubmitting] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
   const loadRequestRef = useRef(0);
+  const invoiceDefaultsKey = `invoice-form-defaults-${getUserIdFromLocalStorage()}`;
 
   const loadData = async (
     nextPage = applicationPage,
@@ -137,6 +138,21 @@ const UserInvoiceCenter = () => {
   };
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem(invoiceDefaultsKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setForm((current) => ({
+          ...current,
+          invoice_title: clampInvoiceText(parsed.invoice_title, INVOICE_TITLE_MAX_LENGTH),
+          taxpayer_id: String(parsed.taxpayer_id || '').toUpperCase().slice(0, TAXPAYER_ID_MAX_LENGTH),
+          bank_name: clampInvoiceText(parsed.bank_name, BANK_NAME_MAX_LENGTH),
+          remark: clampInvoiceText(parsed.remark, INVOICE_REMARK_MAX_LENGTH),
+        }));
+      }
+    } catch (_) {
+      localStorage.removeItem(invoiceDefaultsKey);
+    }
     loadData(1, DEFAULT_PAGE_SIZE);
     return () => {
       loadRequestRef.current += 1;
@@ -200,6 +216,11 @@ const UserInvoiceCenter = () => {
       showError(t('Enter the full invoice title'));
       return;
     }
+    const taxpayerId = form.taxpayer_id.trim();
+    if (!taxpayerId) {
+      showError(t('Enter the taxpayer ID'));
+      return;
+    }
     if (selected.length === 0) {
       showError(t('Select at least one eligible subscription.'));
       return;
@@ -218,7 +239,7 @@ const UserInvoiceCenter = () => {
         '/api/user/invoice/apply',
         {
           invoice_title: invoiceTitle,
-          taxpayer_id: form.taxpayer_id.trim(),
+          taxpayer_id: taxpayerId,
           bank_name: form.bank_name.trim(),
           remark: form.remark.trim(),
           subscription_ids: selected,
@@ -236,6 +257,10 @@ const UserInvoiceCenter = () => {
         return;
       }
       showSuccess(t('Invoice application submitted'));
+      localStorage.setItem(
+        invoiceDefaultsKey,
+        JSON.stringify({ ...form, invoice_title: invoiceTitle, taxpayer_id: taxpayerId }),
+      );
       setSelected([]);
       setForm({
         invoice_title: '',
@@ -372,7 +397,7 @@ const UserInvoiceCenter = () => {
   ];
 
   return (
-    <div className='mx-auto mt-[60px] w-full max-w-7xl space-y-4 px-2 pb-6'>
+    <div className='mx-auto w-full max-w-7xl space-y-4 px-2 pb-6'>
       <div className='flex flex-wrap items-start justify-between gap-3'>
         <div>
           <Title heading={3} className='m-0'>
@@ -441,7 +466,7 @@ const UserInvoiceCenter = () => {
                 aria-label={t('Taxpayer ID')}
                 value={form.taxpayer_id}
                 onChange={updateTaxpayerId}
-                placeholder={t('Optional, letters and numbers only')}
+                placeholder={t('Letters and numbers only')}
                 showClear
               />
             </label>
@@ -554,7 +579,8 @@ const UserInvoiceCenter = () => {
               },
             }}
             pagination={false}
-            scroll={{ x: 'max-content' }}
+            style={{ width: '100%' }}
+            scroll={{ x: '100%' }}
             empty={<Empty description={t('No eligible subscriptions')} />}
           />
         </Card>
@@ -580,7 +606,8 @@ const UserInvoiceCenter = () => {
                 loadData(nextPage, applicationPageSize),
               onPageSizeChange: (nextPageSize) => loadData(1, nextPageSize),
             }}
-            scroll={{ x: 'max-content' }}
+            style={{ width: '100%' }}
+            scroll={{ x: '100%' }}
             empty={<Empty description={t('No invoice applications')} />}
           />
         </Card>

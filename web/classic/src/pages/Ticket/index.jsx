@@ -820,7 +820,13 @@ const AdminTicketCenter = () => {
         aria-label={t('工单状态')}
         placeholder={t('工单状态')}
         style={{ width: isMobile ? '100%' : 170 }}
-        onChange={setStatus}
+        onChange={(nextStatus) => {
+          setStatus(nextStatus);
+          const nextFilters = { keyword, status: nextStatus || '', userId };
+          void loadTickets(1, pageSize, nextFilters).then((loaded) => {
+            if (loaded) setAppliedFilters(nextFilters);
+          });
+        }}
       />
       <Input
         value={userId}

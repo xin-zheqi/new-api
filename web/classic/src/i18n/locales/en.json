@@ -4227,6 +4227,10 @@
     "Invoiceable amount": "Invoiceable amount",
     "Invoice currency": "Invoice currency",
     "0 means not invoiceable": "0 means not invoiceable",
-    "Actual amount to be invoiced; 0 disables invoicing.": "Actual amount to be invoiced; 0 disables invoicing."
+    "Actual amount to be invoiced; 0 disables invoicing.": "Actual amount to be invoiced; 0 disables invoicing.",
+    "替换发票文件": "Replace invoice file",
+    "上传发票文件": "Upload invoice file",
+    "Enter the taxpayer ID": "Enter the taxpayer ID",
+    "Letters and numbers only": "Letters and numbers only"
   }
 }

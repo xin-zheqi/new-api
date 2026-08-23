@@ -420,7 +420,7 @@ const AdminInvoiceCenter = () => {
                   disabled={Boolean(actionKey)}
                   onClick={() => choosePdf(application.id)}
                 >
-                  {application.pdf_name ? t('Replace PDF') : t('Upload PDF')}
+                  {application.pdf_name ? t('替换发票文件') : t('上传发票文件')}
                 </Button>
                 {application.pdf_name ? (
                   <Tooltip content={t('Delete PDF')}>

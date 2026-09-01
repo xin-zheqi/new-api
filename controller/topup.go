@@ -66,7 +66,7 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	payMethods := append([]map[string]string(nil), operation_setting.PayMethods...)
 	if !complianceConfirmed {
 		payMethods = []map[string]string{}
 	}
@@ -114,6 +114,29 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	// Official WeChat Pay Native is exposed as a normal payment method so the
+	// existing wallet flow can render it alongside Epay methods. The request
+	// handler still enforces the provider server-side; this list is only UI
+	// capability metadata.
+	enableWechat := isWechatTopUpEnabled()
+	if complianceConfirmed && enableWechat {
+		hasWechat := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodWechat {
+				hasWechat = true
+				break
+			}
+		}
+		if !hasWechat {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "WeChat Pay",
+				"type":      model.PaymentMethodWechat,
+				"color":     "#07C160",
+				"min_topup": strconv.FormatInt(getMinTopup(), 10),
+			})
+		}
+	}
+
 	// 如果启用了 Waffo 支付，添加到支付方法列表
 	enableWaffo := isWaffoTopUpEnabled()
 	if complianceConfirmed && enableWaffo {
@@ -142,6 +165,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_creem_topup":               complianceConfirmed && isCreemTopUpEnabled(),
 		"enable_waffo_topup":               complianceConfirmed && enableWaffo,
 		"enable_waffo_pancake_topup":       complianceConfirmed && enableWaffoPancake,
+		"enable_wechat_topup":              complianceConfirmed && enableWechat,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,

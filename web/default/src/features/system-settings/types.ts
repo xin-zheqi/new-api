@@ -44,6 +44,21 @@ export type MallSettingsUpdateRequest = {
   mall_url: string
 }
 
+export type WechatSettingsUpdateRequest = {
+  enabled: boolean
+  mch_id: string
+  app_id: string
+  api_v3_key: string
+  certificate_serial_number: string
+  private_key: string
+  merchant_certificate: string
+  pay_public_key_id: string
+  pay_public_key: string
+  platform_certificate: string
+  notify_url: string
+  order_expire_minutes: number
+}
+
 export type InvoiceSettingsUpdateRequest = {
   invoice_enabled: boolean
   application_day: number
@@ -350,6 +365,18 @@ export type BillingSettings = {
   // section (saved via /api/option/waffo-pancake/save).
   WaffoPancakeStoreID: string
   WaffoPancakeProductID: string
+  WechatEnabled: boolean
+  WechatMchID: string
+  WechatAppID: string
+  WechatApiV3Key: string
+  WechatCertificateSerialNumber: string
+  WechatPrivateKey: string
+  WechatMerchantCertificate: string
+  WechatPayPublicKeyID: string
+  WechatPayPublicKey: string
+  WechatPlatformCertificate: string
+  WechatNotifyURL: string
+  WechatOrderExpireMinutes: number
   'checkin_setting.enabled': boolean
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number

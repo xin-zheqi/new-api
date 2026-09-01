@@ -120,6 +120,10 @@ const PaymentConfirmModal = ({
                     (method) => method.type === payWay,
                   );
                   if (payMethod) {
+                    const displayName =
+                      payMethod.type === 'wechat_native_v3'
+                        ? t('微信支付')
+                        : payMethod.name;
                     return (
                       <>
                         {payMethod.type === 'alipay' ? (
@@ -128,7 +132,8 @@ const PaymentConfirmModal = ({
                             size={16}
                             color='#1677FF'
                           />
-                        ) : payMethod.type === 'wxpay' ? (
+                        ) : payMethod.type === 'wxpay' ||
+                          payMethod.type === 'wechat_native_v3' ? (
                           <SiWechat
                             className='mr-2'
                             size={16}
@@ -143,7 +148,7 @@ const PaymentConfirmModal = ({
                         ) : payMethod.icon ? (
                           <img
                             src={payMethod.icon}
-                            alt={payMethod.name}
+                            alt={displayName}
                             className='mr-2'
                             style={{
                               width: 16,
@@ -161,7 +166,7 @@ const PaymentConfirmModal = ({
                           />
                         )}
                         <Text className='text-slate-900 dark:text-slate-100'>
-                          {payMethod.name}
+                          {displayName}
                         </Text>
                       </>
                     );

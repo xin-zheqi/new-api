@@ -188,7 +188,11 @@ func TestTopUpCurrencyAndTerminalUpdatesAreStable(t *testing.T) {
 
 	require.NoError(t, UpdatePendingTopUpStatus(topUp.TradeNo, PaymentProviderStripe, common.TopUpStatusFailed))
 	require.NoError(t, UpdatePendingTopUpStatus(topUp.TradeNo, PaymentProviderStripe, common.TopUpStatusFailed))
-	assert.Equal(t, common.TopUpStatusFailed, getTopUpStatusForPaymentGuardTest(t, topUp.TradeNo))
+	require.ErrorIs(t, UpdatePendingTopUpStatus(topUp.TradeNo, PaymentProviderStripe, common.TopUpStatusExpired), ErrTopUpStatusInvalid)
+	require.ErrorIs(t, UpdatePendingTopUpStatus(topUp.TradeNo, PaymentProviderStripe, common.TopUpStatusSuccess), ErrTopUpStatusInvalid)
+	require.NoError(t, DB.Where("trade_no = ?", topUp.TradeNo).First(topUp).Error)
+	assert.Equal(t, common.TopUpStatusFailed, topUp.Status)
+	assert.Zero(t, topUp.CompleteTime)
 }
 
 func TestStripeRechargeCallbackIsIdempotentAndPersistsCurrency(t *testing.T) {
@@ -278,6 +282,219 @@ func TestRechargeEpayRollsBackOrderWhenUserCreditFails(t *testing.T) {
 	assert.Zero(t, logCount)
 }
 
+func TestRechargeWechatPayValidatesExactChargeAndIsIdempotent(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 178, 25)
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+
+	topUp := &TopUp{
+		UserId: 178, Amount: 2, Money: 9.99, TradeNo: "wechat-recharge-idempotency",
+		PaymentMethod: PaymentMethodWechat, PaymentProvider: PaymentProviderWechat,
+		Currency: "CNY", ExpectedAmountMicros: 9_990_000, ExpectedCurrency: "CNY",
+		Status: common.TopUpStatusPending, CreateTime: time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+
+	err := RechargeWechatPay(topUp.TradeNo, 998, "CNY", "127.0.0.1")
+	require.ErrorIs(t, err, ErrTopUpPaymentMismatch)
+	err = RechargeWechatPay(topUp.TradeNo, 999, "USD", "127.0.0.1")
+	require.ErrorIs(t, err, ErrTopUpPaymentMismatch)
+	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, topUp.TradeNo))
+	assert.Equal(t, 25, getUserQuotaForPaymentGuardTest(t, topUp.UserId))
+
+	require.NoError(t, RechargeWechatPay(topUp.TradeNo, 999, "CNY", "127.0.0.1"))
+	require.NoError(t, RechargeWechatPay(topUp.TradeNo, 999, "CNY", "127.0.0.1"))
+	require.ErrorIs(t, RechargeWechatPay(topUp.TradeNo, 1000, "CNY", "127.0.0.1"), ErrTopUpPaymentMismatch)
+	require.ErrorIs(t, RechargeWechatPay(topUp.TradeNo, 999, "USD", "127.0.0.1"), ErrTopUpPaymentMismatch)
+
+	var stored TopUp
+	require.NoError(t, DB.Where("trade_no = ?", topUp.TradeNo).First(&stored).Error)
+	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
+	assert.Equal(t, PaymentMethodWechat, stored.PaymentMethod)
+	assert.Equal(t, PaymentProviderWechat, stored.PaymentProvider)
+	assert.Equal(t, "CNY", stored.Currency)
+	assert.Equal(t, int64(9_990_000), stored.ExpectedAmountMicros)
+	assert.Positive(t, stored.CompleteTime)
+	assert.Equal(t, 225, getUserQuotaForPaymentGuardTest(t, topUp.UserId))
+
+	var logCount int64
+	require.NoError(t, LOG_DB.Model(&Log{}).Where("user_id = ? AND type = ?", topUp.UserId, LogTypeTopup).Count(&logCount).Error)
+	assert.Equal(t, int64(1), logCount)
+}
+
+func TestCompleteWechatSubscriptionOrderCreatesOneEntitlement(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 179, 0)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 302)
+	order := &SubscriptionOrder{
+		UserId: 179, PlanId: plan.Id, Money: 9.99, TradeNo: "wechat-subscription-idempotency",
+		PaymentMethod: PaymentMethodWechat, PaymentProvider: PaymentProviderWechat,
+		ExpectedAmountMicros: 9_990_000, ExpectedCurrency: "CNY",
+		Status: common.TopUpStatusPending, CreateTime: time.Now().Unix(),
+	}
+	require.NoError(t, CreatePendingSubscriptionOrder(order, plan))
+	payment := SubscriptionPaymentSnapshot{AmountMicros: 9_990_000, Currency: "CNY"}
+	require.NoError(t, CompleteSubscriptionOrder(order.TradeNo, "wechat:test", PaymentProviderWechat, PaymentMethodWechat, payment))
+	require.NoError(t, CompleteSubscriptionOrder(order.TradeNo, "wechat:test", PaymentProviderWechat, PaymentMethodWechat, payment))
+	require.NoError(t, ExpireSubscriptionOrder(order.TradeNo, PaymentProviderWechat))
+	require.ErrorIs(t, CompleteSubscriptionOrder(order.TradeNo, "wechat:test", PaymentProviderWechat, PaymentMethodWechat, SubscriptionPaymentSnapshot{
+		AmountMicros: payment.AmountMicros + 10_000,
+		Currency:     payment.Currency,
+	}), ErrSubscriptionPaymentMismatch)
+	require.ErrorIs(t, CompleteSubscriptionOrder(order.TradeNo, "wechat:test", PaymentProviderWechat, PaymentMethodWechat, SubscriptionPaymentSnapshot{
+		AmountMicros: payment.AmountMicros,
+		Currency:     "USD",
+	}), ErrSubscriptionPaymentMismatch)
+
+	assert.Equal(t, int64(1), countUserSubscriptionsForPaymentGuardTest(t, order.UserId))
+	stored := GetSubscriptionOrderByTradeNo(order.TradeNo)
+	require.NotNil(t, stored)
+	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
+	assert.Equal(t, PaymentProviderWechat, stored.PaymentProvider)
+	assert.Equal(t, PaymentMethodWechat, stored.PaymentMethod)
+	assert.Equal(t, payment.AmountMicros, stored.PaidAmountMicros)
+	assert.Equal(t, payment.Currency, stored.PaidCurrency)
+
+	topUp := GetTopUpByTradeNo(order.TradeNo)
+	require.NotNil(t, topUp)
+	assert.Equal(t, TopUpSourceSubscription, topUp.Source)
+	assert.Equal(t, PaymentProviderWechat, topUp.PaymentProvider)
+	assert.Equal(t, PaymentMethodWechat, topUp.PaymentMethod)
+	assert.Equal(t, 9.99, topUp.Money)
+	assert.Equal(t, payment.Currency, topUp.Currency)
+	assert.Equal(t, payment.AmountMicros, topUp.ExpectedAmountMicros)
+	assert.Equal(t, payment.Currency, topUp.ExpectedCurrency)
+}
+
+func TestExistingSubscriptionGatewayKeepsHistoricalIdempotency(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 184, 0)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 306)
+	order := &SubscriptionOrder{
+		UserId: 184, PlanId: plan.Id, Money: 9.99, TradeNo: "epay-subscription-existing-contract",
+		PaymentMethod: "alipay", PaymentProvider: PaymentProviderEpay,
+		ExpectedAmountMicros: 9_990_000, ExpectedCurrency: "CNY",
+		Status: common.TopUpStatusPending, CreateTime: time.Now().Unix(),
+	}
+	require.NoError(t, CreatePendingSubscriptionOrder(order, plan))
+	require.NoError(t, CompleteSubscriptionOrder(
+		order.TradeNo, "epay:first", PaymentProviderEpay, "alipay",
+		SubscriptionPaymentSnapshot{AmountMicros: 9_990_000, Currency: "CNY"},
+	))
+	// Existing gateways historically acknowledge same-provider duplicate
+	// callbacks after fulfillment without revalidating mutable callback fields.
+	require.NoError(t, CompleteSubscriptionOrder(
+		order.TradeNo, "epay:duplicate", PaymentProviderEpay, "wxpay",
+		SubscriptionPaymentSnapshot{AmountMicros: 12_340_000, Currency: "USD"},
+	))
+	require.NoError(t, ExpireSubscriptionOrder(order.TradeNo, PaymentProviderEpay))
+
+	stored := GetSubscriptionOrderByTradeNo(order.TradeNo)
+	require.NotNil(t, stored)
+	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
+	assert.Equal(t, int64(9_990_000), stored.PaidAmountMicros)
+	assert.Equal(t, "CNY", stored.PaidCurrency)
+	assert.Equal(t, "alipay", stored.PaymentMethod)
+	assert.Equal(t, int64(1), countUserSubscriptionsForPaymentGuardTest(t, order.UserId))
+}
+
+func TestWechatTerminalOrdersCannotBeRevived(t *testing.T) {
+	for _, status := range []string{common.TopUpStatusFailed, common.TopUpStatusExpired} {
+		t.Run("topup "+status, func(t *testing.T) {
+			truncateTables(t)
+			insertUserForPaymentGuardTest(t, 181, 25)
+			topUp := &TopUp{
+				UserId: 181, Amount: 2, Money: 9.99, TradeNo: "wechat-terminal-topup-" + status,
+				PaymentMethod: PaymentMethodWechat, PaymentProvider: PaymentProviderWechat,
+				Currency: "CNY", ExpectedAmountMicros: 9_990_000, ExpectedCurrency: "CNY",
+				Status: status, CreateTime: time.Now().Unix(),
+			}
+			require.NoError(t, topUp.Insert())
+
+			err := RechargeWechatPay(topUp.TradeNo, 999, "CNY", "127.0.0.1")
+			require.ErrorIs(t, err, ErrTopUpStatusInvalid)
+			assert.Equal(t, status, getTopUpStatusForPaymentGuardTest(t, topUp.TradeNo))
+			assert.Equal(t, 25, getUserQuotaForPaymentGuardTest(t, topUp.UserId))
+		})
+	}
+
+	for _, status := range []string{common.TopUpStatusFailed, common.TopUpStatusExpired} {
+		t.Run("subscription "+status, func(t *testing.T) {
+			truncateTables(t)
+			insertUserForPaymentGuardTest(t, 182, 0)
+			plan := insertSubscriptionPlanForPaymentGuardTest(t, 304)
+			order := &SubscriptionOrder{
+				UserId: 182, PlanId: plan.Id, Money: 9.99, TradeNo: "wechat-terminal-subscription-" + status,
+				PaymentMethod: PaymentMethodWechat, PaymentProvider: PaymentProviderWechat,
+				ExpectedAmountMicros: 9_990_000, ExpectedCurrency: "CNY",
+				Status: common.TopUpStatusPending, CreateTime: time.Now().Unix(),
+			}
+			require.NoError(t, CreatePendingSubscriptionOrder(order, plan))
+			require.NoError(t, UpdatePendingWechatSubscriptionOrderStatus(order.TradeNo, status))
+
+			err := CompleteSubscriptionOrder(order.TradeNo, "wechat:test", PaymentProviderWechat, PaymentMethodWechat, SubscriptionPaymentSnapshot{
+				AmountMicros: 9_990_000,
+				Currency:     "CNY",
+			})
+			require.ErrorIs(t, err, ErrSubscriptionOrderStatusInvalid)
+			assert.Zero(t, countUserSubscriptionsForPaymentGuardTest(t, order.UserId))
+			stored := GetSubscriptionOrderByTradeNo(order.TradeNo)
+			require.NotNil(t, stored)
+			assert.Equal(t, status, stored.Status)
+		})
+	}
+}
+
+func TestPaidPendingWechatSubscriptionCannotExpire(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 183, 0)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 305)
+	order := &SubscriptionOrder{
+		UserId: 183, PlanId: plan.Id, Money: 9.99, TradeNo: "wechat-paid-pending-subscription",
+		PaymentMethod: PaymentMethodWechat, PaymentProvider: PaymentProviderWechat,
+		ExpectedAmountMicros: 9_990_000, ExpectedCurrency: "CNY",
+		Status: common.TopUpStatusPending, CreateTime: time.Now().Unix(),
+	}
+	require.NoError(t, CreatePendingSubscriptionOrder(order, plan))
+	require.NoError(t, DB.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Updates(map[string]any{
+		"paid_amount_micros": int64(9_990_000),
+		"paid_currency":      "CNY",
+	}).Error)
+
+	err := UpdatePendingWechatSubscriptionOrderStatus(order.TradeNo, common.TopUpStatusExpired)
+	require.ErrorIs(t, err, ErrSubscriptionOrderStatusInvalid)
+	stored := GetSubscriptionOrderByTradeNo(order.TradeNo)
+	require.NotNil(t, stored)
+	assert.Equal(t, common.TopUpStatusPending, stored.Status)
+}
+
+func TestCompleteWechatSubscriptionOrderRejectsOverpayment(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 180, 0)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 303)
+	order := &SubscriptionOrder{
+		UserId: 180, PlanId: plan.Id, Money: 9.99, TradeNo: "wechat-subscription-overpayment",
+		PaymentMethod: PaymentMethodWechat, PaymentProvider: PaymentProviderWechat,
+		ExpectedAmountMicros: 9_990_000, ExpectedCurrency: "CNY",
+		Status: common.TopUpStatusPending, CreateTime: time.Now().Unix(),
+	}
+	require.NoError(t, CreatePendingSubscriptionOrder(order, plan))
+
+	err := CompleteSubscriptionOrder(order.TradeNo, "wechat:test", PaymentProviderWechat, PaymentMethodWechat, SubscriptionPaymentSnapshot{
+		AmountMicros: 10_000_000,
+		Currency:     "CNY",
+	})
+	require.ErrorIs(t, err, ErrSubscriptionPaymentMismatch)
+	assert.Zero(t, countUserSubscriptionsForPaymentGuardTest(t, order.UserId))
+
+	stored := GetSubscriptionOrderByTradeNo(order.TradeNo)
+	require.NotNil(t, stored)
+	assert.Equal(t, common.TopUpStatusPending, stored.Status)
+	assert.Zero(t, stored.PaidAmountMicros)
+}
+
 func TestRechargeCompletionRollsBackWhenUserDoesNotExist(t *testing.T) {
 	previousQuotaPerUnit := common.QuotaPerUnit
 	common.QuotaPerUnit = 100
@@ -314,6 +531,13 @@ func TestRechargeCompletionRollsBackWhenUserDoesNotExist(t *testing.T) {
 			paymentProvider: PaymentProviderWaffoPancake,
 			complete: func(tradeNo string) error {
 				return RechargeWaffoPancake(tradeNo, "USD")
+			},
+		},
+		{
+			name:            "wechat",
+			paymentProvider: PaymentProviderWechat,
+			complete: func(tradeNo string) error {
+				return RechargeWechatPay(tradeNo, 200, "CNY", "127.0.0.1")
 			},
 		},
 		{

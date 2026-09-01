@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { WechatPayDialog } from '@/features/wallet/components/dialogs/wechat-pay-dialog'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { formatQuota } from '@/lib/format'
 import {
@@ -49,6 +50,7 @@ import {
   paySubscriptionEpay,
   paySubscriptionWaffoPancake,
   paySubscriptionBalance,
+  paySubscriptionWechat,
 } from '../../api'
 import { formatDuration, formatResetPeriod } from '../../lib'
 import type { PlanRecord } from '../../types'
@@ -66,6 +68,7 @@ interface Props {
   enableCreem?: boolean
   enableWaffoPancake?: boolean
   enableOnlineTopUp?: boolean
+  enableWechat?: boolean
   epayMethods?: PaymentMethod[]
   purchaseLimit?: number
   purchaseCount?: number
@@ -78,6 +81,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const { currency } = useSystemConfig()
   const [paying, setPaying] = useState(false)
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('')
+  const [wechatDialogOpen, setWechatDialogOpen] = useState(false)
+  const [wechatPayment, setWechatPayment] = useState<{
+    trade_no: string
+    code_url: string
+    amount?: string
+    currency?: string
+    expires_at?: number
+  } | null>(null)
 
   useEffect(() => {
     if (props.open && props.epayMethods && props.epayMethods.length > 0) {
@@ -96,7 +107,9 @@ export function SubscriptionPurchaseDialog(props: Props) {
     props.enableWaffoPancake && !!plan.waffo_pancake_product_id
   const hasEpay =
     props.enableOnlineTopUp && (props.epayMethods || []).length > 0
-  const hasAnyPayment = hasStripe || hasCreem || hasWaffoPancake || hasEpay
+  const hasWechat = props.enableWechat === true
+  const hasAnyPayment =
+    hasStripe || hasCreem || hasWaffoPancake || hasEpay || hasWechat
   const selectedEpayMethodLabel =
     (props.epayMethods || []).find((m) => m.type === selectedEpayMethod)
       ?.name ||
@@ -227,6 +240,37 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }
 
+  const handlePayWechat = async () => {
+    setPaying(true)
+    try {
+      const res = await paySubscriptionWechat({ plan_id: plan.id })
+      if (
+        (res.success || res.message === 'success') &&
+        res.data?.code_url &&
+        res.data.trade_no
+      ) {
+        setWechatPayment({
+          trade_no: res.data.trade_no,
+          code_url: res.data.code_url,
+          amount: res.data.amount,
+          currency: res.data.currency,
+          expires_at:
+            typeof res.data.expires_at === 'string'
+              ? Number(res.data.expires_at)
+              : res.data.expires_at,
+        })
+        props.onOpenChange(false)
+        setWechatDialogOpen(true)
+      } else {
+        toast.error(res.message || t('Payment request failed'))
+      }
+    } catch {
+      toast.error(t('Payment request failed'))
+    } finally {
+      setPaying(false)
+    }
+  }
+
   const handlePayBalance = async () => {
     if (!allowBalancePay) {
       toast.error(t('This plan does not allow balance redemption'))
@@ -253,7 +297,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }
 
-  return (
+  const purchaseDialog = (
     <Dialog
       open={props.open}
       onOpenChange={props.onOpenChange}
@@ -432,9 +476,40 @@ export function SubscriptionPurchaseDialog(props: Props) {
                 </Button>
               </div>
             )}
+            {hasWechat && (
+              <Button
+                variant='outline'
+                className='w-full'
+                onClick={handlePayWechat}
+                disabled={paying || limitReached}
+              >
+                {t('WeChat Pay')}
+              </Button>
+            )}
           </div>
         )}
       </div>
     </Dialog>
+  )
+
+  return (
+    <>
+      {purchaseDialog}
+      {wechatPayment && (
+        <WechatPayDialog
+          open={wechatDialogOpen}
+          onOpenChange={(open) => {
+            setWechatDialogOpen(open)
+            if (!open) setWechatPayment(null)
+          }}
+          tradeNo={wechatPayment.trade_no}
+          codeUrl={wechatPayment.code_url}
+          amount={wechatPayment.amount}
+          currency={wechatPayment.currency}
+          expiresAt={wechatPayment.expires_at}
+          onSuccess={props.onPurchaseSuccess}
+        />
+      )}
+    </>
   )
 }

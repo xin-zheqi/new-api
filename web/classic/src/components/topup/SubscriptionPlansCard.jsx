@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Badge,
   Button,
@@ -41,6 +41,7 @@ import {
 import { getCurrencyConfig } from '../../helpers/render';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
+import WechatPayModal from './modals/WechatPayModal';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
@@ -49,9 +50,13 @@ import {
 const { Text } = Typography;
 
 // 过滤易支付方式
-function getEpayMethods(payMethods = []) {
+function getEpayMethods(payMethods = [], excludeWechatNative = false) {
   return (payMethods || []).filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem',
+    (m) =>
+      m?.type &&
+      m.type !== 'stripe' &&
+      m.type !== 'creem' &&
+      (!excludeWechatNative || m.type !== 'wechat_native_v3'),
   );
 }
 
@@ -63,6 +68,7 @@ const SubscriptionPlansCard = ({
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
+  enableWechatTopUp = false,
   billingPreference,
   onChangeBillingPreference,
   activeSubscriptions = [],
@@ -78,8 +84,13 @@ const SubscriptionPlansCard = ({
   const [paying, setPaying] = useState(false);
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [wechatPayment, setWechatPayment] = useState(null);
+  const [wechatVisible, setWechatVisible] = useState(false);
 
-  const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
+  const epayMethods = useMemo(
+    () => getEpayMethods(payMethods, enableWechatTopUp),
+    [enableWechatTopUp, payMethods],
+  );
 
   const openBuy = (p) => {
     setSelectedPlan(p);
@@ -195,6 +206,40 @@ const SubscriptionPlansCard = ({
       setPaying(false);
     }
   };
+
+  const payWechat = async () => {
+    if (!selectedPlan?.plan?.id || !enableWechatTopUp) {
+      showError(t('微信支付暂不可用'));
+      return;
+    }
+    setPaying(true);
+    try {
+      const res = await API.post('/api/subscription/wechat/pay', {
+        plan_id: selectedPlan.plan.id,
+      });
+      const response = res?.data;
+      if (
+        response?.success &&
+        response.data?.trade_no &&
+        response.data?.code_url
+      ) {
+        setOpen(false);
+        setSelectedPlan(null);
+        setWechatPayment(response.data);
+        setWechatVisible(true);
+      } else {
+        showError(response?.message || t('支付请求失败'));
+      }
+    } catch {
+      showError(t('支付请求失败'));
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const handleWechatSuccess = useCallback(async () => {
+    await Promise.all([reloadSubscriptionSelf?.(), onPurchaseSuccess?.()]);
+  }, [onPurchaseSuccess, reloadSubscriptionSelf]);
 
   const payBalance = async () => {
     if (selectedPlan?.plan?.allow_balance_pay === false) {
@@ -695,6 +740,7 @@ const SubscriptionPlansCard = ({
         enableOnlineTopUp={enableOnlineTopUp}
         enableStripeTopUp={enableStripeTopUp}
         enableCreemTopUp={enableCreemTopUp}
+        enableWechatTopUp={enableWechatTopUp}
         purchaseLimitInfo={
           selectedPlan?.plan?.id
             ? {
@@ -708,7 +754,20 @@ const SubscriptionPlansCard = ({
         onPayStripe={payStripe}
         onPayCreem={payCreem}
         onPayEpay={payEpay}
+        onPayWechat={payWechat}
       />
+      {wechatPayment ? (
+        <WechatPayModal
+          t={t}
+          visible={wechatVisible}
+          payment={wechatPayment}
+          onCancel={() => {
+            setWechatVisible(false);
+            setWechatPayment(null);
+          }}
+          onSuccess={handleWechatSuccess}
+        />
+      ) : null}
     </>
   );
 };

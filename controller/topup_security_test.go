@@ -311,6 +311,7 @@ func TestMallModeHidesPlansAndRejectsEveryBuiltInSubscriptionPurchase(t *testing
 		{name: "stripe", handler: SubscriptionRequestStripePay},
 		{name: "creem", handler: SubscriptionRequestCreemPay},
 		{name: "waffo pancake", handler: SubscriptionRequestWaffoPancakePay},
+		{name: "wechat", handler: RequestWechatSubscriptionPay},
 	}
 	for _, purchaseHandler := range purchaseHandlers {
 		t.Run(purchaseHandler.name, func(t *testing.T) {
@@ -345,6 +346,7 @@ func TestTopUpPaymentRequestsLimitJSONBody(t *testing.T) {
 		{name: "creem checkout", handler: RequestCreemPay},
 		{name: "waffo amount", handler: RequestWaffoAmount},
 		{name: "waffo pancake amount", handler: RequestWaffoPancakeAmount},
+		{name: "wechat checkout", handler: RequestWechatPay},
 	}
 	body := `{"amount":1,"payment_method":"stripe","product_id":"product","padding":"` +
 		strings.Repeat("a", int(paymentRequestMaxBytes*2)) + `"}`

@@ -19,7 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { canPurchaseBuiltInSubscriptions } from './payment'
+import {
+  canPurchaseBuiltInSubscriptions,
+  isWechatNativePayment,
+} from './payment'
 
 describe('default wallet mall mode', () => {
   test('only allows built-in subscriptions after mall mode is known to be disabled', () => {
@@ -27,5 +30,11 @@ describe('default wallet mall mode', () => {
     assert.equal(canPurchaseBuiltInSubscriptions(false, true), false)
     assert.equal(canPurchaseBuiltInSubscriptions(true, true), false)
     assert.equal(canPurchaseBuiltInSubscriptions(true, false), true)
+  })
+
+  test('keeps legacy Epay method names out of the official WeChat flow', () => {
+    assert.equal(isWechatNativePayment('wechat_native'), false)
+    assert.equal(isWechatNativePayment('wxpay'), false)
+    assert.equal(isWechatNativePayment('wechat_native_v3'), true)
   })
 })

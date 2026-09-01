@@ -29,6 +29,8 @@ describe('redemption form payload', () => {
       quota_dollars: 0,
       subscription_plan_id: 42,
       count: 1,
+      invoice_amount: 0,
+      invoice_currency: 'CNY',
     })
 
     assert.equal(payload.invoice_eligible, false)

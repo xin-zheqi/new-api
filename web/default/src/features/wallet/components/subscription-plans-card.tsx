@@ -67,11 +67,19 @@ interface SubscriptionPlansCardProps {
   userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
   mySubscriptionsOnly?: boolean
+  enableWechat?: boolean
 }
 
-function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
+function getEpayMethods(
+  payMethods: PaymentMethod[] = [],
+  excludeWechatNative = false
+): PaymentMethod[] {
   return payMethods.filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem'
+    (m) =>
+      m?.type &&
+      m.type !== 'stripe' &&
+      m.type !== 'creem' &&
+      (!excludeWechatNative || m.type !== 'wechat_native_v3')
   )
 }
 
@@ -99,6 +107,7 @@ export function SubscriptionPlansCard({
   userQuota,
   onPurchaseSuccess,
   mySubscriptionsOnly = false,
+  enableWechat = false,
 }: SubscriptionPlansCardProps) {
   const { t } = useTranslation()
 
@@ -122,8 +131,8 @@ export function SubscriptionPlansCard({
   const enableWaffoPancake = !!topupInfo?.enable_waffo_pancake_topup
   const enableOnlineTopUp = !!topupInfo?.enable_online_topup
   const epayMethods = useMemo(
-    () => getEpayMethods(topupInfo?.pay_methods),
-    [topupInfo?.pay_methods]
+    () => getEpayMethods(topupInfo?.pay_methods, enableWechat),
+    [enableWechat, topupInfo?.pay_methods]
   )
 
   const fetchPlans = useCallback(async () => {
@@ -657,6 +666,7 @@ export function SubscriptionPlansCard({
         enableCreem={enableCreem}
         enableWaffoPancake={enableWaffoPancake}
         enableOnlineTopUp={enableOnlineTopUp}
+        enableWechat={enableWechat}
         epayMethods={epayMethods}
         userQuota={userQuota}
         onPurchaseSuccess={onPurchaseSuccess}

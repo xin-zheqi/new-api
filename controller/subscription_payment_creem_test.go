@@ -177,6 +177,7 @@ func TestSubscriptionPaymentRequestsLimitJSONBody(t *testing.T) {
 		{name: "stripe", handler: SubscriptionRequestStripePay},
 		{name: "creem", handler: SubscriptionRequestCreemPay},
 		{name: "waffo pancake", handler: SubscriptionRequestWaffoPancakePay},
+		{name: "wechat", handler: RequestWechatSubscriptionPay},
 	}
 	body := `{"plan_id":1,"padding":"` + strings.Repeat("a", int(paymentRequestMaxBytes*2)) + `"}`
 	for _, test := range handlers {

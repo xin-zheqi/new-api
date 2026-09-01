@@ -23,6 +23,7 @@ import SettingsGeneralPayment from '../../pages/Setting/Payment/SettingsGeneralP
 import SettingsPaymentGateway from '../../pages/Setting/Payment/SettingsPaymentGateway';
 import SettingsPaymentGatewayStripe from '../../pages/Setting/Payment/SettingsPaymentGatewayStripe';
 import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPaymentGatewayCreem';
+import SettingsPaymentGatewayWechat from '../../pages/Setting/Payment/SettingsPaymentGatewayWechat';
 import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
 import { API, showError, showSuccess, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
@@ -53,6 +54,19 @@ const PaymentSetting = () => {
     StripeUnitPrice: 8.0,
     StripeMinTopUp: 1,
     StripePromotionCodesEnabled: false,
+
+    WechatEnabled: false,
+    WechatMchID: '',
+    WechatAppID: '',
+    WechatApiV3Key: '',
+    WechatCertificateSerialNumber: '',
+    WechatPrivateKey: '',
+    WechatMerchantCertificate: '',
+    WechatPayPublicKeyID: '',
+    WechatPayPublicKey: '',
+    WechatPlatformCertificate: '',
+    WechatNotifyURL: '',
+    WechatOrderExpireMinutes: 120,
 
     'payment_setting.compliance_confirmed': false,
     'payment_setting.compliance_terms_version': '',
@@ -164,6 +178,9 @@ const PaymentSetting = () => {
           case 'StripeUnitPrice':
           case 'StripeMinTopUp':
             newInputs[item.key] = parseFloat(item.value);
+            break;
+          case 'WechatOrderExpireMinutes':
+            newInputs[item.key] = parseInt(item.value) || 120;
             break;
           default:
             if (item.key.endsWith('Enabled')) {
@@ -294,6 +311,13 @@ const PaymentSetting = () => {
               </Tabs.TabPane>
               <Tabs.TabPane tab={t('Creem 设置')} itemKey='creem'>
                 <SettingsPaymentGatewayCreem
+                  options={inputs}
+                  refresh={onRefresh}
+                  hideSectionTitle
+                />
+              </Tabs.TabPane>
+              <Tabs.TabPane tab={t('微信支付设置')} itemKey='wechat'>
+                <SettingsPaymentGatewayWechat
                   options={inputs}
                   refresh={onRefresh}
                   hideSectionTitle

@@ -31,6 +31,7 @@ import type {
   UpdateOptionResponse,
   UpstreamChannelsResponse,
   UpstreamRatiosResponse,
+  WechatSettingsUpdateRequest,
 } from './types'
 
 export async function getSystemOptions() {
@@ -56,6 +57,20 @@ export async function updateMallSettings(request: MallSettingsUpdateRequest) {
   })
   if (!res.data.success) {
     throw new Error(res.data.message || 'Failed to update mall settings')
+  }
+  return res.data
+}
+
+export async function updateWechatPaymentSettings(
+  request: WechatSettingsUpdateRequest
+) {
+  const res = await api.put<UpdateOptionResponse>(
+    '/api/option/wechat',
+    request,
+    { skipBusinessError: true, skipErrorHandler: true }
+  )
+  if (!res.data.success) {
+    throw new Error(res.data.message || 'Failed to update WeChat Pay settings')
   }
   return res.data
 }

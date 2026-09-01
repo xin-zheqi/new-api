@@ -651,6 +651,8 @@ func migrateInvoicePaymentSnapshots() error {
 			switch order.PaymentProvider {
 			case PaymentProviderEpay:
 				currency = "CNY"
+			case PaymentProviderWechat:
+				currency = "CNY"
 			case PaymentProviderStripe:
 				planCurrency, ok := stripePlanCurrencies[order.PlanId]
 				if !ok {

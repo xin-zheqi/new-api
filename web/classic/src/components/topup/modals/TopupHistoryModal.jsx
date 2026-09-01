@@ -57,6 +57,7 @@ const PAYMENT_METHOD_MAP = {
   waffo: 'Waffo',
   alipay: '支付宝',
   wxpay: '微信',
+  wechat_native_v3: '微信支付',
 };
 
 const toUnixSeconds = (value) => {
@@ -236,7 +237,9 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       amount: Number(manualForm.amount || 0),
       money: Number(manualForm.money || 0),
       invoice_amount: Number(manualForm.invoice_amount || 0),
-      invoice_currency: String(manualForm.invoice_currency || '').trim().toUpperCase(),
+      invoice_currency: String(manualForm.invoice_currency || '')
+        .trim()
+        .toUpperCase(),
       create_time: getManualCreateTimestamp(),
       credit_balance: !!manualForm.credit_balance,
     };
@@ -567,9 +570,13 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
                   min={0}
                   step={0.01}
                   value={manualForm.invoice_amount}
-                  onChange={(value) => setManualForm({ ...manualForm, invoice_amount: value })}
+                  onChange={(value) =>
+                    setManualForm({ ...manualForm, invoice_amount: value })
+                  }
                 />
-                <Text type='tertiary' size='small'>{t('0 表示不可开票')}</Text>
+                <Text type='tertiary' size='small'>
+                  {t('0 表示不可开票')}
+                </Text>
               </div>
               <div>
                 <Text strong>{t('开票币种')}</Text>
@@ -577,7 +584,12 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
                   className='mt-2'
                   maxLength={8}
                   value={manualForm.invoice_currency}
-                  onChange={(value) => setManualForm({ ...manualForm, invoice_currency: value.toUpperCase() })}
+                  onChange={(value) =>
+                    setManualForm({
+                      ...manualForm,
+                      invoice_currency: value.toUpperCase(),
+                    })
+                  }
                   placeholder='USD'
                 />
               </div>

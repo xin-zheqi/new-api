@@ -121,6 +121,8 @@ export interface WaffoPayMethod {
 export interface TopupInfo {
   /** Whether online topup is enabled */
   enable_online_topup: boolean
+  /** Whether official WeChat Pay API v3 Native is enabled */
+  enable_wechat_topup?: boolean
   /** Whether Stripe topup is enabled */
   enable_stripe_topup: boolean
   /** Available payment methods */
@@ -200,6 +202,32 @@ export interface PaymentRequest {
   amount: number
   /** Payment method identifier */
   payment_method: string
+}
+
+export interface WechatPaymentResponse {
+  success: boolean
+  message?: string
+  data?: {
+    trade_no: string
+    status: string
+    code_url: string
+    amount?: string
+    currency?: string
+    expires_at?: number
+  }
+}
+
+export interface WechatOrderResponse {
+  success: boolean
+  message?: string
+  data?: {
+    trade_no: string
+    status: string
+    trade_state?: string
+    trade_state_desc?: string
+    amount?: string
+    currency?: string
+  }
 }
 
 /**

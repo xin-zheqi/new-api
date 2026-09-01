@@ -54,6 +54,7 @@ import {
   confirmPaymentCompliance,
   updateMallSettings,
   updateSystemOption,
+  updateWechatPaymentSettings,
 } from '../api'
 import {
   SettingsForm,
@@ -84,6 +85,7 @@ import {
   WaffoSettingsSection,
   type WaffoSettingsValues,
 } from './waffo-settings-section'
+import { WechatSettingsSection } from './wechat-settings-section'
 
 function isHttpOriginUrl(value: string) {
   const trimmed = value.trim()
@@ -94,6 +96,25 @@ function isHttpOriginUrl(value: string) {
     const isHttpProtocol = url.protocol === 'http:' || url.protocol === 'https:'
     const hasNoPath = url.pathname === '' || url.pathname === '/'
     return isHttpProtocol && hasNoPath && !url.search && !url.hash
+  } catch {
+    return false
+  }
+}
+
+function isWechatNotifyUrl(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return true
+  if (new TextEncoder().encode(trimmed).length > 255) return false
+
+  try {
+    const url = new URL(trimmed)
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash
+    )
   } catch {
     return false
   }
@@ -187,31 +208,120 @@ function createPaymentSchema(t: TFunction) {
       WaffoPancakeMerchantID: z.string(),
       WaffoPancakePrivateKey: z.string(),
       WaffoPancakeReturnURL: z.string(),
+      WechatEnabled: z.boolean(),
+      WechatMchID: z.string(),
+      WechatAppID: z.string(),
+      WechatApiV3Key: z.string(),
+      WechatCertificateSerialNumber: z.string(),
+      WechatPrivateKey: z
+        .string()
+        .max(64 * 1024, t('Credential content is too long')),
+      WechatMerchantCertificate: z
+        .string()
+        .max(64 * 1024, t('Credential content is too long')),
+      WechatPayPublicKeyID: z.string(),
+      WechatPayPublicKey: z
+        .string()
+        .max(64 * 1024, t('Credential content is too long')),
+      WechatPlatformCertificate: z
+        .string()
+        .max(64 * 1024, t('Credential content is too long')),
+      WechatNotifyURL: z.string(),
+      WechatOrderExpireMinutes: z.coerce.number().int().min(1).max(120),
     })
     .superRefine((values, ctx) => {
       const mallURL = values.MallURL.trim()
-      if (!values.MallEnabled) return
-
-      if (!mallURL) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['MallURL'],
-          message: t('Mall URL is required when the mall is enabled'),
-        })
-        return
+      if (values.MallEnabled) {
+        if (!mallURL) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['MallURL'],
+            message: t('Mall URL is required when the mall is enabled'),
+          })
+        } else if (
+          getSafeEmbeddedMallUrl(
+            mallURL,
+            typeof window === 'undefined' ? '' : window.location.hostname
+          ) === undefined
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['MallURL'],
+            message: t('Enter a valid HTTPS URL without embedded credentials'),
+          })
+        }
       }
 
-      if (
-        getSafeEmbeddedMallUrl(
-          mallURL,
-          typeof window === 'undefined' ? '' : window.location.hostname
-        ) === undefined
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['MallURL'],
-          message: t('Enter a valid HTTPS URL without embedded credentials'),
-        })
+      if (values.WechatEnabled) {
+        for (const field of [
+          'WechatMchID',
+          'WechatAppID',
+          'WechatCertificateSerialNumber',
+        ] as const) {
+          if (!values[field].trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [field],
+              message: t('Required when WeChat Pay is enabled'),
+            })
+          }
+        }
+
+        const merchantID = values.WechatMchID.trim()
+        if (merchantID && !/^\d{8,32}$/.test(merchantID)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['WechatMchID'],
+            message: t('Enter a valid WeChat merchant ID'),
+          })
+        }
+        const appID = values.WechatAppID.trim()
+        if (appID && !/^wx[A-Za-z0-9]{16}$/.test(appID)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['WechatAppID'],
+            message: t('Enter a valid WeChat AppID'),
+          })
+        }
+        if (
+          values.WechatApiV3Key.trim() &&
+          new TextEncoder().encode(values.WechatApiV3Key.trim()).length !== 32
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['WechatApiV3Key'],
+            message: t('The API v3 key must contain exactly 32 bytes'),
+          })
+        }
+        const certificateSerial = values.WechatCertificateSerialNumber.trim()
+        if (
+          certificateSerial &&
+          (!/^[A-Fa-f0-9]+$/.test(certificateSerial) ||
+            certificateSerial.length > 64)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['WechatCertificateSerialNumber'],
+            message: t('Enter a valid merchant certificate serial number'),
+          })
+        }
+        const publicKeyID = values.WechatPayPublicKeyID.trim()
+        if (publicKeyID && !/^PUB_KEY_ID_\d{1,53}$/.test(publicKeyID)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['WechatPayPublicKeyID'],
+            message: t('Enter a valid WeChat Pay public key ID'),
+          })
+        }
+        if (!isWechatNotifyUrl(values.WechatNotifyURL)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['WechatNotifyURL'],
+            message: t(
+              'Enter a valid HTTPS notification URL without credentials, query parameters, or fragments'
+            ),
+          })
+        }
       }
     })
 }
@@ -497,6 +607,19 @@ export function PaymentSettingsSection({
       WaffoPancakeReturnURL: removeTrailingSlash(
         values.WaffoPancakeReturnURL.trim()
       ),
+      WechatEnabled: values.WechatEnabled,
+      WechatMchID: values.WechatMchID.trim(),
+      WechatAppID: values.WechatAppID.trim(),
+      WechatApiV3Key: values.WechatApiV3Key.trim(),
+      WechatCertificateSerialNumber:
+        values.WechatCertificateSerialNumber.trim(),
+      WechatPrivateKey: values.WechatPrivateKey.trim(),
+      WechatMerchantCertificate: values.WechatMerchantCertificate.trim(),
+      WechatPayPublicKeyID: values.WechatPayPublicKeyID.trim(),
+      WechatPayPublicKey: values.WechatPayPublicKey.trim(),
+      WechatPlatformCertificate: values.WechatPlatformCertificate.trim(),
+      WechatNotifyURL: removeTrailingSlash(values.WechatNotifyURL.trim()),
+      WechatOrderExpireMinutes: values.WechatOrderExpireMinutes,
     }
 
     const initial = {
@@ -546,6 +669,23 @@ export function PaymentSettingsSection({
       WaffoPancakeReturnURL: removeTrailingSlash(
         initialRef.current.WaffoPancakeReturnURL.trim()
       ),
+      WechatEnabled: initialRef.current.WechatEnabled,
+      WechatMchID: initialRef.current.WechatMchID.trim(),
+      WechatAppID: initialRef.current.WechatAppID.trim(),
+      WechatApiV3Key: initialRef.current.WechatApiV3Key.trim(),
+      WechatCertificateSerialNumber:
+        initialRef.current.WechatCertificateSerialNumber.trim(),
+      WechatPrivateKey: initialRef.current.WechatPrivateKey.trim(),
+      WechatMerchantCertificate:
+        initialRef.current.WechatMerchantCertificate.trim(),
+      WechatPayPublicKeyID: initialRef.current.WechatPayPublicKeyID.trim(),
+      WechatPayPublicKey: initialRef.current.WechatPayPublicKey.trim(),
+      WechatPlatformCertificate:
+        initialRef.current.WechatPlatformCertificate.trim(),
+      WechatNotifyURL: removeTrailingSlash(
+        initialRef.current.WechatNotifyURL.trim()
+      ),
+      WechatOrderExpireMinutes: initialRef.current.WechatOrderExpireMinutes,
     }
 
     const updates: Array<{ key: string; value: string | number | boolean }> = []
@@ -754,7 +894,27 @@ export function PaymentSettingsSection({
       waffoPancakeSelection.storeID !== waffoPancakeSavedBinding.storeID ||
       waffoPancakeSelection.productID !== waffoPancakeSavedBinding.productID
 
-    if (updates.length === 0 && !hasMallChanges && !hasWaffoPancakeChanges) {
+    const hasWechatChanges =
+      sanitized.WechatEnabled !== initial.WechatEnabled ||
+      sanitized.WechatMchID !== initial.WechatMchID ||
+      sanitized.WechatAppID !== initial.WechatAppID ||
+      sanitized.WechatCertificateSerialNumber !==
+        initial.WechatCertificateSerialNumber ||
+      sanitized.WechatPayPublicKeyID !== initial.WechatPayPublicKeyID ||
+      sanitized.WechatNotifyURL !== initial.WechatNotifyURL ||
+      sanitized.WechatOrderExpireMinutes !== initial.WechatOrderExpireMinutes ||
+      sanitized.WechatApiV3Key.length > 0 ||
+      sanitized.WechatPrivateKey.length > 0 ||
+      sanitized.WechatMerchantCertificate.length > 0 ||
+      sanitized.WechatPayPublicKey.length > 0 ||
+      sanitized.WechatPlatformCertificate.length > 0
+
+    if (
+      updates.length === 0 &&
+      !hasMallChanges &&
+      !hasWechatChanges &&
+      !hasWaffoPancakeChanges
+    ) {
       toast.info(t('No changes to save'))
       return
     }
@@ -778,6 +938,23 @@ export function PaymentSettingsSection({
         await updateMallSettings({
           mall_enabled: sanitized.MallEnabled,
           mall_url: sanitized.MallURL,
+        })
+      }
+
+      if (hasWechatChanges) {
+        await updateWechatPaymentSettings({
+          enabled: sanitized.WechatEnabled,
+          mch_id: sanitized.WechatMchID,
+          app_id: sanitized.WechatAppID,
+          api_v3_key: sanitized.WechatApiV3Key,
+          certificate_serial_number: sanitized.WechatCertificateSerialNumber,
+          private_key: sanitized.WechatPrivateKey,
+          merchant_certificate: sanitized.WechatMerchantCertificate,
+          pay_public_key_id: sanitized.WechatPayPublicKeyID,
+          pay_public_key: sanitized.WechatPayPublicKey,
+          platform_certificate: sanitized.WechatPlatformCertificate,
+          notify_url: sanitized.WechatNotifyURL,
+          order_expire_minutes: sanitized.WechatOrderExpireMinutes,
         })
       }
 
@@ -932,11 +1109,12 @@ export function PaymentSettingsSection({
           />
           <Tabs defaultValue='general' className='min-w-0'>
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[44rem] grid-cols-6'>
+              <TabsList className='grid min-w-[52rem] grid-cols-7'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
                 <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
+                <TabsTrigger value='wechat'>{t('WeChat Pay')}</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
                 <TabsTrigger value='waffo'>Waffo</TabsTrigger>
               </TabsList>
@@ -1693,6 +1871,10 @@ export function PaymentSettingsSection({
                   )}
                 />
               </div>
+            </TabsContent>
+
+            <TabsContent value='wechat' className={paymentTabContentClassName}>
+              <WechatSettingsSection />
             </TabsContent>
 
             <TabsContent

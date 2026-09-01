@@ -41,6 +41,8 @@ import type {
   WaffoPaymentResponse,
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
+  WechatPaymentResponse,
+  WechatOrderResponse,
 } from './types'
 
 // ============================================================================
@@ -109,6 +111,26 @@ export async function requestPayment(
     ...res.data,
     url: res.data.url || (res as unknown as { url?: string }).url,
   }
+}
+
+/** Create a WeChat Pay API v3 Native order for wallet recharge. */
+export async function requestWechatPayment(
+  request: Pick<PaymentRequest, 'amount'>
+): Promise<WechatPaymentResponse> {
+  const res = await api.post('/api/user/wechat/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/** Query a WeChat order; the server settles it only after provider verification. */
+export async function queryWechatOrder(
+  tradeNo: string
+): Promise<WechatOrderResponse> {
+  const res = await api.get(
+    `/api/user/wechat/order/${encodeURIComponent(tradeNo)}`
+  )
+  return res.data
 }
 
 /**

@@ -45,6 +45,16 @@ func TestNormalizeOptionUpdateValueValidatesManagedSettings(t *testing.T) {
 		{name: "invoice lookback too high", key: "InvoiceLookbackDays", value: "3651", shouldErr: true},
 		{name: "invoice monthly limit", key: "InvoiceMonthlyLimit", value: "31", expected: "31"},
 		{name: "invoice monthly limit zero", key: "InvoiceMonthlyLimit", value: "0", shouldErr: true},
+		{name: "wechat enabled", key: "WechatEnabled", value: " TRUE ", expected: "true"},
+		{name: "wechat enabled invalid", key: "WechatEnabled", value: "yes", shouldErr: true},
+		{name: "wechat expiry canonical", key: "WechatOrderExpireMinutes", value: "0120", expected: "120"},
+		{name: "wechat expiry minimum", key: "WechatOrderExpireMinutes", value: "1", expected: "1"},
+		{name: "wechat expiry too short", key: "WechatOrderExpireMinutes", value: "0", shouldErr: true},
+		{name: "wechat expiry too long", key: "WechatOrderExpireMinutes", value: "121", shouldErr: true},
+		{name: "wechat notify URL", key: "WechatNotifyURL", value: " https://pay.example.com/api/wechat/notify/ ", expected: "https://pay.example.com/api/wechat/notify"},
+		{name: "wechat notify URL requires HTTPS", key: "WechatNotifyURL", value: "http://pay.example.com/api/wechat/notify", shouldErr: true},
+		{name: "wechat notify URL rejects credentials", key: "WechatNotifyURL", value: "https://user:pass@pay.example.com/api/wechat/notify", shouldErr: true},
+		{name: "wechat notify URL rejects query", key: "WechatNotifyURL", value: "https://pay.example.com/api/wechat/notify?token=secret", shouldErr: true},
 	}
 
 	for _, test := range tests {
@@ -58,6 +68,29 @@ func TestNormalizeOptionUpdateValueValidatesManagedSettings(t *testing.T) {
 			assert.Equal(t, test.expected, actual)
 		})
 	}
+}
+
+func TestSensitiveOptionKeysDoNotHideOtherGatewayCertificates(t *testing.T) {
+	assert.True(t, isSensitiveOptionKey("WechatApiV3Key"))
+	assert.True(t, isSensitiveOptionKey("WechatPrivateKey"))
+	assert.True(t, isSensitiveOptionKey("WechatPayPublicKey"))
+	assert.True(t, isSensitiveOptionKey("WechatMerchantCertificate"))
+	assert.True(t, isSensitiveOptionKey("WechatPlatformCertificate"))
+	assert.False(t, isSensitiveOptionKey("WechatPayPublicKeyID"))
+	assert.False(t, isSensitiveOptionKey("WaffoPublicCert"))
+}
+
+func TestWechatPaymentOptionsRequireAtomicSettingsEndpoint(t *testing.T) {
+	for _, key := range []string{
+		"WechatEnabled",
+		"WechatApiV3Key",
+		"WechatPrivateKey",
+		"WechatPayPublicKey",
+		"WechatNotifyURL",
+	} {
+		assert.True(t, isWechatPaymentOptionKey(key), key)
+	}
+	assert.False(t, isWechatPaymentOptionKey("WeChatServerToken"))
 }
 
 func TestNormalizeMallSettingsUpdateKeepsThePairConsistent(t *testing.T) {

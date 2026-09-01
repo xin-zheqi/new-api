@@ -258,3 +258,10 @@ func TicketReadRateLimit() func(c *gin.Context) {
 func TicketDownloadRateLimit() func(c *gin.Context) {
 	return ticketRateLimitFactory(common.DownloadRateLimitNum, common.DownloadRateLimitDuration, "TD")
 }
+
+// WechatOrderQueryRateLimit allows the QR-code status poller to operate while
+// bounding authenticated users' upstream query volume independently from
+// password resets and other critical operations.
+func WechatOrderQueryRateLimit() func(c *gin.Context) {
+	return ticketRateLimitFactory(240, 10*60, "WPQ")
+}

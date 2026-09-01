@@ -406,12 +406,13 @@ type SubscriptionOrder struct {
 	PaidCurrency         string `json:"paid_currency" gorm:"type:varchar(8);not null;default:''"`
 	PlanSnapshot         string `json:"-" gorm:"type:text"`
 
-	TradeNo         string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	PaymentMethod   string `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	Status          string `json:"status"`
-	CreateTime      int64  `json:"create_time"`
-	CompleteTime    int64  `json:"complete_time"`
+	TradeNo           string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	PaymentMethod     string `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider   string `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	Status            string `json:"status"`
+	CreateTime        int64  `json:"create_time"`
+	PaymentExpireTime int64  `json:"payment_expire_time" gorm:"type:bigint;not null;default:0;index"`
+	CompleteTime      int64  `json:"complete_time"`
 
 	ProviderPayload string `json:"provider_payload" gorm:"type:text"`
 }
@@ -570,6 +571,7 @@ func CreatePendingSubscriptionOrder(order *SubscriptionOrder, plan *Subscription
 	}
 	switch order.PaymentProvider {
 	case PaymentProviderEpay:
+	case PaymentProviderWechat:
 	case PaymentProviderStripe:
 		if snapshot.StripePriceId == "" {
 			return errors.New("subscription plan has no Stripe price ID")
@@ -1303,6 +1305,17 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 			return ErrPaymentMethodMismatch
 		}
 		if order.Status == common.TopUpStatusSuccess {
+			if order.PaymentProvider != PaymentProviderWechat {
+				// Preserve the established same-provider idempotency contract for
+				// existing gateways. WeChat is stricter because its notification and
+				// active-query paths share one exact fixed-point snapshot.
+				return nil
+			}
+			paidCurrency, normalizeErr := normalizeSubscriptionPaymentCurrency(order.PaidCurrency)
+			if normalizeErr != nil || paidCurrency != order.PaidCurrency ||
+				order.PaidAmountMicros != payment.AmountMicros || order.PaidCurrency != payment.Currency {
+				return ErrSubscriptionPaymentMismatch
+			}
 			return nil
 		}
 		if order.Status != common.TopUpStatusPending {
@@ -1338,11 +1351,14 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 			creemProductMatches = true
 		}
 		currencyMismatch := expectedCurrency != "" && payment.Currency != expectedCurrency
-		underpayment := payment.AmountMicros < order.ExpectedAmountMicros
+		amountMismatch := payment.AmountMicros < order.ExpectedAmountMicros
+		if order.PaymentProvider == PaymentProviderWechat {
+			amountMismatch = payment.AmountMicros != order.ExpectedAmountMicros
+		}
 		// Creem's external product controls both price and currency. Once its
 		// signed callback matches the exact snapshotted product, the verified
 		// payment must be fulfilled even if local display settings drifted.
-		if (currencyMismatch || underpayment) && !creemProductMatches {
+		if (currencyMismatch || amountMismatch) && !creemProductMatches {
 			return ErrSubscriptionPaymentMismatch
 		}
 		if order.PaidAmountMicros > 0 &&
@@ -1464,6 +1480,10 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 				CompleteTime:    now,
 				Status:          common.TopUpStatusSuccess,
 			}
+			if order.PaymentProvider == PaymentProviderWechat {
+				topup.ExpectedAmountMicros = order.PaidAmountMicros
+				topup.ExpectedCurrency = order.PaidCurrency
+			}
 			return tx.Create(&topup).Error
 		}
 		return err
@@ -1472,6 +1492,10 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	topup.PaymentProvider = order.PaymentProvider
 	topup.Source = TopUpSourceSubscription
 	topup.Currency = order.PaidCurrency
+	if order.PaymentProvider == PaymentProviderWechat {
+		topup.ExpectedAmountMicros = order.PaidAmountMicros
+		topup.ExpectedCurrency = order.PaidCurrency
+	}
 	if topup.PaymentMethod == "" {
 		topup.PaymentMethod = order.PaymentMethod
 	} else if topup.PaymentMethod != order.PaymentMethod {
@@ -1485,7 +1509,7 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	return tx.Save(&topup).Error
 }
 
-func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) error {
+func updatePendingSubscriptionOrderStatus(tradeNo string, expectedPaymentProvider string, targetStatus string, strictWechatTransition bool) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
@@ -1514,13 +1538,35 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
 		}
-		if order.Status != common.TopUpStatusPending {
+		if order.Status == targetStatus {
 			return nil
 		}
-		order.Status = common.TopUpStatusExpired
+		if strictWechatTransition {
+			if order.Status != common.TopUpStatusPending || order.PaidAmountMicros > 0 || order.PaidCurrency != "" {
+				return ErrSubscriptionOrderStatusInvalid
+			}
+		} else if order.Status != common.TopUpStatusPending {
+			return nil
+		}
+		order.Status = targetStatus
 		order.CompleteTime = common.GetTimestamp()
 		return tx.Save(&order).Error
 	})
+}
+
+// UpdatePendingWechatSubscriptionOrderStatus applies an authenticated WeChat
+// terminal state without allowing a paid or completed order to move backward.
+func UpdatePendingWechatSubscriptionOrderStatus(tradeNo string, targetStatus string) error {
+	if targetStatus != common.TopUpStatusFailed && targetStatus != common.TopUpStatusExpired {
+		return ErrSubscriptionOrderStatusInvalid
+	}
+	return updatePendingSubscriptionOrderStatus(tradeNo, PaymentProviderWechat, targetStatus, true)
+}
+
+// ExpireSubscriptionOrder preserves the cleanup contract used by the existing
+// subscription gateways.
+func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) error {
+	return updatePendingSubscriptionOrderStatus(tradeNo, expectedPaymentProvider, common.TopUpStatusExpired, false)
 }
 
 // Admin bind (no payment). Creates a UserSubscription from a plan.

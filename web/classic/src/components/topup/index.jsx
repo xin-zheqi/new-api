@@ -42,6 +42,7 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import WechatPayModal from './modals/WechatPayModal';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -81,6 +82,9 @@ const TopUp = () => {
   const [waffoMinTopUp, setWaffoMinTopUp] = useState(1);
   const [enableWaffoPancakeTopUp, setEnableWaffoPancakeTopUp] = useState(false);
   const [waffoPancakeMinTopUp, setWaffoPancakeMinTopUp] = useState(1);
+  const [enableWechatTopUp, setEnableWechatTopUp] = useState(false);
+  const [wechatPayment, setWechatPayment] = useState(null);
+  const [wechatVisible, setWechatVisible] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
@@ -117,6 +121,7 @@ const TopUp = () => {
     amount_options: [],
     discount: {},
     enable_redemption: true,
+    enable_wechat_topup: false,
     payment_compliance_confirmed: true,
   });
 
@@ -213,7 +218,12 @@ const TopUp = () => {
   };
 
   const preTopUp = async (payment) => {
-    if (payment === 'stripe') {
+    if (payment === 'wechat_native_v3') {
+      if (!enableWechatTopUp) {
+        showError(t('管理员未开启微信支付！'));
+        return;
+      }
+    } else if (payment === 'stripe') {
       if (!enableStripeTopUp) {
         showError(t('管理员未开启Stripe充值！'));
         return;
@@ -254,6 +264,36 @@ const TopUp = () => {
   };
 
   const onlineTopUp = async () => {
+    if (payWay === 'wechat_native_v3') {
+      if (!enableWechatTopUp) {
+        showError(t('管理员未开启微信支付！'));
+        return;
+      }
+      setConfirmLoading(true);
+      try {
+        const res = await API.post('/api/user/wechat/pay', {
+          amount: parseInt(topUpCount),
+        });
+        const response = res?.data;
+        if (
+          response?.success &&
+          response.data?.trade_no &&
+          response.data?.code_url
+        ) {
+          setWechatPayment(response.data);
+          setOpen(false);
+          setWechatVisible(true);
+        } else {
+          showError(response?.message || t('支付请求失败'));
+        }
+      } catch (error) {
+        showError(t('支付请求失败'));
+      } finally {
+        setConfirmLoading(false);
+      }
+      return;
+    }
+
     if (payWay === 'waffo_pancake') {
       setConfirmLoading(true);
       try {
@@ -657,6 +697,7 @@ const TopUp = () => {
           const enableWaffoTopUp = data.enable_waffo_topup || false;
           const enableWaffoPancakeTopUp =
             data.enable_waffo_pancake_topup || false;
+          const enableWechatTopUp = data.enable_wechat_topup || false;
           const minTopUpValue = enableOnlineTopUp
             ? data.min_topup
             : enableStripeTopUp
@@ -665,7 +706,9 @@ const TopUp = () => {
                 ? data.waffo_min_topup
                 : enableWaffoPancakeTopUp
                   ? data.waffo_pancake_min_topup
-                  : 1;
+                  : enableWechatTopUp
+                    ? data.min_topup
+                    : 1;
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
@@ -673,6 +716,7 @@ const TopUp = () => {
           setWaffoPayMethods(data.waffo_pay_methods || []);
           setWaffoMinTopUp(data.waffo_min_topup || 1);
           setEnableWaffoPancakeTopUp(enableWaffoPancakeTopUp);
+          setEnableWechatTopUp(enableWechatTopUp);
           setWaffoPancakeMinTopUp(data.waffo_pancake_min_topup || 1);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
@@ -684,6 +728,7 @@ const TopUp = () => {
               data.payment_compliance_confirmed !== false,
             payment_compliance_terms_version:
               data.payment_compliance_terms_version || '',
+            enable_wechat_topup: enableWechatTopUp,
           }));
 
           // 设置 Creem 产品
@@ -972,6 +1017,21 @@ const TopUp = () => {
         )}
       </Modal>
 
+      {wechatPayment ? (
+        <WechatPayModal
+          t={t}
+          visible={wechatVisible}
+          payment={wechatPayment}
+          onCancel={() => {
+            setWechatVisible(false);
+            setWechatPayment(null);
+          }}
+          onSuccess={async () => {
+            await Promise.all([getUserQuota(), getSubscriptionSelf()]);
+          }}
+        />
+      ) : null}
+
       {/* 主布局区域 */}
       <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
         <RechargeCard
@@ -983,6 +1043,7 @@ const TopUp = () => {
           creemPreTopUp={creemPreTopUp}
           enableWaffoTopUp={enableWaffoTopUp}
           enableWaffoPancakeTopUp={enableWaffoPancakeTopUp}
+          enableWechatTopUp={enableWechatTopUp}
           presetAmounts={presetAmounts}
           selectedPreset={selectedPreset}
           selectPresetAmount={selectPresetAmount}

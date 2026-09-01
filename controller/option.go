@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,20 @@ var completionRatioMetaOptionKeys = []string{
 }
 
 const mallSettingsRequestMaxBytes int64 = 8 * 1024
+
+// isSensitiveOptionKey keeps credentials out of the admin option response.
+// Values are still accepted by the update endpoint; clients should leave a
+// blank password field unchanged unless they explicitly rotate it.
+func isSensitiveOptionKey(key string) bool {
+	for _, suffix := range []string{
+		"Token", "Secret", "Key", "secret", "api_key",
+	} {
+		if strings.HasSuffix(key, suffix) {
+			return true
+		}
+	}
+	return key == "WechatMerchantCertificate" || key == "WechatPlatformCertificate"
+}
 
 type mallSettingsUpdateRequest struct {
 	MallEnabled *bool   `json:"mall_enabled"`
@@ -67,6 +82,40 @@ func normalizeOptionUpdateValue(key, value, applicationHost string) (string, err
 			return "", fmt.Errorf("%s must be true or false", key)
 		}
 		return normalized, nil
+	case "WechatEnabled":
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized != "true" && normalized != "false" {
+			return "", fmt.Errorf("%s must be true or false", key)
+		}
+		return normalized, nil
+	case "WechatOrderExpireMinutes":
+		return normalizeBoundedIntegerOption(key, value, 1, 120)
+	case "WechatNotifyURL":
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return "", nil
+		}
+		if len([]byte(trimmed)) > wechatNotifyURLMaxBytes {
+			return "", fmt.Errorf("WechatNotifyURL is too long")
+		}
+		parsed, err := url.Parse(trimmed)
+		if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" || parsed.RawQuery != "" || parsed.Fragment != "" ||
+			!strings.EqualFold(parsed.Scheme, "https") {
+			return "", fmt.Errorf("WechatNotifyURL must be a valid HTTPS URL without credentials or query parameters")
+		}
+		return strings.TrimRight(trimmed, "/"), nil
+	case "WechatMchID", "WechatAppID", "WechatCertificateSerialNumber", "WechatPayPublicKeyID":
+		trimmed := strings.TrimSpace(value)
+		if len(trimmed) == 0 || len(trimmed) > 128 {
+			return "", fmt.Errorf("%s is invalid", key)
+		}
+		return trimmed, nil
+	case "WechatApiV3Key", "WechatPrivateKey", "WechatMerchantCertificate", "WechatPayPublicKey", "WechatPlatformCertificate":
+		trimmed := strings.TrimSpace(value)
+		if len(trimmed) > 64*1024 {
+			return "", fmt.Errorf("%s is too long", key)
+		}
+		return trimmed, nil
 	case "InvoiceApplicationDay":
 		return normalizeBoundedIntegerOption(key, value, 1, 28)
 	case "InvoiceLookbackDays":
@@ -165,12 +214,7 @@ func GetOptions(c *gin.Context) {
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
 		value := common.Interface2String(v)
-		isSensitiveKey := strings.HasSuffix(k, "Token") ||
-			strings.HasSuffix(k, "Secret") ||
-			strings.HasSuffix(k, "Key") ||
-			strings.HasSuffix(k, "secret") ||
-			strings.HasSuffix(k, "api_key")
-		if isSensitiveKey {
+		if isSensitiveOptionKey(k) {
 			continue
 		}
 		options = append(options, &model.Option{
@@ -213,6 +257,10 @@ func UpdateOption(c *gin.Context) {
 	}
 	if option.Key == "MallURL" || option.Key == "payment_setting.mall_enabled" {
 		common.ApiErrorMsg(c, "商城设置必须通过专用接口整体修改")
+		return
+	}
+	if isWechatPaymentOptionKey(option.Key) {
+		common.ApiErrorMsg(c, "微信支付设置必须通过专用接口整体修改")
 		return
 	}
 	switch option.Value.(type) {

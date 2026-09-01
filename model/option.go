@@ -167,6 +167,18 @@ func InitOptionMap() {
 	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
 	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
 	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
+	common.OptionMap["WechatEnabled"] = strconv.FormatBool(setting.WechatEnabled)
+	common.OptionMap["WechatMchID"] = setting.WechatMchID
+	common.OptionMap["WechatAppID"] = setting.WechatAppID
+	common.OptionMap["WechatApiV3Key"] = setting.WechatApiV3Key
+	common.OptionMap["WechatCertificateSerialNumber"] = setting.WechatCertificateSerialNumber
+	common.OptionMap["WechatPrivateKey"] = setting.WechatPrivateKey
+	common.OptionMap["WechatMerchantCertificate"] = setting.WechatMerchantCertificate
+	common.OptionMap["WechatPayPublicKeyID"] = setting.WechatPayPublicKeyID
+	common.OptionMap["WechatPayPublicKey"] = setting.WechatPayPublicKey
+	common.OptionMap["WechatPlatformCertificate"] = setting.WechatPlatformCertificate
+	common.OptionMap["WechatNotifyURL"] = setting.WechatNotifyURL
+	common.OptionMap["WechatOrderExpireMinutes"] = strconv.Itoa(setting.WechatOrderExpireMinutes)
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -553,6 +565,30 @@ func updateOptionMapLocked(key string, value string) (err error) {
 		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
 		setting.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
+	case "WechatEnabled":
+		setting.WechatEnabled = value == "true"
+	case "WechatMchID":
+		setting.WechatMchID = value
+	case "WechatAppID":
+		setting.WechatAppID = value
+	case "WechatApiV3Key":
+		setting.WechatApiV3Key = value
+	case "WechatCertificateSerialNumber":
+		setting.WechatCertificateSerialNumber = value
+	case "WechatPrivateKey":
+		setting.WechatPrivateKey = value
+	case "WechatMerchantCertificate":
+		setting.WechatMerchantCertificate = value
+	case "WechatPayPublicKeyID":
+		setting.WechatPayPublicKeyID = value
+	case "WechatPayPublicKey":
+		setting.WechatPayPublicKey = value
+	case "WechatPlatformCertificate":
+		setting.WechatPlatformCertificate = value
+	case "WechatNotifyURL":
+		setting.WechatNotifyURL = value
+	case "WechatOrderExpireMinutes":
+		setting.WechatOrderExpireMinutes, _ = strconv.Atoi(value)
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":

@@ -3,6 +3,7 @@ package controller
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
@@ -108,4 +109,37 @@ func isEpayWebhookConfigured() bool {
 
 func isEpayWebhookEnabled() bool {
 	return isEpayTopUpEnabled()
+}
+
+// isWechatNotifyURLConfigured validates the callback destination before it is
+// sent to WeChat. An empty dedicated URL intentionally falls back to the
+// server callback address, matching the other payment integrations.
+func isWechatNotifyURLConfigured(settings wechatRuntimeSettings) bool {
+	_, err := resolveWechatNotifyURL(settings.NotifyURL)
+	return err == nil
+}
+
+// isWechatTopUpEnabled is deliberately stricter than a single enable flag:
+// exposing a payment method with incomplete credentials only creates orders
+// that can never settle and makes configuration mistakes hard to diagnose.
+func isWechatTopUpEnabled() bool {
+	return isWechatTopUpEnabledForSettings(currentWechatRuntimeSettings())
+}
+
+func isWechatTopUpEnabledForSettings(settings wechatRuntimeSettings) bool {
+	_, err := newConfiguredWechatClient(settings)
+	return err == nil
+}
+
+func wechatCredentialsPresent(config service.WechatPayConfig) bool {
+	if strings.TrimSpace(config.MchID) == "" ||
+		strings.TrimSpace(config.AppID) == "" ||
+		len(strings.TrimSpace(config.ApiV3Key)) != 32 ||
+		strings.TrimSpace(config.CertificateSerialNumber) == "" ||
+		strings.TrimSpace(config.PrivateKey) == "" {
+		return false
+	}
+	hasPayPublicKey := strings.TrimSpace(config.PayPublicKey) != "" && strings.TrimSpace(config.PayPublicKeyID) != ""
+	hasPlatformCertificate := strings.TrimSpace(config.PlatformCertificate) != ""
+	return hasPayPublicKey || hasPlatformCertificate
 }

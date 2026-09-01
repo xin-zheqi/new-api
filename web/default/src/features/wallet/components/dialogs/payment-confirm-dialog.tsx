@@ -65,6 +65,10 @@ export function PaymentConfirmDialog({
   const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
   const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
   const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
+  const paymentMethodName =
+    paymentMethod?.type === 'wechat_native_v3'
+      ? t('WeChat Pay')
+      : paymentMethod?.name
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -133,9 +137,9 @@ export function PaymentConfirmDialog({
                   paymentMethod?.type,
                   'h-4 w-4',
                   paymentMethod?.icon,
-                  paymentMethod?.name
+                  paymentMethodName
                 )}
-                <span className='font-medium'>{paymentMethod?.name}</span>
+                <span className='font-medium'>{paymentMethodName}</span>
               </div>
             </div>
           </div>

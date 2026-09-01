@@ -29,6 +29,7 @@ type TopUp struct {
 	InvoiceAmountMicros  int64   `json:"invoice_amount_micros" gorm:"type:bigint;not null;default:0"`
 	InvoiceCurrency      string  `json:"invoice_currency" gorm:"type:varchar(8);not null;default:''"`
 	CreateTime           int64   `json:"create_time" gorm:"index"`
+	PaymentExpireTime    int64   `json:"payment_expire_time" gorm:"type:bigint;not null;default:0;index"`
 	CompleteTime         int64   `json:"complete_time"`
 	Status               string  `json:"status"`
 }
@@ -38,6 +39,7 @@ const (
 	PaymentMethodCreem        = "creem"
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
+	PaymentMethodWechat       = "wechat_native_v3"
 	PaymentMethodBalance      = "balance"
 	PaymentMethodManual       = "manual"
 )
@@ -53,6 +55,7 @@ const (
 	PaymentProviderCreem        = "creem"
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
+	PaymentProviderWechat       = "wechat"
 	PaymentProviderBalance      = "balance"
 	PaymentProviderManual       = "manual"
 )
@@ -288,7 +291,7 @@ func expectedTopUpPayment(topUp *TopUp, paid SubscriptionPaymentSnapshot) (Subsc
 	return expected, nil
 }
 
-func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string) error {
+func updatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string, recordCompleteTime bool) error {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -317,8 +320,26 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 		}
 
 		topUp.Status = targetStatus
+		if recordCompleteTime {
+			topUp.CompleteTime = common.GetTimestamp()
+		}
 		return tx.Save(topUp).Error
 	})
+}
+
+// UpdatePendingTopUpStatus preserves the established transition behavior used
+// by existing payment integrations.
+func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string) error {
+	return updatePendingTopUpStatus(tradeNo, expectedPaymentProvider, targetStatus, false)
+}
+
+// UpdatePendingWechatTopUpStatus accepts only the provider terminal states
+// used by the WeChat query state machine and records when the order ended.
+func UpdatePendingWechatTopUpStatus(tradeNo string, targetStatus string) error {
+	if targetStatus != common.TopUpStatusFailed && targetStatus != common.TopUpStatusExpired {
+		return ErrTopUpStatusInvalid
+	}
+	return updatePendingTopUpStatus(tradeNo, PaymentProviderWechat, targetStatus, true)
 }
 
 // Recharge preserves the historical call shape for integrations that only
@@ -482,6 +503,82 @@ func RechargeEpay(tradeNo, actualPaymentMethod, paidAmount, callerIp string) err
 	RecordTopupLog(topUp.UserId,
 		fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%.2f", logger.FormatQuota(quotaToAdd), topUp.Money),
 		callerIp, topUp.PaymentMethod, PaymentProviderEpay)
+	return nil
+}
+
+// RechargeWechatPay atomically settles a verified WeChat Native order. The
+// callback amount is compared with the fixed-point snapshot captured at order
+// creation, and the transaction is idempotent under the row lock.
+func RechargeWechatPay(tradeNo string, paidAmountMinor int64, paidCurrency, callerIp string) error {
+	if tradeNo == "" || paidAmountMinor <= 0 {
+		return errors.New("invalid wechat payment")
+	}
+	paidPayment, err := NewSubscriptionPaymentFromMinorUnits(paidAmountMinor, paidCurrency)
+	if err != nil {
+		return ErrTopUpPaymentMismatch
+	}
+
+	var topUp TopUp
+	var quotaToAdd int
+	credited := false
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&topUp).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTopUpNotFound
+			}
+			return err
+		}
+		if topUp.PaymentProvider != PaymentProviderWechat {
+			return ErrPaymentMethodMismatch
+		}
+		verifiedPayment, err := expectedTopUpPayment(&topUp, paidPayment)
+		if err != nil {
+			return err
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+		paidPayment = verifiedPayment
+		quotaToAdd, err = topUpQuotaFromDecimal(decimal.NewFromInt(topUp.Amount).
+			Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+		if err != nil {
+			return err
+		}
+		topUp.PaymentMethod = PaymentMethodWechat
+		topUp.ExpectedAmountMicros = paidPayment.AmountMicros
+		topUp.ExpectedCurrency = paidPayment.Currency
+		topUp.Currency = paidPayment.Currency
+		topUp.CompleteTime = common.GetTimestamp()
+		topUp.Status = common.TopUpStatusSuccess
+		if err := tx.Save(&topUp).Error; err != nil {
+			return err
+		}
+		if err := creditTopUpQuotaTx(tx, topUp.UserId, quotaToAdd, nil); err != nil {
+			return err
+		}
+		credited = true
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !credited {
+		return nil
+	}
+	if err := cacheIncrUserQuota(topUp.UserId, int64(quotaToAdd)); err != nil {
+		common.SysLog("failed to increase user quota cache after WeChat topup: " + err.Error())
+	}
+	paidAmount := decimal.NewFromInt(paidAmountMinor).Shift(-2).StringFixed(2)
+	RecordTopupLog(topUp.UserId,
+		fmt.Sprintf("使用微信支付充值成功，充值额度: %v，支付金额：%s %s", logger.FormatQuota(quotaToAdd), paidAmount, strings.ToUpper(paidCurrency)),
+		callerIp, topUp.PaymentMethod, PaymentMethodWechat)
 	return nil
 }
 

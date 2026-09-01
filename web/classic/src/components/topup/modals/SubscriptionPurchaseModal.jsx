@@ -29,7 +29,7 @@ import {
   Tooltip,
 } from '@douyinfe/semi-ui';
 import { Crown, CalendarClock, Package } from 'lucide-react';
-import { SiStripe } from 'react-icons/si';
+import { SiStripe, SiWechat } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
 import { getQuotaPerUnit, renderQuota } from '../../../helpers';
 import { getCurrencyConfig } from '../../../helpers/render';
@@ -52,12 +52,14 @@ const SubscriptionPurchaseModal = ({
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
+  enableWechatTopUp = false,
   purchaseLimitInfo = null,
   userQuota = 0,
   onPayBalance,
   onPayStripe,
   onPayCreem,
   onPayEpay,
+  onPayWechat,
 }) => {
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
@@ -71,7 +73,8 @@ const SubscriptionPurchaseModal = ({
   const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
-  const hasAnyPayment = hasStripe || hasCreem || hasEpay;
+  const hasWechat = enableWechatTopUp;
+  const hasAnyPayment = hasStripe || hasCreem || hasEpay || hasWechat;
   const configuredQuotaPerUnit = Number(getQuotaPerUnit());
   const quotaPerUnit =
     Number.isFinite(configuredQuotaPerUnit) && configuredQuotaPerUnit > 0
@@ -295,6 +298,18 @@ const SubscriptionPurchaseModal = ({
                     {t('支付')}
                   </Button>
                 </div>
+              )}
+              {hasWechat && (
+                <Button
+                  block
+                  theme='light'
+                  icon={<SiWechat size={15} color='#07C160' />}
+                  onClick={onPayWechat}
+                  loading={paying}
+                  disabled={purchaseLimitReached}
+                >
+                  {t('微信支付')}
+                </Button>
               )}
             </div>
           ) : null}

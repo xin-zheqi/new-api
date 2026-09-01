@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
 import { useStatus } from '@/hooks/use-status'
@@ -25,11 +26,13 @@ import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
 import { getSafeEmbeddedMallUrl } from '@/lib/safe-mall-url'
 
+import { isApiSuccess, requestWechatPayment } from './api'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
 import { TransferDialog } from './components/dialogs/transfer-dialog'
+import { WechatPayDialog } from './components/dialogs/wechat-pay-dialog'
 import { MallSection } from './components/mall-section'
 import { RechargeFormCard } from './components/recharge-form-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
@@ -49,12 +52,14 @@ import {
   getDefaultPaymentType,
   getMinTopupAmount,
   isWaffoPancakePayment,
+  isWechatNativePayment,
 } from './lib'
 import type {
   UserWalletData,
   PaymentMethod,
   PresetAmount,
   CreemProduct,
+  WechatPaymentResponse,
 } from './types'
 
 interface WalletProps {
@@ -78,6 +83,11 @@ export function Wallet(props: WalletProps) {
   const [selectedCreemProduct, setSelectedCreemProduct] =
     useState<CreemProduct | null>(null)
   const [showSubscriptionPanel, setShowSubscriptionPanel] = useState(true)
+  const [wechatDialogOpen, setWechatDialogOpen] = useState(false)
+  const [wechatPayment, setWechatPayment] = useState<
+    WechatPaymentResponse['data'] | null
+  >(null)
+  const [wechatProcessing, setWechatProcessing] = useState(false)
 
   const { status } = useStatus()
   const { currency } = useSystemConfig()
@@ -189,6 +199,25 @@ export function Wallet(props: WalletProps) {
   // Handle payment confirmation
   const handlePaymentConfirm = async () => {
     if (!selectedPaymentMethod) return
+
+    if (isWechatNativePayment(selectedPaymentMethod.type)) {
+      setWechatProcessing(true)
+      try {
+        const response = await requestWechatPayment({ amount: topupAmount })
+        if (!isApiSuccess(response) || !response.data?.code_url) {
+          toast.error(response.message || t('Payment request failed'))
+          return
+        }
+        setConfirmDialogOpen(false)
+        setWechatPayment(response.data)
+        setWechatDialogOpen(true)
+      } catch {
+        toast.error(t('Payment request failed'))
+      } finally {
+        setWechatProcessing(false)
+      }
+      return
+    }
 
     const isPancake = isWaffoPancakePayment(selectedPaymentMethod.type)
     const success = isPancake
@@ -316,6 +345,7 @@ export function Wallet(props: WalletProps) {
                   enableWaffoPancakeTopup={
                     topupInfo?.enable_waffo_pancake_topup
                   }
+                  enableWechatTopup={topupInfo?.enable_wechat_topup}
                 />
               </div>
 
@@ -323,6 +353,7 @@ export function Wallet(props: WalletProps) {
                 topupInfo={topupInfo}
                 onAvailabilityChange={handleSubscriptionAvailabilityChange}
                 userQuota={user?.quota}
+                enableWechat={topupInfo?.enable_wechat_topup}
                 onPurchaseSuccess={fetchUser}
                 mySubscriptionsOnly={
                   !canPurchaseBuiltInSubscriptions(
@@ -356,7 +387,7 @@ export function Wallet(props: WalletProps) {
         paymentAmount={paymentAmount}
         paymentMethod={selectedPaymentMethod}
         calculating={calculating}
-        processing={processing || pancakeProcessing}
+        processing={processing || pancakeProcessing || wechatProcessing}
         discountRate={getDiscountRate()}
         usdExchangeRate={effectiveUsdExchangeRate}
       />
@@ -381,6 +412,22 @@ export function Wallet(props: WalletProps) {
         product={selectedCreemProduct}
         processing={creemProcessing}
       />
+
+      {wechatPayment && (
+        <WechatPayDialog
+          open={wechatDialogOpen}
+          onOpenChange={(open) => {
+            setWechatDialogOpen(open)
+            if (!open) setWechatPayment(null)
+          }}
+          tradeNo={wechatPayment.trade_no}
+          codeUrl={wechatPayment.code_url}
+          amount={wechatPayment.amount}
+          currency={wechatPayment.currency}
+          expiresAt={wechatPayment.expires_at}
+          onSuccess={fetchUser}
+        />
+      )}
     </>
   )
 }

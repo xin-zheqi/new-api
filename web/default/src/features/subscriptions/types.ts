@@ -106,10 +106,15 @@ export interface SubscriptionPayResponse {
     // Pancake-only: order metadata + self-service buyer session token,
     // surfaced for future flows (refund / cancel from new-api's own UI).
     session_id?: string
-    expires_at?: number | string
     order_id?: string
     token?: string
     token_expires_at?: number | string
+    trade_no?: string
+    status?: string
+    code_url?: string
+    amount?: string
+    currency?: string
+    expires_at?: number | string
   }
   url?: string
 }

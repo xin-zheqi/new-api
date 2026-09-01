@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Banner, Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
-import { ExternalLink, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess, toBoolean } from '../../../helpers';
 
@@ -43,6 +43,15 @@ export default function SettingsPaymentGatewayWechat(props) {
   const [inputs, setInputs] = useState(defaultInputs);
   const [loading, setLoading] = useState(false);
   const formApiRef = useRef(null);
+  const configuredCallbackBase = String(
+    props.options?.CustomCallbackAddress || props.options?.ServerAddress || '',
+  )
+    .trim()
+    .replace(/\/+$/, '');
+  const callbackBase = configuredCallbackBase.startsWith('https://')
+    ? configuredCallbackBase
+    : 'https://your-domain.example';
+  const defaultNotifyUrl = `${callbackBase}/api/wechat/notify`;
 
   useEffect(() => {
     if (!props.options) return;
@@ -168,30 +177,15 @@ export default function SettingsPaymentGatewayWechat(props) {
           <Banner
             type='info'
             icon={<ShieldCheck size={16} />}
-            title={t('微信支付 API v3 扫码支付')}
             description={
-              <div className='space-y-2'>
-                <div>
+              <div className='flex min-w-0 flex-col gap-2'>
+                <div className='font-medium leading-5'>
+                  {t('微信支付 API v3 扫码支付')}
+                </div>
+                <div className='break-words leading-5'>
                   {t(
                     '请填写同一微信支付商户下签发的商户凭据。敏感字段保存后不会回显，留空表示保持原值。',
                   )}
-                </div>
-                <div className='flex flex-wrap gap-3'>
-                  {[
-                    'https://pay.weixin.qq.com/doc/v3/merchant/4012791874',
-                    'https://pay.weixin.qq.com/doc/v3/merchant/4012791891',
-                  ].map((url) => (
-                    <a
-                      key={url}
-                      href={url}
-                      target='_blank'
-                      rel='noreferrer noopener'
-                      className='inline-flex items-center gap-1'
-                    >
-                      {t('微信支付官方文档')}
-                      <ExternalLink size={13} />
-                    </a>
-                  ))}
                 </div>
               </div>
             }
@@ -303,7 +297,7 @@ export default function SettingsPaymentGatewayWechat(props) {
               <Form.Input
                 field='WechatNotifyURL'
                 label={t('支付通知地址')}
-                placeholder='https://api.example.com/api/wechat/notify'
+                placeholder={defaultNotifyUrl}
                 extraText={t(
                   '必须为不带查询参数的 HTTPS 地址；留空使用系统回调域名。',
                 )}

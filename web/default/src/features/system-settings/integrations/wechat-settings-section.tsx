@@ -16,8 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ArrowUpRight01Icon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useFormContext } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -69,42 +67,14 @@ export function WechatSettingsSection() {
         </p>
       </div>
 
-      <Alert>
+      <Alert className='min-w-0'>
         <AlertTitle>{t('WeChat Pay configuration')}</AlertTitle>
-        <AlertDescription>
-          <span>
+        <AlertDescription className='min-w-0'>
+          <p className='break-words'>
             {t(
               'Use the credentials issued for the same WeChat merchant account.'
             )}
-          </span>{' '}
-          <span className='inline-flex flex-wrap gap-x-3 gap-y-1'>
-            <a
-              href='https://pay.weixin.qq.com/doc/v3/merchant/4012791874'
-              target='_blank'
-              rel='noreferrer noopener'
-              className='inline-flex items-center gap-1 underline underline-offset-2'
-            >
-              {t('Product introduction')}
-              <HugeiconsIcon
-                icon={ArrowUpRight01Icon}
-                className='size-3'
-                aria-hidden='true'
-              />
-            </a>
-            <a
-              href='https://pay.weixin.qq.com/doc/v3/merchant/4012791891'
-              target='_blank'
-              rel='noreferrer noopener'
-              className='inline-flex items-center gap-1 underline underline-offset-2'
-            >
-              {t('Integration guide')}
-              <HugeiconsIcon
-                icon={ArrowUpRight01Icon}
-                className='size-3'
-                aria-hidden='true'
-              />
-            </a>
-          </span>
+          </p>
         </AlertDescription>
       </Alert>
 
@@ -116,9 +86,7 @@ export function WechatSettingsSection() {
             <SettingsSwitchContent>
               <FormLabel>{t('Enable WeChat Pay')}</FormLabel>
               <FormDescription>
-                {t(
-                  'Show WeChat Pay for wallet and subscription checkout.'
-                )}
+                {t('Show WeChat Pay for wallet and subscription checkout.')}
               </FormDescription>
             </SettingsSwitchContent>
             <FormControl>

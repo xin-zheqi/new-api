@@ -22,6 +22,7 @@ import { Button, Tooltip, Toast } from '@douyinfe/semi-ui';
 import { Copy, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { copy } from '../../helpers';
+import SafeHtml from '../common/SafeHtml';
 
 const PERFORMANCE_CONFIG = {
   MAX_DISPLAY_LENGTH: 50000, // 最大显示字符数
@@ -347,7 +348,7 @@ const CodeViewer = ({ content, title, language = 'json' }) => {
             {t('正在处理大内容...')}
           </div>
         ) : (
-          <div dangerouslySetInnerHTML={{ __html: renderedContent }} />
+          <SafeHtml html={renderedContent} />
         )}
       </div>
 

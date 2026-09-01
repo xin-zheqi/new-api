@@ -35,6 +35,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { StatusContext } from '../../context/Status';
 import { Bell, Megaphone } from 'lucide-react';
+import SafeHtml from '../common/SafeHtml';
 
 const NoticeModal = ({
   visible,
@@ -142,8 +143,8 @@ const NoticeModal = ({
     }
 
     return (
-      <div
-        dangerouslySetInnerHTML={{ __html: noticeContent }}
+      <SafeHtml
+        html={noticeContent}
         className='notice-content-scroll max-h-[55vh] overflow-y-auto pr-2'
       />
     );
@@ -179,18 +180,18 @@ const NoticeModal = ({
                 time={`${item.relative ? item.relative + ' ' : ''}${item.time}`}
                 extra={
                   item.extra ? (
-                    <div
+                    <SafeHtml
                       className='text-xs text-gray-500'
-                      dangerouslySetInnerHTML={{ __html: htmlExtra }}
+                      html={htmlExtra}
                     />
                   ) : null
                 }
                 className={item.isUnread ? '' : ''}
               >
                 <div>
-                  <div
+                  <SafeHtml
                     className={item.isUnread ? 'shine-text' : ''}
-                    dangerouslySetInnerHTML={{ __html: htmlContent }}
+                    html={htmlContent}
                   />
                 </div>
               </Timeline.Item>

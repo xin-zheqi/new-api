@@ -518,7 +518,7 @@ func RelayMidjourney(c *gin.Context) {
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"description": fmt.Sprintf("failed to generate relay info: %s", err.Error()),
+			"description": fmt.Sprintf("failed to generate relay info: %s", common.PublicErrorMessage(c, err)),
 			"type":        "upstream_error",
 			"code":        4,
 		})
@@ -585,7 +585,7 @@ func RelayTaskFetch(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &dto.TaskError{
 			Code:       "gen_relay_info_failed",
-			Message:    err.Error(),
+			Message:    common.PublicErrorMessage(c, err),
 			StatusCode: http.StatusInternalServerError,
 		})
 		return
@@ -600,7 +600,7 @@ func RelayTask(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &dto.TaskError{
 			Code:       "gen_relay_info_failed",
-			Message:    err.Error(),
+			Message:    common.PublicErrorMessage(c, err),
 			StatusCode: http.StatusInternalServerError,
 		})
 		return

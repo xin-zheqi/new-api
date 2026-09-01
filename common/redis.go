@@ -63,7 +63,7 @@ func ParseRedisOption() *redis.Options {
 
 func RedisSet(key string, value string, expiration time.Duration) error {
 	if DebugEnabled {
-		SysLog(fmt.Sprintf("Redis SET: key=%s, value=%s, expiration=%v", key, value, expiration))
+		SysLog(fmt.Sprintf("Redis SET: key=%s, expiration=%v", key, expiration))
 	}
 	ctx := context.Background()
 	return RDB.Set(ctx, key, value, expiration).Err()
@@ -106,7 +106,7 @@ func RedisDelKey(key string) error {
 
 func RedisHSetObj(key string, obj interface{}, expiration time.Duration) error {
 	if DebugEnabled {
-		SysLog(fmt.Sprintf("Redis HSET: key=%s, obj=%+v, expiration=%v", key, obj, expiration))
+		SysLog(fmt.Sprintf("Redis HSET: key=%s, object_type=%T, expiration=%v", key, obj, expiration))
 	}
 	ctx := context.Background()
 
@@ -301,7 +301,7 @@ func RedisHIncrBy(key, field string, delta int64) error {
 
 func RedisHSetField(key, field string, value interface{}) error {
 	if DebugEnabled {
-		SysLog(fmt.Sprintf("Redis HSET field: key=%s, field=%s, value=%v", key, field, value))
+		SysLog(fmt.Sprintf("Redis HSET field: key=%s, field=%s", key, field))
 	}
 	ttlCmd := RDB.TTL(context.Background(), key)
 	ttl, err := ttlCmd.Result()

@@ -27,9 +27,10 @@ import {
 } from '../constants/playground.constants';
 import { TABLE_COMPACT_MODES_KEY } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import SafeHtml from '../components/common/SafeHtml';
 
 const HTMLToastContent = ({ htmlContent }) => {
-  return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
+  return <SafeHtml html={htmlContent} />;
 };
 export default HTMLToastContent;
 export function isAdmin() {

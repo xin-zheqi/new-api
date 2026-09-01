@@ -31,7 +31,7 @@ func PasskeyRegisterBegin(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}
@@ -95,7 +95,7 @@ func PasskeyRegisterFinish(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}
@@ -155,7 +155,7 @@ func PasskeyDelete(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}
@@ -181,7 +181,7 @@ func PasskeyStatus(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}
@@ -397,7 +397,7 @@ func PasskeyVerifyBegin(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}
@@ -451,7 +451,7 @@ func PasskeyVerifyFinish(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}

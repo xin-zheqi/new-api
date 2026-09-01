@@ -175,7 +175,7 @@ func Logout(c *gin.Context) {
 	err := session.Save()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 			"success": false,
 		})
 		return
@@ -326,7 +326,7 @@ func Register(c *gin.Context) {
 
 func GetAllUsers(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.GetAllUsers(pageInfo)
+	users, total, err := model.GetAllUsers(pageInfo, c.GetInt("role"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -355,7 +355,7 @@ func SearchUsers(c *gin.Context) {
 		}
 	}
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	users, total, err := model.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), c.GetInt("role"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -391,6 +391,10 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
+	// Notification destinations and credentials belong only to the user. They
+	// are not needed by the administrator edit form and must never be returned.
+	user.Setting = ""
+	user.StripeCustomer = ""
 	user.AdminPermissions = authz.Capabilities(user.Id, user.Role)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -457,7 +461,7 @@ func TransferAffQuota(c *gin.Context) {
 	}
 	err = user.TransferAffQuotaToQuota(tran.Quota)
 	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgUserTransferFailed, map[string]any{"Error": err.Error()})
+		common.ApiErrorI18n(c, i18n.MsgUserTransferFailed, map[string]any{"Error": common.PublicErrorMessage(c, err)})
 		return
 	}
 	common.ApiSuccessI18n(c, i18n.MsgUserTransferSuccess, nil)
@@ -475,7 +479,7 @@ func GetAffCode(c *gin.Context) {
 		if err := user.Update(false); err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": err.Error(),
+				"message": common.PublicErrorMessage(c, err),
 			})
 			return
 		}
@@ -1189,7 +1193,7 @@ func ManageUser(c *gin.Context) {
 		if err := user.Delete(); err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": err.Error(),
+				"message": common.PublicErrorMessage(c, err),
 			})
 			return
 		}
@@ -1433,7 +1437,7 @@ func TopUp(c *gin.Context) {
 	if err != nil {
 		// 不向用户暴露兑换失败的细分原因，避免攻击者根据错误类型判断兑换码状态。
 		common.ApiErrorI18n(c, i18n.MsgRedeemFailed)
-		logger.LogError(c, fmt.Sprintf("failed to redeem key %s for user %d: %s", req.Key, id, err.Error()))
+		logger.LogError(c, fmt.Sprintf("failed to redeem key for user %d: %s", id, err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{

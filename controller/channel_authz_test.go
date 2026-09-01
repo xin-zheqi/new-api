@@ -129,6 +129,52 @@ func TestClearChannelReadOnlyFields(t *testing.T) {
 	assert.Equal(t, "default", channel.Group)
 }
 
+func TestSanitizeChannelForRead(t *testing.T) {
+	baseURL := "https://user:password@upstream.example.com"
+	organization := "org-secret"
+	setting := `{"proxy":"http://proxy-user:proxy-pass@proxy.example.com"}`
+	paramOverride := `{"token":"param-secret"}`
+	headerOverride := `{"Authorization":"Bearer static-secret"}`
+	channel := model.Channel{
+		Key:                "channel-secret",
+		BaseURL:            &baseURL,
+		OpenAIOrganization: &organization,
+		Other:              "provider-secret",
+		Setting:            &setting,
+		ParamOverride:      &paramOverride,
+		HeaderOverride:     &headerOverride,
+		OtherSettings:      `{"advanced_custom":{"advanced_routes":[{"auth":{"value":"route-secret"}}]}}`,
+		ChannelInfo: model.ChannelInfo{
+			IsMultiKey:             true,
+			MultiKeyDisabledReason: map[int]string{0: "credential rejected"},
+			MultiKeyDisabledTime:   map[int]int64{0: 1},
+		},
+	}
+
+	sanitizeChannelForRead(&channel, false)
+
+	assert.Empty(t, channel.Key)
+	assert.Nil(t, channel.BaseURL)
+	assert.Nil(t, channel.OpenAIOrganization)
+	assert.Empty(t, channel.Other)
+	assert.Nil(t, channel.Setting)
+	assert.Nil(t, channel.ParamOverride)
+	assert.Nil(t, channel.HeaderOverride)
+	assert.Empty(t, channel.OtherSettings)
+	assert.Nil(t, channel.ChannelInfo.MultiKeyDisabledReason)
+	assert.Nil(t, channel.ChannelInfo.MultiKeyDisabledTime)
+}
+
+func TestSanitizeChannelForSensitiveEditor(t *testing.T) {
+	setting := `{"proxy":"http://proxy.example.com"}`
+	channel := model.Channel{Key: "channel-secret", Setting: &setting}
+
+	sanitizeChannelForRead(&channel, true)
+
+	assert.Empty(t, channel.Key)
+	assert.Equal(t, &setting, channel.Setting)
+}
+
 func TestUpdateChannelRejectsStatusField(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()

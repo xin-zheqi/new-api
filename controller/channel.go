@@ -64,11 +64,25 @@ func parseStatusFilter(statusParam string) int {
 	}
 }
 
-func clearChannelInfo(channel *model.Channel) {
+func sanitizeChannelForRead(channel *model.Channel, includeSensitiveConfig bool) {
+	channel.Key = ""
 	if channel.ChannelInfo.IsMultiKey {
 		channel.ChannelInfo.MultiKeyDisabledReason = nil
 		channel.ChannelInfo.MultiKeyDisabledTime = nil
 	}
+	if includeSensitiveConfig {
+		return
+	}
+
+	// These fields can contain credentials directly or inside JSON/URLs. A
+	// ChannelRead-only administrator can manage routing without receiving them.
+	channel.BaseURL = nil
+	channel.OpenAIOrganization = nil
+	channel.Other = ""
+	channel.Setting = nil
+	channel.ParamOverride = nil
+	channel.HeaderOverride = nil
+	channel.OtherSettings = ""
 }
 
 func applyChannelStatusFilter(query *gorm.DB, statusFilter int) *gorm.DB {
@@ -165,8 +179,9 @@ func GetAllChannels(c *gin.Context) {
 		}
 	}
 
+	includeSensitiveConfig := authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite)
 	for _, datum := range channelData {
-		clearChannelInfo(datum)
+		sanitizeChannelForRead(datum, includeSensitiveConfig)
 	}
 
 	countQuery := buildChannelListQuery(groupFilter, statusFilter, -1)
@@ -280,7 +295,7 @@ func SearchChannels(c *gin.Context) {
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": err.Error(),
+				"message": common.PublicErrorMessage(c, err),
 			})
 			return
 		}
@@ -293,7 +308,7 @@ func SearchChannels(c *gin.Context) {
 				if err != nil {
 					c.JSON(http.StatusOK, gin.H{
 						"success": false,
-						"message": err.Error(),
+						"message": common.PublicErrorMessage(c, err),
 					})
 					return
 				}
@@ -305,7 +320,7 @@ func SearchChannels(c *gin.Context) {
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": err.Error(),
+				"message": common.PublicErrorMessage(c, err),
 			})
 			return
 		}
@@ -371,8 +386,9 @@ func SearchChannels(c *gin.Context) {
 
 	pagedData := channelData[startIdx:endIdx]
 
+	includeSensitiveConfig := authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite)
 	for _, datum := range pagedData {
-		clearChannelInfo(datum)
+		sanitizeChannelForRead(datum, includeSensitiveConfig)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -399,7 +415,7 @@ func GetChannel(c *gin.Context) {
 		return
 	}
 	if channel != nil {
-		clearChannelInfo(channel)
+		sanitizeChannelForRead(channel, authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite))
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -983,7 +999,7 @@ func UpdateChannel(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}
@@ -1111,8 +1127,7 @@ func UpdateChannel(c *gin.Context) {
 		"name":           channel.Name,
 		"changed_fields": changedFields,
 	})
-	channel.Key = ""
-	clearChannelInfo(&channel.Channel)
+	sanitizeChannelForRead(&channel.Channel, authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite))
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -1353,7 +1368,7 @@ func GetTagModels(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}

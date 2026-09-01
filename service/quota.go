@@ -494,7 +494,10 @@ func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preCon
 				values = []interface{}{prompt, logger.FormatQuota(relayInfo.UserQuota), topUpLink, topUpLink}
 			}
 
-			err := NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
+			fullSetting, err := model.GetUserSetting(relayInfo.UserId, true)
+			if err == nil {
+				err = NotifyUser(relayInfo.UserId, relayInfo.UserEmail, fullSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
+			}
 			if err != nil {
 				common.SysError(fmt.Sprintf("failed to send quota notify to user %d: %s", relayInfo.UserId, err.Error()))
 			}
@@ -544,7 +547,11 @@ func checkAndSendSubscriptionQuotaNotify(relayInfo *relaycommon.RelayInfo) {
 			values = []interface{}{prompt, logger.FormatQuota(int(remaining)), topUpLink, topUpLink}
 		}
 
-		if err := NotifyUser(relayInfo.UserId, relayInfo.UserEmail, relayInfo.UserSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values)); err != nil {
+		fullSetting, err := model.GetUserSetting(relayInfo.UserId, true)
+		if err == nil {
+			err = NotifyUser(relayInfo.UserId, relayInfo.UserEmail, fullSetting, dto.NewNotify(dto.NotifyTypeQuotaExceed, prompt, content, values))
+		}
+		if err != nil {
 			common.SysError(fmt.Sprintf("failed to send subscription quota notify to user %d: %s", relayInfo.UserId, err.Error()))
 		}
 	})

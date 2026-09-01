@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useContext, useEffect, useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   API,
@@ -68,6 +68,7 @@ import ChannelKeyDisplay from '../../../common/ui/ChannelKeyDisplay';
 import { useSecureVerification } from '../../../../hooks/common/useSecureVerification';
 import { parseChannelConnectionString } from '../../../../helpers/token';
 import { createApiCalls } from '../../../../services/secureVerification';
+import { UserContext } from '../../../../context/User';
 import {
   collectInvalidStatusCodeEntries,
   collectNewDisallowedStatusCodeRedirects,
@@ -107,6 +108,18 @@ const REGION_EXAMPLE = {
 };
 const UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT = 8;
 const ADVANCED_SETTINGS_EXPANDED_KEY = 'channel-advanced-settings-expanded';
+
+const SENSITIVE_UPDATE_FIELDS = [
+  'type',
+  'key',
+  'base_url',
+  'openai_organization',
+  'param_override',
+  'header_override',
+  'setting',
+  'settings',
+  'other',
+];
 
 const PARAM_OVERRIDE_LEGACY_TEMPLATE = {
   temperature: 0,
@@ -165,6 +178,11 @@ function type2secretPrompt(type) {
 
 const EditChannelModal = (props) => {
   const { t } = useTranslation();
+  const [userState] = useContext(UserContext);
+  const canEditSensitive =
+    userState?.user?.role >= 100 ||
+    userState?.user?.permissions?.admin_permissions?.channel
+      ?.sensitive_write === true;
   const channelId = props.editingChannel.id;
   const isEdit = channelId !== undefined;
   const [loading, setLoading] = useState(isEdit);
@@ -1936,11 +1954,17 @@ const EditChannelModal = (props) => {
     }
 
     if (isEdit) {
-      res = await API.put(`/api/channel/`, {
+      const updatePayload = {
         ...localInputs,
         id: parseInt(channelId),
-        key_mode: isMultiKeyChannel ? keyMode : undefined, // 只在多key模式下传递
-      });
+        key_mode: canEditSensitive && isMultiKeyChannel ? keyMode : undefined,
+      };
+      if (!canEditSensitive) {
+        for (const field of SENSITIVE_UPDATE_FIELDS) {
+          delete updatePayload[field];
+        }
+      }
+      res = await API.put(`/api/channel/`, updatePayload);
     } else {
       res = await API.post(`/api/channel/`, {
         mode: mode,

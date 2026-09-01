@@ -26,6 +26,7 @@ import {
   IllustrationConstructionDark,
 } from '@douyinfe/semi-illustrations';
 import ScrollableContainer from '../common/ui/ScrollableContainer';
+import SafeHtml from '../common/SafeHtml';
 
 const AnnouncementsPanel = ({
   announcementData,
@@ -88,19 +89,15 @@ const AnnouncementsPanel = ({
                   time={`${item.relative ? item.relative + ' ' : ''}${item.time}`}
                   extra={
                     item.extra ? (
-                      <div
+                      <SafeHtml
                         className='text-xs text-gray-500'
-                        dangerouslySetInnerHTML={{ __html: htmlExtra }}
+                        html={htmlExtra}
                       />
                     ) : null
                   }
                 >
                   <div>
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: marked.parse(item.content || ''),
-                      }}
-                    />
+                    <SafeHtml html={marked.parse(item.content || '')} />
                   </div>
                 </Timeline.Item>
               );

@@ -82,7 +82,7 @@ func ResetModelRatio(c *gin.Context) {
 	if err != nil {
 		c.JSON(200, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}
@@ -90,7 +90,7 @@ func ResetModelRatio(c *gin.Context) {
 	if err != nil {
 		c.JSON(200, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}

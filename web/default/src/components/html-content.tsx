@@ -87,7 +87,7 @@ const isolatedSanitizeOptions = {
   FORCE_BODY: true,
 } satisfies Config
 
-function hardenIsolatedHtml(html: string): string {
+function hardenHtml(html: string, allowIframes: boolean): string {
   if (typeof document === 'undefined') {
     return html
   }
@@ -97,10 +97,7 @@ function hardenIsolatedHtml(html: string): string {
 
   template.content.querySelectorAll('a[target="_blank"]').forEach((link) => {
     const rel = new Set(
-      link
-        .getAttribute('rel')
-        ?.split(/\s+/)
-        .filter(Boolean) ?? []
+      link.getAttribute('rel')?.split(/\s+/).filter(Boolean) ?? []
     )
 
     rel.add('noopener')
@@ -108,15 +105,17 @@ function hardenIsolatedHtml(html: string): string {
     link.setAttribute('rel', [...rel].join(' '))
   })
 
-  template.content.querySelectorAll('iframe').forEach((frame) => {
-    frame.removeAttribute('srcdoc')
-    frame.setAttribute('sandbox', isolatedContentSandbox)
-    frame.setAttribute('referrerpolicy', 'no-referrer')
+  if (allowIframes) {
+    template.content.querySelectorAll('iframe').forEach((frame) => {
+      frame.removeAttribute('srcdoc')
+      frame.setAttribute('sandbox', isolatedContentSandbox)
+      frame.setAttribute('referrerpolicy', 'no-referrer')
 
-    if (!frame.hasAttribute('loading')) {
-      frame.setAttribute('loading', 'lazy')
-    }
-  })
+      if (!frame.hasAttribute('loading')) {
+        frame.setAttribute('loading', 'lazy')
+      }
+    })
+  }
 
   return template.innerHTML
 }
@@ -128,10 +127,10 @@ function sanitizeHtmlContent(
   if (variant === 'isolated') {
     const html = DOMPurify.sanitize(content, isolatedSanitizeOptions)
 
-    return hardenIsolatedHtml(html)
+    return hardenHtml(html, true)
   }
 
-  return DOMPurify.sanitize(content)
+  return hardenHtml(DOMPurify.sanitize(content), false)
 }
 
 function syncDarkClass(wrapper: HTMLElement): void {
@@ -182,10 +181,7 @@ function IsolatedHtmlContent(props: {
   }, [props.html])
 
   return (
-    <div
-      ref={containerRef}
-      className={cn('block w-full', props.className)}
-    />
+    <div ref={containerRef} className={cn('block w-full', props.className)} />
   )
 }
 

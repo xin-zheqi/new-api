@@ -27,6 +27,7 @@ import {
   IllustrationConstructionDark,
 } from '@douyinfe/semi-illustrations';
 import ScrollableContainer from '../common/ui/ScrollableContainer';
+import SafeHtml from '../common/SafeHtml';
 
 const FaqPanel = ({
   faqData,
@@ -60,11 +61,7 @@ const FaqPanel = ({
                 header={item.question}
                 itemKey={index.toString()}
               >
-                <div
-                  dangerouslySetInnerHTML={{
-                    __html: marked.parse(item.answer || ''),
-                  }}
-                />
+                <SafeHtml html={marked.parse(item.answer || '')} />
               </Collapse.Panel>
             ))}
           </Collapse>

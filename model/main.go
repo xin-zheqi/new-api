@@ -3,7 +3,9 @@ package model
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -15,11 +17,13 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 
 	"github.com/glebarez/sqlite"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/clickhouse"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 var commonGroupCol string
@@ -127,6 +131,71 @@ func normalizeClickHouseDSN(dsn string) string {
 	return parsed.String()
 }
 
+func newGormConfig(prepareStmt bool, output io.Writer) *gorm.Config {
+	return &gorm.Config{
+		PrepareStmt: prepareStmt,
+		Logger: gormlogger.New(log.New(output, "\r\n", log.LstdFlags), gormlogger.Config{
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  gormlogger.Warn,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  false,
+			ParameterizedQueries:      true,
+		}),
+	}
+}
+
+func isLocalDatabaseHost(host string) bool {
+	host = strings.ToLower(strings.Trim(strings.TrimSpace(host), "[]"))
+	if host == "" || host == "localhost" || !strings.Contains(host, ".") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate()
+	}
+	return strings.HasSuffix(host, ".local") ||
+		strings.HasSuffix(host, ".internal") ||
+		strings.HasSuffix(host, ".svc") ||
+		strings.HasSuffix(host, ".cluster.local")
+}
+
+func validateRemoteDatabaseTLS(dsn string, postgresDSN bool, allowInsecure bool) error {
+	if postgresDSN {
+		parsed, err := url.Parse(dsn)
+		if err != nil {
+			return fmt.Errorf("invalid PostgreSQL DSN")
+		}
+		if isLocalDatabaseHost(parsed.Hostname()) || allowInsecure {
+			return nil
+		}
+		switch strings.ToLower(parsed.Query().Get("sslmode")) {
+		case "require", "verify-ca", "verify-full":
+			return nil
+		default:
+			return fmt.Errorf("remote PostgreSQL requires sslmode=require or stronger; set ALLOW_INSECURE_REMOTE_DATABASE=true only for a trusted private network")
+		}
+	}
+
+	config, err := mysqldriver.ParseDSN(dsn)
+	if err != nil {
+		return fmt.Errorf("invalid MySQL DSN")
+	}
+	if config.Net != "tcp" || allowInsecure {
+		return nil
+	}
+	host := config.Addr
+	if parsedHost, _, splitErr := net.SplitHostPort(config.Addr); splitErr == nil {
+		host = parsedHost
+	}
+	if isLocalDatabaseHost(host) {
+		return nil
+	}
+	tlsMode := strings.ToLower(config.TLSConfig)
+	if tlsMode != "" && tlsMode != "false" && tlsMode != "preferred" {
+		return nil
+	}
+	return fmt.Errorf("remote MySQL requires tls=true or a registered TLS config; set ALLOW_INSECURE_REMOTE_DATABASE=true only for a trusted private network")
+}
+
 func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error) {
 	dsn := os.Getenv(envName)
 	if dsn != "" {
@@ -135,27 +204,24 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 				return nil, "", fmt.Errorf("%s does not support ClickHouse; use SQLite, MySQL, or PostgreSQL for the primary database and LOG_SQL_DSN for ClickHouse logs", envName)
 			}
 			common.SysLog("using ClickHouse as log database")
-			db, err := gorm.Open(clickhouse.Open(normalizeClickHouseDSN(dsn)), &gorm.Config{
-				PrepareStmt: false,
-			})
+			db, err := gorm.Open(clickhouse.Open(normalizeClickHouseDSN(dsn)), newGormConfig(false, os.Stdout))
 			return db, common.DatabaseTypeClickHouse, err
 		}
 		if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+			if err := validateRemoteDatabaseTLS(dsn, true, common.GetEnvOrDefaultBool("ALLOW_INSECURE_REMOTE_DATABASE", false)); err != nil {
+				return nil, "", fmt.Errorf("%s: %w", envName, err)
+			}
 			// Use PostgreSQL
 			common.SysLog("using PostgreSQL as database")
 			db, err := gorm.Open(postgres.New(postgres.Config{
 				DSN:                  dsn,
 				PreferSimpleProtocol: true, // disables implicit prepared statement usage
-			}), &gorm.Config{
-				PrepareStmt: true, // precompile SQL
-			})
+			}), newGormConfig(true, os.Stdout))
 			return db, common.DatabaseTypePostgreSQL, err
 		}
 		if strings.HasPrefix(dsn, "local") {
 			common.SysLog("SQL_DSN not set, using SQLite as database")
-			db, err := gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
-				PrepareStmt: true, // precompile SQL
-			})
+			db, err := gorm.Open(sqlite.Open(common.SQLitePath), newGormConfig(true, os.Stdout))
 			return db, common.DatabaseTypeSQLite, err
 		}
 		// Use MySQL
@@ -168,16 +234,15 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 				dsn += "?parseTime=true"
 			}
 		}
-		db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-			PrepareStmt: true, // precompile SQL
-		})
+		if err := validateRemoteDatabaseTLS(dsn, false, common.GetEnvOrDefaultBool("ALLOW_INSECURE_REMOTE_DATABASE", false)); err != nil {
+			return nil, "", fmt.Errorf("%s: %w", envName, err)
+		}
+		db, err := gorm.Open(mysql.Open(dsn), newGormConfig(true, os.Stdout))
 		return db, common.DatabaseTypeMySQL, err
 	}
 	// Use SQLite
 	common.SysLog("SQL_DSN not set, using SQLite as database")
-	db, err := gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
-		PrepareStmt: true, // precompile SQL
-	})
+	db, err := gorm.Open(sqlite.Open(common.SQLitePath), newGormConfig(true, os.Stdout))
 	return db, common.DatabaseTypeSQLite, err
 }
 

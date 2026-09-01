@@ -18,27 +18,29 @@ func Monitor() {
 		}
 		if percent[0] > 80 {
 			fmt.Println("cpu usage too high")
-			// write pprof file
-			if _, err := os.Stat("./pprof"); os.IsNotExist(err) {
-				err := os.Mkdir("./pprof", os.ModePerm)
-				if err != nil {
-					SysLog("创建pprof文件夹失败 " + err.Error())
-					continue
-				}
+			if err := os.MkdirAll("./pprof", 0700); err != nil {
+				SysLog("创建pprof文件夹失败 " + err.Error())
+				continue
 			}
-			f, err := os.Create("./pprof/" + fmt.Sprintf("cpu-%s.pprof", time.Now().Format("20060102150405")))
+			if err := os.Chmod("./pprof", 0700); err != nil {
+				SysLog("设置pprof文件夹权限失败 " + err.Error())
+				continue
+			}
+			profilePath := "./pprof/" + fmt.Sprintf("cpu-%s.pprof", time.Now().Format("20060102150405"))
+			f, err := os.OpenFile(profilePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 			if err != nil {
 				SysLog("创建pprof文件失败 " + err.Error())
 				continue
 			}
 			err = pprof.StartCPUProfile(f)
 			if err != nil {
+				_ = f.Close()
 				SysLog("启动pprof失败 " + err.Error())
 				continue
 			}
-			time.Sleep(10 * time.Second) // profile for 30 seconds
+			time.Sleep(10 * time.Second)
 			pprof.StopCPUProfile()
-			f.Close()
+			_ = f.Close()
 		}
 		time.Sleep(30 * time.Second)
 	}

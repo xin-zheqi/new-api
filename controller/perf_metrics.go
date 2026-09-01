@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/QuantumNous/new-api/common"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -24,7 +25,7 @@ func GetPerfMetricsSummary(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}
@@ -60,7 +61,7 @@ func GetPerfMetrics(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}

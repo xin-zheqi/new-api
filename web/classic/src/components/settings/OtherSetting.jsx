@@ -39,6 +39,7 @@ import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../context/Status';
 import Text from '@douyinfe/semi-ui/lib/es/typography/text';
+import SafeHtml from '../common/SafeHtml';
 
 const LEGAL_USER_AGREEMENT_KEY = 'legal.user_agreement';
 const LEGAL_PRIVACY_POLICY_KEY = 'legal.privacy_policy';
@@ -618,7 +619,7 @@ const OtherSetting = () => {
           </Button>,
         ]}
       >
-        <div dangerouslySetInnerHTML={{ __html: updateData.content }}></div>
+        <SafeHtml html={updateData.content} />
       </Modal>
     </Row>
   );

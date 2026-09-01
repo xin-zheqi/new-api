@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { API, showError } from '../../../helpers';
 import { Empty, Card, Spin, Typography } from '@douyinfe/semi-ui';
 const { Title } = Typography;
@@ -27,6 +27,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
 import MarkdownRenderer from '../markdown/MarkdownRenderer';
+import SafeHtml from '../SafeHtml';
 
 // Check whether content is a URL.
 const isUrl = (content) => {
@@ -44,21 +45,6 @@ const isHtmlContent = (content) => {
 
   const htmlTagRegex = /<\/?[a-z][\s\S]*>/i;
   return htmlTagRegex.test(content);
-};
-
-// Parse HTML content and extract inline styles.
-const sanitizeHtml = (html) => {
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = html;
-
-  const styles = Array.from(tempDiv.querySelectorAll('style'))
-    .map((style) => style.innerHTML)
-    .join('\n');
-
-  const bodyContent = tempDiv.querySelector('body');
-  const content = bodyContent ? bodyContent.innerHTML : html;
-
-  return { content, styles };
 };
 
 /**
@@ -102,41 +88,9 @@ const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
     }
   };
 
-  const htmlPayload = useMemo(() => {
-    if (!isHtmlContent(content)) {
-      return { content: '', styles: '' };
-    }
-    return sanitizeHtml(content);
-  }, [content]);
-
   useEffect(() => {
     loadContent();
   }, []);
-
-  // 处理HTML样式注入
-  useEffect(() => {
-    const styleId = `document-renderer-styles-${cacheKey}`;
-    const { styles } = htmlPayload;
-
-    if (styles) {
-      let styleEl = document.getElementById(styleId);
-      if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = styleId;
-        styleEl.type = 'text/css';
-        document.head.appendChild(styleEl);
-      }
-      styleEl.innerHTML = styles;
-    } else {
-      const el = document.getElementById(styleId);
-      if (el) el.remove();
-    }
-
-    return () => {
-      const el = document.getElementById(styleId);
-      if (el) el.remove();
-    };
-  }, [cacheKey, htmlPayload]);
 
   // 显示加载状态
   if (loading) {
@@ -202,9 +156,10 @@ const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
             <Title heading={2} className='text-center mb-8'>
               {title}
             </Title>
-            <div
+            <SafeHtml
               className='prose prose-lg max-w-none'
-              dangerouslySetInnerHTML={{ __html: htmlPayload.content }}
+              html={content}
+              variant='isolated'
             />
           </div>
         </div>

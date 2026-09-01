@@ -30,7 +30,7 @@ func GetSubscription(c *gin.Context) {
 	}
 	if err != nil {
 		openAIError := types.OpenAIError{
-			Message: err.Error(),
+			Message: common.PublicErrorMessage(c, err),
 			Type:    "upstream_error",
 		}
 		c.JSON(200, gin.H{
@@ -82,7 +82,7 @@ func GetUsage(c *gin.Context) {
 	}
 	if err != nil {
 		openAIError := types.OpenAIError{
-			Message: err.Error(),
+			Message: common.PublicErrorMessage(c, err),
 			Type:    "new_api_error",
 		}
 		c.JSON(200, gin.H{

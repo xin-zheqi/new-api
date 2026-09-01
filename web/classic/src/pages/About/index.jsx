@@ -26,6 +26,7 @@ import {
   IllustrationConstructionDark,
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
+import SafeHtml from '../../components/common/SafeHtml';
 
 const About = () => {
   const { t } = useTranslation();
@@ -156,6 +157,9 @@ const About = () => {
           {about.startsWith('https://') ? (
             <iframe
               src={about}
+              title={t('关于')}
+              sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts'
+              referrerPolicy='no-referrer'
               style={{
                 width: '100%',
                 flex: '1 1 auto',
@@ -164,10 +168,11 @@ const About = () => {
               }}
             />
           ) : (
-            <div
+            <SafeHtml
               style={{ fontSize: 'larger' }}
-              dangerouslySetInnerHTML={{ __html: about }}
-            ></div>
+              html={about}
+              variant='isolated'
+            />
           )}
         </>
       )}

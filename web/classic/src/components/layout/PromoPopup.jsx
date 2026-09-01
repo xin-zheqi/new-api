@@ -24,6 +24,7 @@ import { Megaphone } from 'lucide-react';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../context/Status';
+import SafeHtml from '../common/SafeHtml';
 
 const DISMISS_KEY_PREFIX = 'promo_popup_dismissed';
 
@@ -104,9 +105,9 @@ const PromoPopup = () => {
               aria-label={t('关闭通知')}
             />
           </div>
-          <div
+          <SafeHtml
             className='max-h-[min(52vh,22rem)] overflow-y-auto pr-1 text-sm text-semi-color-text-1 card-content-scroll'
-            dangerouslySetInnerHTML={{ __html: htmlContent }}
+            html={htmlContent}
           />
         </div>
       </div>

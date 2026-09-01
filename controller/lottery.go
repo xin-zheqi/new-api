@@ -261,6 +261,6 @@ func handleLotteryError(c *gin.Context, err error) {
 	}
 	c.JSON(status, gin.H{
 		"success": false,
-		"message": err.Error(),
+		"message": common.PublicErrorMessage(c, err),
 	})
 }

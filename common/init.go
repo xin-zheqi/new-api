@@ -70,11 +70,11 @@ func InitEnv() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if _, err := os.Stat(*LogDir); os.IsNotExist(err) {
-			err = os.Mkdir(*LogDir, 0777)
-			if err != nil {
-				log.Fatal(err)
-			}
+		if err := os.MkdirAll(*LogDir, 0700); err != nil {
+			log.Fatal(err)
+		}
+		if err := os.Chmod(*LogDir, 0700); err != nil {
+			log.Fatal(err)
 		}
 	}
 

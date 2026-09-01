@@ -32,7 +32,7 @@ func GetCheckinStatus(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}
@@ -86,7 +86,7 @@ func DoCheckin(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": common.PublicErrorMessage(c, err),
 		})
 		return
 	}

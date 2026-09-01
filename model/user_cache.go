@@ -24,6 +24,34 @@ type UserBase struct {
 	Setting  string `json:"setting"`
 }
 
+func userSettingForCache(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	setting := dto.UserSetting{}
+	if err := common.UnmarshalJsonStr(raw, &setting); err != nil {
+		common.SysLog("failed to prepare user setting cache")
+		return ""
+	}
+
+	// Notification endpoints commonly embed bearer tokens in their URL or
+	// dedicated secret fields. Notifications load the complete setting from the
+	// database, while request authentication only needs the remaining fields.
+	setting.WebhookUrl = ""
+	setting.WebhookSecret = ""
+	setting.NotificationEmail = ""
+	setting.BarkUrl = ""
+	setting.GotifyUrl = ""
+	setting.GotifyToken = ""
+
+	data, err := common.Marshal(setting)
+	if err != nil {
+		common.SysLog("failed to prepare user setting cache")
+		return ""
+	}
+	return string(data)
+}
+
 func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserGroup, user.Group)
 	common.SetContextKey(c, constant.ContextKeyUserQuota, user.Quota)
@@ -126,15 +154,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	}
 
 	// Create cache object from user data
-	userCache = &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
-	}
+	userCache = user.ToBaseUser()
 
 	return userCache, nil
 }
@@ -151,6 +171,13 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	}
 	if userCache.Id != userId {
 		return nil, fmt.Errorf("incomplete user cache for user %d", userId)
+	}
+	safeSetting := userSettingForCache(userCache.Setting)
+	if safeSetting != userCache.Setting {
+		userCache.Setting = safeSetting
+		if err := common.RedisHSetField(getUserCacheKey(userId), "Setting", safeSetting); err != nil {
+			common.SysLog("failed to sanitize cached user setting")
+		}
 	}
 	return &userCache, nil
 }
@@ -256,7 +283,7 @@ func updateUserSettingCache(userId int, setting string) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	return common.RedisHSetField(getUserCacheKey(userId), "Setting", setting)
+	return common.RedisHSetField(getUserCacheKey(userId), "Setting", userSettingForCache(setting))
 }
 
 // GetUserLanguage returns the user's language preference from cache

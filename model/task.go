@@ -97,7 +97,8 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
-	Key            string `json:"key,omitempty"`
+	Key            string `json:"key,omitempty"`              // 仅用于读取已保存原始 Key 的历史任务
+	KeyFingerprint string `json:"key_fingerprint,omitempty"`  // 新任务只保存 Key 指纹
 	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
 	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）
@@ -134,6 +135,31 @@ func (t *Task) GetResultURL() string {
 		return t.PrivateData.ResultURL
 	}
 	return t.FailReason
+}
+
+// ResolveChannelKey preserves the credential selected when the task was
+// submitted without storing a new plaintext copy in tasks.private_data.
+// Historical tasks with a stored Key remain readable; after key rotation,
+// polling falls back to a currently enabled channel key.
+func (p TaskPrivateData) ResolveChannelKey(channel *Channel) string {
+	if p.Key != "" {
+		return p.Key
+	}
+	if channel == nil {
+		return ""
+	}
+	if p.KeyFingerprint != "" {
+		for _, key := range channel.GetKeys() {
+			if common.Sha256([]byte(key)) == p.KeyFingerprint {
+				return key
+			}
+		}
+	}
+	key, _, err := channel.GetNextEnabledKey()
+	if err != nil {
+		return ""
+	}
+	return key
 }
 
 // GenerateTaskID 生成对外暴露的 task_xxxx 格式 ID
@@ -174,9 +200,9 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	properties := Properties{}
 	privateData := TaskPrivateData{}
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {
-		if relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeGemini ||
-			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi {
-			privateData.Key = relayInfo.ChannelMeta.ApiKey
+		if (relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeGemini ||
+			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi) && relayInfo.ChannelMeta.ApiKey != "" {
+			privateData.KeyFingerprint = common.Sha256([]byte(relayInfo.ChannelMeta.ApiKey))
 		}
 		if relayInfo.UpstreamModelName != "" {
 			properties.UpstreamModelName = relayInfo.UpstreamModelName

@@ -206,22 +206,11 @@ func isTaskProxyContentURL(url string, taskID string) bool {
 }
 
 func getVertexTaskKey(channel *model.Channel, task *model.Task) string {
+	privateData := model.TaskPrivateData{}
 	if task != nil {
-		if key := strings.TrimSpace(task.PrivateData.Key); key != "" {
-			return key
-		}
+		privateData = task.PrivateData
 	}
-	if channel == nil {
-		return ""
-	}
-	keys := channel.GetKeys()
-	for _, key := range keys {
-		key = strings.TrimSpace(key)
-		if key != "" {
-			return key
-		}
-	}
-	return strings.TrimSpace(channel.Key)
+	return strings.TrimSpace(privateData.ResolveChannelKey(channel))
 }
 
 func extractVertexVideoURLFromTaskData(task *model.Task) string {

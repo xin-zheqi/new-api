@@ -53,9 +53,13 @@ func SetupLogger() {
 			setupLogLock.Unlock()
 		}()
 		logPath := filepath.Join(*common.LogDir, fmt.Sprintf("oneapi-%s.log", time.Now().Format("20060102150405")))
-		fd, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		fd, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 		if err != nil {
 			log.Fatal("failed to open log file")
+		}
+		if err := fd.Chmod(0600); err != nil {
+			_ = fd.Close()
+			log.Fatal("failed to secure log file")
 		}
 		currentLogPathMu.Lock()
 		oldFile := currentLogFile

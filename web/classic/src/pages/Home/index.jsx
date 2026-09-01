@@ -40,6 +40,7 @@ import {
 } from '@douyinfe/semi-icons';
 import { Link } from 'react-router-dom';
 import NoticeModal from '../../components/layout/NoticeModal';
+import SafeHtml from '../../components/common/SafeHtml';
 import {
   Moonshot,
   OpenAI,
@@ -340,11 +341,15 @@ const Home = () => {
             <iframe
               src={homePageContent}
               className='w-full h-screen border-none'
+              title={t('首页')}
+              sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-top-navigation-by-user-activation'
+              referrerPolicy='no-referrer'
             />
           ) : (
-            <div
+            <SafeHtml
               className='mt-[60px]'
-              dangerouslySetInnerHTML={{ __html: homePageContent }}
+              html={homePageContent}
+              variant='isolated'
             />
           )}
         </div>

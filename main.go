@@ -167,10 +167,10 @@ func main() {
 
 	if os.Getenv("ENABLE_PPROF") == "true" {
 		gopool.Go(func() {
-			log.Println(http.ListenAndServe("0.0.0.0:8005", nil))
+			log.Println(http.ListenAndServe("127.0.0.1:8005", nil))
 		})
 		go common.Monitor()
-		common.SysLog("pprof enabled")
+		common.SysLog("pprof enabled on 127.0.0.1:8005")
 	}
 
 	err = common.StartPyroScope()
@@ -181,10 +181,10 @@ func main() {
 	// Initialize HTTP server
 	server := gin.New()
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
-		common.SysLog(fmt.Sprintf("panic detected: %v", err))
+		common.SysLog(fmt.Sprintf("panic detected: type=%T", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
-				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err),
+				"message": "Internal server error. Please submit an issue here: https://github.com/Calcium-Ion/new-api",
 				"type":    "new_api_panic",
 			},
 		})

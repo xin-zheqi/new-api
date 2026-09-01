@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const KeyRequestBody = "key_request_body"
@@ -197,10 +199,82 @@ func GetContextKeyType[T any](c *gin.Context, key constant.ContextKey) (T, bool)
 }
 
 func ApiError(c *gin.Context, err error) {
+	message := PublicErrorMessage(c, err)
 	c.JSON(http.StatusOK, gin.H{
 		"success": false,
-		"message": err.Error(),
+		"message": message,
 	})
+}
+
+// PublicErrorMessage preserves business errors while preventing database
+// implementation details and rejected values from reaching API clients.
+func PublicErrorMessage(c *gin.Context, err error) string {
+	if err == nil {
+		return "Internal server error"
+	}
+	if isDatabaseError(err) {
+		method, path := "", ""
+		if c.Request != nil {
+			method = c.Request.Method
+			path = c.Request.URL.Path
+		}
+		// Driver errors can include schema names, constraints, and rejected values.
+		// Keep the client and logs free of those details while retaining enough
+		// request context to correlate the failure with database telemetry.
+		SysError(fmt.Sprintf("database request failed: method=%s path=%s error_type=%T", method, path, err))
+		return TranslateMessage(c, "common.database_error")
+	}
+	return err.Error()
+}
+
+func isDatabaseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	for _, target := range []error{
+		gorm.ErrInvalidDB,
+		gorm.ErrInvalidField,
+		gorm.ErrInvalidTransaction,
+		gorm.ErrDuplicatedKey,
+		gorm.ErrForeignKeyViolated,
+	} {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		typeOfError := reflect.TypeOf(current)
+		if typeOfError.Kind() == reflect.Ptr {
+			typeOfError = typeOfError.Elem()
+		}
+		packagePath := typeOfError.PkgPath()
+		if strings.Contains(packagePath, "go-sql-driver/mysql") ||
+			strings.Contains(packagePath, "pgx") ||
+			strings.Contains(packagePath, "sqlite") ||
+			strings.Contains(packagePath, "clickhouse") {
+			return true
+		}
+	}
+
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"sqlstate",
+		"constraint failed",
+		"duplicate entry",
+		"violates unique constraint",
+		"violates foreign key constraint",
+		"no such table",
+		"no such column",
+		"unknown column",
+		"database is locked",
+		"driver: bad connection",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func ApiErrorMsg(c *gin.Context, msg string) {

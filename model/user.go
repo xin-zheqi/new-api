@@ -170,7 +170,7 @@ func (user *User) ToBaseUser() *UserBase {
 		Quota:    user.Quota,
 		Status:   user.Status,
 		Username: user.Username,
-		Setting:  user.Setting,
+		Setting:  userSettingForCache(user.Setting),
 		Email:    user.Email,
 	}
 	return cache
@@ -395,7 +395,14 @@ func GetMaxUserId() int {
 	return user.Id
 }
 
-func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err error) {
+func scopeManagedUsers(query *gorm.DB, operatorRole int) *gorm.DB {
+	if operatorRole < common.RoleRootUser {
+		return query.Where("role < ?", operatorRole)
+	}
+	return query
+}
+
+func GetAllUsers(pageInfo *common.PageInfo, operatorRole int) (users []*User, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -408,14 +415,16 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	}()
 
 	// Get total count within transaction
-	err = tx.Unscoped().Model(&User{}).Count(&total).Error
+	query := scopeManagedUsers(tx.Unscoped().Model(&User{}), operatorRole)
+	err = query.Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password", "access_token").Find(&users).Error
+	err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).
+		Omit("password", "access_token", "setting", "stripe_customer").Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -429,7 +438,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int, operatorRole int) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -446,7 +455,7 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	}()
 
 	// 构建基础查询
-	query := tx.Unscoped().Model(&User{})
+	query := scopeManagedUsers(tx.Unscoped().Model(&User{}), operatorRole)
 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
@@ -483,7 +492,8 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	}
 
 	// 获取分页数据
-	err = query.Omit("password", "access_token").Order("id desc").Limit(num).Offset(startIdx).Find(&users).Error
+	err = query.Omit("password", "access_token", "setting", "stripe_customer").
+		Order("id desc").Limit(num).Offset(startIdx).Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err

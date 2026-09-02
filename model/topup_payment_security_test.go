@@ -20,7 +20,7 @@ func TestTopUpPaymentSnapshotRejectsMismatchAndQuotaOverflow(t *testing.T) {
 		DB.Where("id = ?", userID).Delete(&User{})
 	})
 
-	user := &User{Id: userID, Username: "topup-payment-security", AffCode: "topup-payment-security", Quota: common.MaxQuota - 10}
+	user := &User{Id: userID, Username: "topup-payment-security", AffCode: "topup-payment-security", Quota: common.MaxWalletQuota - 10}
 	require.NoError(t, DB.Create(user).Error)
 	topUp := &TopUp{
 		UserId: userID, Amount: 1, Money: 2, TradeNo: tradeNo,
@@ -35,14 +35,14 @@ func TestTopUpPaymentSnapshotRejectsMismatchAndQuotaOverflow(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrTopUpPaymentMismatch)
 	assert.Equal(t, common.TopUpStatusPending, GetTopUpByTradeNo(tradeNo).Status)
-	assert.Equal(t, common.MaxQuota-10, getTopUpSecurityQuota(t, userID))
+	assert.Equal(t, common.MaxWalletQuota-10, getTopUpSecurityQuota(t, userID))
 
 	err = RechargeWithPayment(tradeNo, "cus_security", "127.0.0.1", SubscriptionPaymentSnapshot{
 		AmountMicros: 2_000_000, Currency: "USD",
 	})
-	require.ErrorIs(t, err, ErrTopUpQuotaOverflow)
+	require.ErrorIs(t, err, ErrTopUpQuotaLimitExceeded)
 	assert.Equal(t, common.TopUpStatusPending, GetTopUpByTradeNo(tradeNo).Status)
-	assert.Equal(t, common.MaxQuota-10, getTopUpSecurityQuota(t, userID))
+	assert.Equal(t, common.MaxWalletQuota-10, getTopUpSecurityQuota(t, userID))
 }
 
 func TestLegacyTopUpFloatAmountIsPinnedAfterVerifiedCallback(t *testing.T) {
@@ -65,7 +65,7 @@ func TestLegacyTopUpFloatAmountIsPinnedAfterVerifiedCallback(t *testing.T) {
 	// Legacy checkout creation used strconv.FormatFloat(..., 'f', 2, 64),
 	// which serializes this binary float as 1.00 rather than decimal-rounding
 	// it to 1.01. The migration must preserve that historical amount.
-	err := RechargeEpay(tradeNo, "alipay", "1.00", "127.0.0.1")
+	err := RechargeEpayWithPayment(tradeNo, "alipay", "1.00", "127.0.0.1")
 	require.NoError(t, err)
 	stored := GetTopUpByTradeNo(tradeNo)
 	require.NotNil(t, stored)

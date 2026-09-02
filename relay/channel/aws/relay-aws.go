@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -66,18 +66,23 @@ func newAwsInvokeContext(c *gin.Context, info *relaycommon.RelayInfo) (context.C
 	}
 }
 
-func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.Client, error) {
-	var (
-		httpClient *http.Client
-		err        error
+func newAwsInvokeError(requestContext context.Context, err error, operation string) *types.NewAPIError {
+	options := make([]types.NewAPIErrorOptions, 0, 1)
+	if requestContext.Err() != nil {
+		options = append(options, types.ErrOptionWithSkipRetry())
+	}
+	return types.NewOpenAIError(
+		errors.Wrap(err, operation),
+		types.ErrorCodeAwsInvokeError,
+		getAwsErrorStatusCode(err),
+		options...,
 	)
-	if info.ChannelSetting.Proxy != "" {
-		httpClient, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
-		if err != nil {
-			return nil, fmt.Errorf("new proxy http client failed: %w", err)
-		}
-	} else {
-		httpClient = service.GetHttpClient()
+}
+
+func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.Client, error) {
+	httpClient, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
+	if err != nil {
+		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}
 
 	awsSecret := strings.Split(info.ApiKey, "|")
@@ -241,7 +246,7 @@ func getAwsModelID(requestModel string) string {
 }
 
 func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
-
+	requestContext := c.Request.Context()
 	ctx, cancel := newAwsInvokeContext(c, info)
 	defer cancel()
 
@@ -250,8 +255,7 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types
 		if info.ShouldFailFirstResponseTimeout() {
 			return relaycommon.NewFirstResponseTimeoutError(info), nil
 		}
-		statusCode := getAwsErrorStatusCode(err)
-		return types.NewOpenAIError(errors.Wrap(err, "InvokeModel"), types.ErrorCodeAwsInvokeError, statusCode), nil
+		return newAwsInvokeError(requestContext, err, "InvokeModel"), nil
 	}
 	info.SetFirstResponseTime()
 	if info.ChannelSetting.RejectEmptyResponse {
@@ -281,6 +285,7 @@ func awsHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types
 }
 
 func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
+	requestContext := c.Request.Context()
 	ctx, cancel := newAwsInvokeContext(c, info)
 	defer cancel()
 
@@ -289,8 +294,7 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 		if info.ShouldFailFirstResponseTimeout() {
 			return relaycommon.NewFirstResponseTimeoutError(info), nil
 		}
-		statusCode := getAwsErrorStatusCode(err)
-		return types.NewOpenAIError(errors.Wrap(err, "InvokeModelWithResponseStream"), types.ErrorCodeAwsInvokeError, statusCode), nil
+		return newAwsInvokeError(requestContext, err, "InvokeModelWithResponseStream"), nil
 	}
 	stream := awsResp.GetStream()
 	defer stream.Close()
@@ -304,43 +308,59 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 	}
 	waitingForOutput := info.ChannelSetting.RejectEmptyResponse
 	bufferedEvents := make([][]byte, 0)
+	events := stream.Events()
+streamLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			break streamLoop
+		case event, ok := <-events:
+			if !ok {
+				break streamLoop
+			}
+			if ctx.Err() != nil {
+				break streamLoop
+			}
 
-	for event := range stream.Events() {
-		switch v := event.(type) {
-		case *bedrockruntimeTypes.ResponseStreamMemberChunk:
-			if waitingForOutput {
-				info.MarkFirstResponseContent()
-				bufferedEvents = append(bufferedEvents, append([]byte(nil), v.Value.Bytes...))
-				validationErr := helper.ValidateUpstreamTextPayload(v.Value.Bytes)
-				if validationErr != nil {
-					if validationErr.GetErrorCode() == types.ErrorCodeEmptyResponse {
-						continue
+			switch v := event.(type) {
+			case *bedrockruntimeTypes.ResponseStreamMemberChunk:
+				if waitingForOutput {
+					info.MarkFirstResponseContent()
+					bufferedEvents = append(bufferedEvents, append([]byte(nil), v.Value.Bytes...))
+					validationErr := helper.ValidateUpstreamTextPayload(v.Value.Bytes)
+					if validationErr != nil {
+						if validationErr.GetErrorCode() == types.ErrorCodeEmptyResponse {
+							continue
+						}
+						return validationErr, nil
 					}
-					return validationErr, nil
+
+					waitingForOutput = false
+					info.SetFirstResponseTime()
+					for _, bufferedEvent := range bufferedEvents {
+						if respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(bufferedEvent)); respErr != nil {
+							return respErr, nil
+						}
+					}
+					bufferedEvents = nil
+					continue
 				}
 
-				waitingForOutput = false
 				info.SetFirstResponseTime()
-				for _, bufferedEvent := range bufferedEvents {
-					if respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(bufferedEvent)); respErr != nil {
-						return respErr, nil
-					}
+				if respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(v.Value.Bytes)); respErr != nil {
+					return respErr, nil
 				}
-				bufferedEvents = nil
-				continue
+			case *bedrockruntimeTypes.UnknownUnionMember:
+				fmt.Println("unknown tag:", v.Tag)
+				return types.NewError(errors.New("unknown response type"), types.ErrorCodeInvalidRequest), nil
+			default:
+				fmt.Println("union is nil or unknown type")
+				return types.NewError(errors.New("nil or unknown response type"), types.ErrorCodeInvalidRequest), nil
 			}
-
-			info.SetFirstResponseTime()
-			if respErr := claude.HandleStreamResponseData(c, info, claudeInfo, string(v.Value.Bytes)); respErr != nil {
-				return respErr, nil
-			}
-		case *bedrockruntimeTypes.UnknownUnionMember:
-			fmt.Println("unknown tag:", v.Tag)
-			return types.NewError(errors.New("unknown response type"), types.ErrorCodeInvalidRequest), nil
-		default:
-			fmt.Println("union is nil or unknown type")
-			return types.NewError(errors.New("nil or unknown response type"), types.ErrorCodeInvalidRequest), nil
 		}
+	}
+	if requestContext.Err() != nil {
+		return nil, claudeInfo.Usage
 	}
 	if info.ShouldFailFirstResponseTimeout() {
 		info.CancelFirstResponseTimeoutGuard()
@@ -349,14 +369,21 @@ func awsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (
 	if waitingForOutput {
 		return helper.NewEmptyUpstreamResponseError(), nil
 	}
+	if err := stream.Err(); err != nil {
+		return newAwsInvokeError(requestContext, err, "InvokeModelWithResponseStream"), nil
+	}
+	if ctx.Err() != nil {
+		return newAwsInvokeError(requestContext, ctx.Err(), "InvokeModelWithResponseStream"), nil
+	}
 
+	_ = stream.Close()
 	claude.HandleStreamFinalResponse(c, info, claudeInfo)
 	return nil, claudeInfo.Usage
 }
 
 // Nova模型处理函数
 func handleNovaRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) (*types.NewAPIError, *dto.Usage) {
-
+	requestContext := c.Request.Context()
 	ctx, cancel := newAwsInvokeContext(c, info)
 	defer cancel()
 
@@ -365,8 +392,7 @@ func handleNovaRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) 
 		if info.ShouldFailFirstResponseTimeout() {
 			return relaycommon.NewFirstResponseTimeoutError(info), nil
 		}
-		statusCode := getAwsErrorStatusCode(err)
-		return types.NewOpenAIError(errors.Wrap(err, "InvokeModel"), types.ErrorCodeAwsInvokeError, statusCode), nil
+		return newAwsInvokeError(requestContext, err, "InvokeModel"), nil
 	}
 	info.SetFirstResponseTime()
 	if info.ChannelSetting.RejectEmptyResponse {

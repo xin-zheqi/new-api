@@ -145,8 +145,13 @@ const UserInvoiceCenter = () => {
         const parsed = JSON.parse(saved);
         setForm((current) => ({
           ...current,
-          invoice_title: clampInvoiceText(parsed.invoice_title, INVOICE_TITLE_MAX_LENGTH),
-          taxpayer_id: String(parsed.taxpayer_id || '').toUpperCase().slice(0, TAXPAYER_ID_MAX_LENGTH),
+          invoice_title: clampInvoiceText(
+            parsed.invoice_title,
+            INVOICE_TITLE_MAX_LENGTH,
+          ),
+          taxpayer_id: String(parsed.taxpayer_id || '')
+            .toUpperCase()
+            .slice(0, TAXPAYER_ID_MAX_LENGTH),
           bank_name: clampInvoiceText(parsed.bank_name, BANK_NAME_MAX_LENGTH),
           remark: clampInvoiceText(parsed.remark, INVOICE_REMARK_MAX_LENGTH),
         }));
@@ -252,10 +257,28 @@ const UserInvoiceCenter = () => {
       title: t('确认操作'),
       content: (
         <div>
-          <p>{t('Please verify the invoice details carefully. Completed invoices cannot be changed or reissued.')}</p>
-          <p><strong>{t('Invoice title')}:</strong> {invoiceTitle}</p>
-          <p><strong>{t('Taxpayer ID')}:</strong> {taxpayerId}</p>
-          <p><strong>{t('Invoiceable amount')}:</strong> {formatInvoiceMoney(selectedSubscriptions.reduce((sum, item) => sum + item.paid_amount_micros, 0), selectedItems[0]?.paid_currency, i18n.resolvedLanguage)}</p>
+          <p>
+            {t(
+              'Please verify the invoice details carefully. Completed invoices cannot be changed or reissued.',
+            )}
+          </p>
+          <p>
+            <strong>{t('Invoice title')}:</strong> {invoiceTitle}
+          </p>
+          <p>
+            <strong>{t('Taxpayer ID')}:</strong> {taxpayerId}
+          </p>
+          <p>
+            <strong>{t('Invoiceable amount')}:</strong>{' '}
+            {formatInvoiceMoney(
+              selectedSubscriptions.reduce(
+                (sum, item) => sum + item.paid_amount_micros,
+                0,
+              ),
+              selectedItems[0]?.paid_currency,
+              i18n.resolvedLanguage,
+            )}
+          </p>
         </div>
       ),
       okText: t('Apply for invoice'),
@@ -263,42 +286,44 @@ const UserInvoiceCenter = () => {
       onOk: async () => {
         setSubmitting(true);
         try {
-          const response = await API.post(
-        '/api/user/invoice/apply',
-            payload,
-        { skipErrorHandler: true },
-      );
-      if (!response.data?.success) {
-        showError(
-          getInvoiceErrorMessage(
-            response,
-            t,
-            t('Failed to submit invoice application'),
-          ),
-        );
-        return;
-      }
-      showSuccess(t('Invoice application submitted'));
-      localStorage.setItem(
-        invoiceDefaultsKey,
-        JSON.stringify({ ...form, invoice_title: invoiceTitle, taxpayer_id: taxpayerId }),
-      );
-      setSelected([]);
-      setForm({
-        invoice_title: '',
-        taxpayer_id: '',
-        bank_name: '',
-        remark: '',
-      });
-      await loadData(1, applicationPageSize);
+          const response = await API.post('/api/user/invoice/apply', payload, {
+            skipErrorHandler: true,
+          });
+          if (!response.data?.success) {
+            showError(
+              getInvoiceErrorMessage(
+                response,
+                t,
+                t('Failed to submit invoice application'),
+              ),
+            );
+            return;
+          }
+          showSuccess(t('Invoice application submitted'));
+          localStorage.setItem(
+            invoiceDefaultsKey,
+            JSON.stringify({
+              ...form,
+              invoice_title: invoiceTitle,
+              taxpayer_id: taxpayerId,
+            }),
+          );
+          setSelected([]);
+          setForm({
+            invoice_title: '',
+            taxpayer_id: '',
+            bank_name: '',
+            remark: '',
+          });
+          await loadData(1, applicationPageSize);
         } catch (error) {
-      showError(
-        getInvoiceErrorMessage(
-          error,
-          t,
-          t('Failed to submit invoice application'),
-        ),
-      );
+          showError(
+            getInvoiceErrorMessage(
+              error,
+              t,
+              t('Failed to submit invoice application'),
+            ),
+          );
         } finally {
           setSubmitting(false);
         }
@@ -339,7 +364,8 @@ const UserInvoiceCenter = () => {
       title: t('Subscription plan'),
       dataIndex: 'plan_title',
       render: (value, record) => {
-        const title = record?.item_type === 'redemption_recharge'
+        const title =
+          record?.item_type === 'redemption_recharge'
             ? t('Redemption code balance recharge')
             : record?.item_type === 'top_up'
               ? value || t('Balance recharge')
@@ -475,8 +501,14 @@ const UserInvoiceCenter = () => {
 
           <div className='grid gap-4 md:grid-cols-2'>
             <label className='space-y-1'>
-              <Text strong>{t('Invoice title')}</Text>
+              <Text strong>
+                {t('Invoice title')}
+                <span aria-hidden='true' className='ml-1 text-red-500'>
+                  *
+                </span>
+              </Text>
               <Input
+                required
                 aria-label={t('Invoice title')}
                 value={form.invoice_title}
                 onChange={updateTextField(
@@ -488,8 +520,14 @@ const UserInvoiceCenter = () => {
               />
             </label>
             <label className='space-y-1'>
-              <Text strong>{t('Taxpayer ID')}</Text>
+              <Text strong>
+                {t('Taxpayer ID')}
+                <span aria-hidden='true' className='ml-1 text-red-500'>
+                  *
+                </span>
+              </Text>
               <Input
+                required
                 aria-label={t('Taxpayer ID')}
                 value={form.taxpayer_id}
                 onChange={updateTaxpayerId}
@@ -571,7 +609,7 @@ const UserInvoiceCenter = () => {
               getCheckboxProps: (subscription) => ({
                 disabled: Boolean(
                   selectedCurrency &&
-                  subscription.paid_currency !== selectedCurrency,
+                    subscription.paid_currency !== selectedCurrency,
                 ),
                 title:
                   selectedCurrency &&

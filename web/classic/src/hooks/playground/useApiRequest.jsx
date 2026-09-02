@@ -27,6 +27,7 @@ import {
 } from '../../constants/playground.constants';
 import {
   getUserIdFromLocalStorage,
+  getFreshAccessToken,
   handleApiError,
   processThinkTags,
   processIncompleteThinkTags,
@@ -185,11 +186,13 @@ export const useApiRequest = (
       setActiveDebugTab(DEBUG_TABS.REQUEST);
 
       try {
+        const accessToken = await getFreshAccessToken();
         const response = await fetch(API_ENDPOINTS.CHAT_COMPLETIONS, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'New-Api-User': getUserIdFromLocalStorage(),
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify(payload),
         });
@@ -302,7 +305,7 @@ export const useApiRequest = (
 
   // SSE请求
   const handleSSE = useCallback(
-    (payload) => {
+    async (payload) => {
       setDebugData((prev) => ({
         ...prev,
         request: payload,
@@ -313,10 +316,20 @@ export const useApiRequest = (
       }));
       setActiveDebugTab(DEBUG_TABS.REQUEST);
 
+      let accessToken;
+      try {
+        accessToken = await getFreshAccessToken();
+      } catch (error) {
+        streamMessageUpdate(t('建立连接时发生错误'), 'content');
+        completeMessage(MESSAGE_STATUS.ERROR);
+        return;
+      }
+
       const source = new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
         headers: {
           'Content-Type': 'application/json',
           'New-Api-User': getUserIdFromLocalStorage(),
+          Authorization: `Bearer ${accessToken}`,
         },
         method: 'POST',
         payload: JSON.stringify(payload),
@@ -421,7 +434,11 @@ export const useApiRequest = (
           setMessage((prevMessage) => {
             const newMessages = [...prevMessage];
             const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage && lastMessage.status !== MESSAGE_STATUS.COMPLETE && lastMessage.status !== MESSAGE_STATUS.ERROR) {
+            if (
+              lastMessage &&
+              lastMessage.status !== MESSAGE_STATUS.COMPLETE &&
+              lastMessage.status !== MESSAGE_STATUS.ERROR
+            ) {
               newMessages[newMessages.length - 1] = {
                 ...lastMessage,
                 content: (lastMessage.content || '') + errorMessage,

@@ -45,7 +45,7 @@ import {
 } from '@douyinfe/semi-icons';
 import {
   API,
-  authHeader,
+  getFreshAccessToken,
   getUserIdFromLocalStorage,
   showError,
   showSuccess,
@@ -330,13 +330,13 @@ const OllamaModelModal = ({
       setEventSource(closable);
 
       // 使用 fetch 请求 SSE 流
-      const authHeaders = authHeader();
+      const accessToken = await getFreshAccessToken();
       const userId = getUserIdFromLocalStorage();
       const fetchHeaders = {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
         'New-API-User': String(userId),
-        ...authHeaders,
+        Authorization: `Bearer ${accessToken}`,
       };
 
       const response = await fetch('/api/channel/ollama/pull/stream', {

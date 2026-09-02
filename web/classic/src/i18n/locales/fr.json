@@ -4119,8 +4119,16 @@
     "请使用微信扫描二维码完成支付": "Scannez le code QR avec WeChat pour payer",
     "请填写同一微信支付商户下签发的商户凭据。敏感字段保存后不会回显，留空表示保持原值。": "Utilisez les identifiants du même marchand WeChat. Les champs sensibles sont masqués après enregistrement ; laissez-les vides pour conserver les valeurs.",
     "请填写开票币种": "Saisissez la devise de facturation",
-    "选择用户": "Sélectionner un utilisateur"
-  },
-  "Balance recharge": "Recharge de solde",
-  "Redemption code balance recharge": "Recharge de solde par code"
+    "选择用户": "Sélectionner un utilisateur",
+    "Balance recharge": "Recharge de solde",
+    "Passkey 验证状态无效": "État de vérification Passkey non valide.",
+    "Passkey 验证被取消": "La vérification Passkey a été annulée.",
+    "Passkey 验证被取消或超时": "La vérification Passkey a été annulée ou a expiré.",
+    "Redemption code balance recharge": "Recharge de solde par code",
+    "不支持的验证方式: {{method}}": "Méthode de vérification non prise en charge : {{method}}",
+    "开始验证失败": "Impossible de démarrer la vérification.",
+    "登录流程已过期，请重新登录": "La session de connexion a expiré. Reconnectez-vous.",
+    "验证凭据未返回": "La preuve de vérification n'a pas été renvoyée.",
+    "验证流程已过期": "Le processus de vérification a expiré."
+  }
 }

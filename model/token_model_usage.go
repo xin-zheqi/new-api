@@ -283,6 +283,8 @@ func getUserTokenModelUsageSummaryByTokenIds(userId int, totalKeyCount int64, to
 		common.SysError("failed to aggregate token model usage summary: " + err.Error())
 		return summary, errors.New("查询令牌用量失败")
 	}
+	// Scan clears fields that are not part of the aggregate projection.
+	summary.TotalKeyCount = totalKeyCount
 	if err := getTokenUsageLogBase(userId, tokenIds, startTimestamp, endTimestamp).
 		Distinct("token_id").
 		Count(&summary.ActiveKeyCount).Error; err != nil {

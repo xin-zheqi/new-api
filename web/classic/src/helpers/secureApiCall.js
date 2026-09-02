@@ -35,9 +35,11 @@ export function isVerificationRequiredError(error) {
   // 检查是否是 403 错误且包含验证相关的错误码
   if (status === 403 && data) {
     const verificationCodes = [
-      'VERIFICATION_REQUIRED',
-      'VERIFICATION_EXPIRED',
-      'VERIFICATION_INVALID',
+      'SECURITY_PROOF_REQUIRED',
+      'SECURITY_PROOF_EXPIRED',
+      'SECURITY_PROOF_INVALID',
+      'SECURITY_PROOF_SCOPE_MISMATCH',
+      'SECURITY_PROOF_METHOD_MISMATCH',
     ];
 
     return verificationCodes.includes(data.code);

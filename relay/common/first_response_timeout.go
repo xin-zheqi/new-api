@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 type FirstResponseTimeoutGuard struct {

@@ -13,10 +13,7 @@ func TestGetMonitorSetting_ChannelTestEnabledEnvOverridesEnabledConfig(t *testin
 
 	t.Setenv("CHANNEL_TEST_ENABLED", "false")
 	t.Setenv("CHANNEL_TEST_FREQUENCY", "5")
-	monitorSetting = MonitorSetting{
-		AutoTestChannelEnabled: true,
-		AutoTestChannelMinutes: 20,
-	}
+	monitorSetting = MonitorSetting{AutoTestChannelEnabled: true, AutoTestChannelMinutes: 20}
 
 	setting := GetMonitorSetting()
 
@@ -30,10 +27,7 @@ func TestGetMonitorSetting_ChannelTestEnabledEnvCanEnableDisabledConfig(t *testi
 	t.Cleanup(func() { monitorSetting = orig })
 
 	t.Setenv("CHANNEL_TEST_ENABLED", "true")
-	monitorSetting = MonitorSetting{
-		AutoTestChannelEnabled: false,
-		AutoTestChannelMinutes: 12,
-	}
+	monitorSetting = MonitorSetting{AutoTestChannelEnabled: false, AutoTestChannelMinutes: 12}
 
 	setting := GetMonitorSetting()
 
@@ -58,14 +52,25 @@ func TestGetMonitorSetting_LegacyAutoDisabledFlagMapsToPassiveRecovery(t *testin
 	assert.True(t, setting.AutoTestOnlyAutoDisabled)
 }
 
+func TestGetMonitorSettingPreservesAutoBanOnlyMode(t *testing.T) {
+	orig := monitorSetting
+	t.Cleanup(func() { monitorSetting = orig })
+
+	t.Setenv("CHANNEL_TEST_ENABLED", "")
+	t.Setenv("CHANNEL_TEST_FREQUENCY", "")
+	monitorSetting = MonitorSetting{ChannelTestMode: ChannelTestModeAutoBanOnly}
+
+	setting := GetMonitorSetting()
+
+	require.NotNil(t, setting)
+	assert.Equal(t, ChannelTestModeAutoBanOnly, setting.ChannelTestMode)
+}
+
 func TestGetMonitorSetting_ChannelTestModeSyncsLegacyFlag(t *testing.T) {
 	orig := monitorSetting
 	t.Cleanup(func() { monitorSetting = orig })
 
-	monitorSetting = MonitorSetting{
-		ChannelTestMode:          ChannelTestModePassiveRecovery,
-		AutoTestOnlyAutoDisabled: false,
-	}
+	monitorSetting = MonitorSetting{ChannelTestMode: ChannelTestModePassiveRecovery}
 
 	setting := GetMonitorSetting()
 
@@ -92,8 +97,33 @@ func TestIsMinuteInAutoTestChannelTimeRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsMinuteInAutoTestChannelTimeRange(tt.minute, tt.value)
-			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.want, IsMinuteInAutoTestChannelTimeRange(tt.minute, tt.value))
+		})
+	}
+}
+
+func TestGetMonitorSettingNormalizesChannelTestConcurrency(t *testing.T) {
+	orig := monitorSetting
+	t.Cleanup(func() { monitorSetting = orig })
+
+	tests := []struct {
+		name        string
+		concurrency int
+		want        int
+	}{
+		{name: "missing uses safe default", concurrency: 0, want: DefaultChannelTestConcurrency},
+		{name: "configured value is preserved", concurrency: 8, want: 8},
+		{name: "oversized value is capped", concurrency: MaxChannelTestConcurrency + 1, want: MaxChannelTestConcurrency},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			monitorSetting = MonitorSetting{ChannelTestConcurrency: test.concurrency}
+
+			setting := GetMonitorSetting()
+
+			require.NotNil(t, setting)
+			assert.Equal(t, test.want, setting.ChannelTestConcurrency)
 		})
 	}
 }
@@ -107,4 +137,12 @@ func TestParseAutoTestChannelTimeRange(t *testing.T) {
 
 	_, _, err = ParseAutoTestChannelTimeRange("24:00-08:00")
 	require.Error(t, err)
+}
+
+func TestValidateChannelTestConcurrency(t *testing.T) {
+	require.NoError(t, ValidateChannelTestConcurrency("1"))
+	require.NoError(t, ValidateChannelTestConcurrency("32"))
+	assert.Error(t, ValidateChannelTestConcurrency("0"))
+	assert.Error(t, ValidateChannelTestConcurrency("33"))
+	assert.Error(t, ValidateChannelTestConcurrency("1.5"))
 }

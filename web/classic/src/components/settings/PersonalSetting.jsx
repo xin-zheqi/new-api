@@ -29,6 +29,7 @@ import {
   prepareCredentialCreationOptions,
   buildRegistrationResult,
   isPasskeySupported,
+  logoutAuthentication,
   setUserData,
 } from '../../helpers';
 import { UserContext } from '../../context/User';
@@ -276,15 +277,22 @@ const PersonalSetting = () => {
 
     setPasskeyRequiredVerificationMethod('2fa');
     await startPasskeyVerification(registerPasskey, {
+      scope: 'passkey.register',
       preferredMethod: '2fa',
       title: t('安全验证'),
     });
   };
 
-  const registerPasskey = async () => {
+  const registerPasskey = async (proofToken) => {
     setPasskeyRegisterLoading(true);
     try {
-      const beginRes = await API.post('/api/user/passkey/register/begin');
+      const beginRes = await API.post(
+        '/api/user/passkey/register/begin',
+        undefined,
+        proofToken
+          ? { headers: { 'X-Security-Proof': proofToken } }
+          : undefined,
+      );
       const { success, message, data } = beginRes.data;
       if (!success) {
         throw new Error(message || t('无法发起 Passkey 注册'));
@@ -293,6 +301,9 @@ const PersonalSetting = () => {
       const publicKey = prepareCredentialCreationOptions(
         data?.options || data?.publicKey || data,
       );
+      if (!data?.flow_token) {
+        throw new Error(t('验证流程已过期'));
+      }
       const credential = await navigator.credentials.create({ publicKey });
       const payload = buildRegistrationResult(credential);
       if (!payload) {
@@ -301,7 +312,8 @@ const PersonalSetting = () => {
 
       const finishRes = await API.post(
         '/api/user/passkey/register/finish',
-        payload,
+        { flow_token: data.flow_token, credential: payload },
+        { acceptAuthRotation: true },
       );
       if (!finishRes.data.success) {
         throw new Error(
@@ -331,10 +343,13 @@ const PersonalSetting = () => {
     await startPasskeyRegistration();
   };
 
-  const removePasskey = async () => {
+  const removePasskey = async (proofToken) => {
     setPasskeyDeleteLoading(true);
     try {
-      const res = await API.delete('/api/user/passkey');
+      const res = await API.delete('/api/user/passkey', {
+        headers: proofToken ? { 'X-Security-Proof': proofToken } : undefined,
+        acceptAuthRotation: true,
+      });
       const { success, message } = res.data;
       if (!success) {
         throw new Error(message || t('操作失败，请重试'));
@@ -351,7 +366,9 @@ const PersonalSetting = () => {
   };
 
   const handleRemovePasskey = async () => {
-    await startPasskeyManagementVerification(removePasskey);
+    await startPasskeyManagementVerification(removePasskey, {
+      scope: 'passkey.delete',
+    });
   };
 
   const handlePasskeyVerificationCancel = () => {
@@ -388,9 +405,8 @@ const PersonalSetting = () => {
 
     if (success) {
       showSuccess(t('账户已删除！'));
-      await API.get('/api/user/logout');
+      await logoutAuthentication();
       userDispatch({ type: 'logout' });
-      localStorage.removeItem('user');
       navigate('/login');
     } else {
       showError(message);
@@ -428,10 +444,14 @@ const PersonalSetting = () => {
       showError(t('两次输入的密码不一致！'));
       return;
     }
-    const res = await API.put(`/api/user/self`, {
-      original_password: inputs.original_password,
-      password: inputs.set_new_password,
-    });
+    const res = await API.put(
+      `/api/user/self`,
+      {
+        original_password: inputs.original_password,
+        password: inputs.set_new_password,
+      },
+      { acceptAuthRotation: true },
+    );
     const { success, message } = res.data;
     if (success) {
       showSuccess(t('密码修改成功！'));

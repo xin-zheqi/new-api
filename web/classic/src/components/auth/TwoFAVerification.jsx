@@ -29,7 +29,12 @@ import React, { useState } from 'react';
 
 const { Title, Text, Paragraph } = Typography;
 
-const TwoFAVerification = ({ onSuccess, onBack, isModal = false }) => {
+const TwoFAVerification = ({
+  flowToken,
+  onSuccess,
+  onBack,
+  isModal = false,
+}) => {
   const [loading, setLoading] = useState(false);
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
@@ -50,14 +55,17 @@ const TwoFAVerification = ({ onSuccess, onBack, isModal = false }) => {
 
     setLoading(true);
     try {
-      const res = await API.post('/api/user/login/2fa', {
-        code: verificationCode,
-      });
+      const res = await API.post(
+        '/api/user/login/2fa',
+        {
+          code: verificationCode,
+          flow_token: flowToken,
+        },
+        { skipAuthRefresh: true },
+      );
 
       if (res.data.success) {
         showSuccess('登录成功');
-        // 保存用户信息到本地存储
-        localStorage.setItem('user', JSON.stringify(res.data.data));
         if (onSuccess) {
           onSuccess(res.data.data);
         }

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -23,9 +24,7 @@ func TestInitTaskStoresChannelKeyFingerprint(t *testing.T) {
 	assert.Equal(t, common.Sha256([]byte(key)), task.PrivateData.KeyFingerprint)
 	data, err := task.PrivateData.Value()
 	require.NoError(t, err)
-	serialized, ok := data.([]byte)
-	require.True(t, ok)
-	assert.NotContains(t, string(serialized), key)
+	assert.NotContains(t, fmt.Sprint(data), key)
 }
 
 func TestTaskPrivateDataResolvesChannelKey(t *testing.T) {

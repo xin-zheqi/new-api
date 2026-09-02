@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -273,11 +274,15 @@ func ensureAPIKey(uri, key string) string {
 	if key == "" || uri == "" {
 		return uri
 	}
-	if strings.Contains(uri, "key=") {
+	parsed, err := url.Parse(uri)
+	if err != nil || parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return uri
 	}
-	if strings.Contains(uri, "?") {
-		return fmt.Sprintf("%s&key=%s", uri, key)
+	query := parsed.Query()
+	if query.Get("key") != "" {
+		return parsed.String()
 	}
-	return fmt.Sprintf("%s?key=%s", uri, key)
+	query.Set("key", key)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }

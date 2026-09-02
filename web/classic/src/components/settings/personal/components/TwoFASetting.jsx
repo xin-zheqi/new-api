@@ -108,9 +108,11 @@ const TwoFASetting = ({ t }) => {
 
     setLoading(true);
     try {
-      const res = await API.post('/api/user/2fa/enable', {
-        code: verificationCode,
-      });
+      const res = await API.post(
+        '/api/user/2fa/enable',
+        { code: verificationCode },
+        { acceptAuthRotation: true },
+      );
       if (res.data.success) {
         showSuccess(t('两步验证启用成功！'));
         setEnableModalVisible(false);
@@ -142,9 +144,11 @@ const TwoFASetting = ({ t }) => {
 
     setLoading(true);
     try {
-      const res = await API.post('/api/user/2fa/disable', {
-        code: verificationCode,
-      });
+      const res = await API.post(
+        '/api/user/2fa/disable',
+        { code: verificationCode },
+        { acceptAuthRotation: true },
+      );
       if (res.data.success) {
         showSuccess(t('两步验证已禁用'));
         setDisableModalVisible(false);
@@ -170,9 +174,11 @@ const TwoFASetting = ({ t }) => {
 
     setLoading(true);
     try {
-      const res = await API.post('/api/user/2fa/backup_codes', {
-        code: verificationCode,
-      });
+      const res = await API.post(
+        '/api/user/2fa/backup_codes',
+        { code: verificationCode },
+        { acceptAuthRotation: true },
+      );
       if (res.data.success) {
         setBackupCodes(res.data.data.backup_codes);
         showSuccess(t('备用码重新生成成功'));

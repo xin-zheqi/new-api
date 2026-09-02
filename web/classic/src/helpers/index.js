@@ -32,3 +32,5 @@ export * from './passkey';
 export * from './statusCodeRules';
 export * from './frontendTheme';
 export * from './payment';
+export * from './authSession';
+export * from './passwordEncryption';

@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,6 +34,25 @@ func TestClaudeCodeMimicAlsoAppliesAfterOpenAIConversion(t *testing.T) {
 	}
 
 	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+	require.NoError(t, err)
+	claudeRequest, ok := converted.(*dto.ClaudeRequest)
+	require.True(t, ok)
+	require.Contains(t, string(claudeRequest.Metadata), "device_id")
+	require.Contains(t, claudeRequest.System.([]dto.ClaudeMediaMessage)[0].GetText(), "Claude Code")
+}
+
+func TestClaudeCodeMimicAlsoAppliesAfterResponsesConversion(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelOtherSettings: dto.ChannelOtherSettings{ClaudeCodeMimic: true},
+		},
+	}
+	request := dto.OpenAIResponsesRequest{
+		Model: "claude-sonnet",
+		Input: []byte(`"hello"`),
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, info, request)
 	require.NoError(t, err)
 	claudeRequest, ok := converted.(*dto.ClaudeRequest)
 	require.True(t, ok)

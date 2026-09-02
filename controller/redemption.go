@@ -254,6 +254,9 @@ func validateRedemptionConfig(c *gin.Context, redemption *model.Redemption) erro
 		if redemption.Quota <= 0 {
 			return model.ErrRedemptionQuotaInvalid
 		}
+		if err := common.ValidateWalletQuota(redemption.Quota); err != nil {
+			return err
+		}
 		redemption.SubscriptionPlanId = 0
 	case model.RedemptionTypeSubscription:
 		redemption.Quota = 0

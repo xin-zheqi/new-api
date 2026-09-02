@@ -342,8 +342,7 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 		}
 		switch redemption.RedeemType {
 		case RedemptionTypeQuota:
-			err = tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
-			if err != nil {
+			if err = creditTopUpQuota(tx, userId, redemption.Quota, nil); err != nil {
 				return err
 			}
 			redeemResult.Kind = RedemptionTypeQuota
@@ -386,18 +385,22 @@ func Redeem(key string, userId int) (result *RedeemResult, err error) {
 		return nil, ErrRedeemFailed
 	}
 	if upgradeGroup != "" {
-		_ = UpdateUserGroupCache(userId, upgradeGroup)
+		refreshSubscriptionUserGroupCache(userId, "redemption subscription activation")
 	}
 	if logMessage != "" {
 		RecordLog(userId, LogTypeTopup, logMessage)
+	}
+	if redeemResult.Kind == RedemptionTypeQuota {
+		syncCreditUserQuotaCache(userId, redeemResult.Quota, "redemption")
 	}
 	return redeemResult, nil
 }
 
 func (redemption *Redemption) Insert() error {
-	var err error
-	err = DB.Create(redemption).Error
-	return err
+	if err := redemption.validateGrant(); err != nil {
+		return err
+	}
+	return DB.Create(redemption).Error
 }
 
 func (redemption *Redemption) SelectUpdate() error {
@@ -407,9 +410,34 @@ func (redemption *Redemption) SelectUpdate() error {
 
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (redemption *Redemption) Update() error {
-	var err error
-	err = DB.Model(redemption).Select("name", "status", "quota", "redeem_type", "subscription_plan_id", "invoice_eligible", "invoice_amount_micros", "invoice_currency", "redeemed_time", "expired_time").Updates(redemption).Error
-	return err
+	if err := redemption.validateGrant(); err != nil {
+		return err
+	}
+	return DB.Model(redemption).Select("name", "status", "quota", "redeem_type", "subscription_plan_id", "invoice_eligible", "invoice_amount_micros", "invoice_currency", "redeemed_time", "expired_time").Updates(redemption).Error
+}
+
+func (redemption *Redemption) validateGrant() error {
+	redeemType := NormalizeRedemptionType(redemption.RedeemType)
+	if redeemType == "" {
+		return ErrRedemptionTypeInvalid
+	}
+	redemption.RedeemType = redeemType
+	switch redeemType {
+	case RedemptionTypeQuota:
+		if redemption.Quota <= 0 {
+			return ErrRedemptionQuotaInvalid
+		}
+		if err := common.ValidateWalletQuota(redemption.Quota); err != nil {
+			return err
+		}
+		redemption.SubscriptionPlanId = 0
+	case RedemptionTypeSubscription:
+		if redemption.SubscriptionPlanId <= 0 {
+			return ErrRedemptionPlanRequired
+		}
+		redemption.Quota = 0
+	}
+	return nil
 }
 
 func (redemption *Redemption) Delete() error {

@@ -16,8 +16,8 @@ import (
 // from service.GetHttpClient so other providers keep their existing behavior.
 func NewHTTPClient(proxyURL string, timeout time.Duration) (*http.Client, error) {
 	profile := &Profile{
-		Name:               "nodejs-24-claude-code",
-		EnableGREASE:       true,
+		Name:         "nodejs-24-claude-code",
+		EnableGREASE: true,
 		// Keep the negotiated protocol on HTTP/1.1. net/http cannot safely
 		// drive HTTP/2 over a uTLS socket unless its HTTP/2 transport is
 		// explicitly configured, which otherwise becomes a generic request error.

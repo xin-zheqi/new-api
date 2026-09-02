@@ -179,6 +179,86 @@ func TestRedeemCreditsQuotaExactlyOnce(t *testing.T) {
 	assert.Equal(t, 500, user.Quota)
 }
 
+func TestRedeemRejectsWalletOverflow(t *testing.T) {
+	userId, key := setupRedeemFixture(t, 11)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", userId).Update("quota", common.MaxWalletQuota-10).Error)
+
+	_, err := Redeem(key, userId)
+	require.ErrorIs(t, err, ErrRedeemFailed)
+
+	var user User
+	require.NoError(t, DB.First(&user, "id = ?", userId).Error)
+	assert.Equal(t, common.MaxWalletQuota-10, user.Quota)
+
+	var redemption Redemption
+	require.NoError(t, DB.First(&redemption, "key = ?", key).Error)
+	assert.Equal(t, common.RedemptionCodeStatusEnabled, redemption.Status)
+}
+
+func TestRedemptionQuotaRejectsWalletOverflow(t *testing.T) {
+	setupRedeemFixture(t, 500)
+
+	redemption := &Redemption{
+		Name:        "overflow-redemption",
+		Key:         "10000000000000000000000000000002",
+		Status:      common.RedemptionCodeStatusEnabled,
+		Quota:       common.MaxWalletQuota + 1,
+		CreatedTime: common.GetTimestamp(),
+	}
+	require.Error(t, redemption.Insert())
+}
+
+func TestSubscriptionRedemptionAllowsZeroQuotaAcrossCreateUpdateAndRedeem(t *testing.T) {
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&UserSubscription{}).Error)
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&SubscriptionPlan{}).Error)
+	t.Cleanup(func() {
+		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&UserSubscription{}).Error)
+		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&SubscriptionPlan{}).Error)
+		DB.Exec("DELETE FROM users")
+		DB.Exec("DELETE FROM logs")
+	})
+
+	plan := SubscriptionPlan{
+		Title: "Redemption plan", PriceAmount: 9.99, Currency: "USD",
+		DurationUnit: SubscriptionDurationMonth, DurationValue: 1,
+		Enabled: true, TotalAmount: 1000,
+	}
+	require.NoError(t, DB.Create(&plan).Error)
+	InvalidateSubscriptionPlanCache(plan.Id)
+	t.Cleanup(func() { InvalidateSubscriptionPlanCache(plan.Id) })
+	user := User{Username: "subscription-redemption-user", Password: "password", AffCode: "subscription-redemption-user"}
+	require.NoError(t, DB.Create(&user).Error)
+
+	redemption := Redemption{
+		Name: "subscription-create", Key: "10000000000000000000000000000003",
+		Status: common.RedemptionCodeStatusEnabled, RedeemType: RedemptionTypeSubscription,
+		Quota: 0, SubscriptionPlanId: plan.Id, CreatedTime: common.GetTimestamp(),
+	}
+	require.NoError(t, redemption.Insert())
+	redemption.Name = "subscription-update"
+	require.NoError(t, redemption.Update())
+
+	var stored Redemption
+	require.NoError(t, DB.First(&stored, redemption.Id).Error)
+	assert.Equal(t, RedemptionTypeSubscription, stored.RedeemType)
+	assert.Zero(t, stored.Quota)
+	assert.Equal(t, plan.Id, stored.SubscriptionPlanId)
+	assert.Equal(t, "subscription-update", stored.Name)
+
+	result, err := Redeem(redemption.Key, user.Id)
+	require.NoError(t, err)
+	require.NotNil(t, result.Subscription)
+	assert.Equal(t, RedemptionTypeSubscription, result.Kind)
+	assert.Equal(t, plan.Id, result.Subscription.PlanId)
+
+	var subscription UserSubscription
+	require.NoError(t, DB.Where("user_id = ?", user.Id).First(&subscription).Error)
+	assert.Equal(t, "redemption", subscription.Source)
+	assert.Equal(t, plan.Id, subscription.PlanId)
+}
+
 // Exactly one of several concurrent redeems of the same code may win, and
 // quota must be credited exactly once.
 func TestRedeemConcurrentSingleSuccess(t *testing.T) {

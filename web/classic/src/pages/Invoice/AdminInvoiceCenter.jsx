@@ -383,6 +383,7 @@ const AdminInvoiceCenter = () => {
       fixed: 'right',
       render: (_, application) => {
         const pending = application.status === 'pending';
+        const canUploadPdf = pending || application.status === 'completed';
         return (
           <Space spacing={4} wrap>
             <Tooltip content={t('View details')}>
@@ -411,17 +412,19 @@ const AdminInvoiceCenter = () => {
                 />
               </Tooltip>
             ) : null}
+            {canUploadPdf ? (
+              <Button
+                size='small'
+                icon={<FileUp size={15} />}
+                loading={actionKey === `upload:${application.id}`}
+                disabled={Boolean(actionKey)}
+                onClick={() => choosePdf(application.id)}
+              >
+                {application.pdf_name ? t('替换发票文件') : t('上传发票文件')}
+              </Button>
+            ) : null}
             {pending ? (
               <>
-                <Button
-                  size='small'
-                  icon={<FileUp size={15} />}
-                  loading={actionKey === `upload:${application.id}`}
-                  disabled={Boolean(actionKey)}
-                  onClick={() => choosePdf(application.id)}
-                >
-                  {application.pdf_name ? t('替换发票文件') : t('上传发票文件')}
-                </Button>
                 {application.pdf_name ? (
                   <Tooltip content={t('Delete PDF')}>
                     <Button

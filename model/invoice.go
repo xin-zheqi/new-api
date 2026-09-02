@@ -268,16 +268,9 @@ func GetInvoiceSettings() InvoiceSettings {
 // prevents the periodic in-memory option sync from creating a cross-node window
 // where a disabled or tightened invoice policy is still accepted.
 func LoadInvoiceSettings() (InvoiceSettings, error) {
-	if DB == nil {
-		return InvoiceSettings{}, errors.New("invoice settings database is unavailable")
-	}
-	var options []Option
-	if err := DB.Select("key", "value").Where("key IN ?", invoiceSettingOptionKeys).Find(&options).Error; err != nil {
+	values, err := GetOptionValues(invoiceSettingOptionKeys)
+	if err != nil {
 		return InvoiceSettings{}, fmt.Errorf("load invoice settings: %w", err)
-	}
-	values := make(map[string]string, len(options))
-	for _, option := range options {
-		values[option.Key] = option.Value
 	}
 	settings, err := invoiceSettingsFromValues(values, true)
 	if err != nil {
@@ -768,6 +761,7 @@ func ReplaceInvoicePDF(id int, path, name string) (string, error) {
 	if id <= 0 || path == "" || name == "" {
 		return "", ErrInvoiceApplicationNotFound
 	}
+	allowedStatuses := []string{InvoiceApplicationStatusPending, InvoiceApplicationStatusCompleted}
 	var oldPath string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var application InvoiceApplication
@@ -777,11 +771,11 @@ func ReplaceInvoicePDF(id int, path, name string) (string, error) {
 			}
 			return err
 		}
-		if application.Status != InvoiceApplicationStatusPending {
+		if application.Status != InvoiceApplicationStatusPending && application.Status != InvoiceApplicationStatusCompleted {
 			return ErrInvoiceApplicationState
 		}
 		oldPath = application.PDFPath
-		result := tx.Model(&InvoiceApplication{}).Where("id = ? AND status = ?", id, InvoiceApplicationStatusPending).
+		result := tx.Model(&InvoiceApplication{}).Where("id = ? AND status IN ?", id, allowedStatuses).
 			Updates(map[string]interface{}{"pdf_path": path, "pdf_name": name, "updated_at": common.GetTimestamp()})
 		if result.Error != nil {
 			return result.Error

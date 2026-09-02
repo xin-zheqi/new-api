@@ -35,7 +35,7 @@ const OAuth2Callback = (props) => {
   const [searchParams] = useSearchParams();
   const [, userDispatch] = useContext(UserContext);
   const navigate = useNavigate();
-  
+
   // 防止 React 18 Strict Mode 下重复执行
   const hasExecuted = useRef(false);
 
@@ -60,9 +60,8 @@ const OAuth2Callback = (props) => {
         showSuccess(t('绑定成功！'));
         navigate('/console/personal');
       } else {
-        userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
         setUserData(data);
+        userDispatch({ type: 'login', payload: data });
         updateAPI();
         showSuccess(t('登录成功！'));
         navigate('/console/token');
@@ -81,12 +80,40 @@ const OAuth2Callback = (props) => {
     }
   };
 
+  const finishTelegramBind = async () => {
+    const result = searchParams.get('telegram_bind');
+    const flowToken = searchParams.get('flow_token');
+    if (result !== 'success' || !flowToken) {
+      showError(t('操作失败，请重试'));
+      navigate('/console/personal', { replace: true });
+      return;
+    }
+    try {
+      const response = await API.get('/api/user/self');
+      if (!response.data?.success || !response.data.data?.telegram_id) {
+        throw new Error(response.data?.message || t('操作失败，请重试'));
+      }
+      setUserData(response.data.data);
+      userDispatch({ type: 'login', payload: response.data.data });
+      updateAPI();
+      showSuccess(t('绑定成功！'));
+    } catch (error) {
+      showError(error.message || t('操作失败，请重试'));
+    }
+    navigate('/console/personal', { replace: true });
+  };
+
   useEffect(() => {
     // 防止 React 18 Strict Mode 下重复执行
     if (hasExecuted.current) {
       return;
     }
     hasExecuted.current = true;
+
+    if (props.type === 'telegram') {
+      finishTelegramBind();
+      return;
+    }
 
     const code = searchParams.get('code');
     const state = searchParams.get('state');

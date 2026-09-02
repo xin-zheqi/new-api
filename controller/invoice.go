@@ -495,7 +495,7 @@ func UploadInvoicePDF(c *gin.Context) {
 		writeInvoiceModelError(c, err)
 		return
 	}
-	if application.Status != model.InvoiceApplicationStatusPending {
+	if application.Status != model.InvoiceApplicationStatusPending && application.Status != model.InvoiceApplicationStatusCompleted {
 		writeInvoiceModelError(c, model.ErrInvoiceApplicationState)
 		return
 	}

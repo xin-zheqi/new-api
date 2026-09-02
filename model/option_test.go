@@ -1,15 +1,33 @@
 package model
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+func useOptionTestDB(t *testing.T, db *gorm.DB, databaseType common.DatabaseType) {
+	t.Helper()
+	originalDB := DB
+	originalType := common.MainDatabaseType()
+	DB = db
+	common.SetMainDatabaseType(databaseType)
+	initCol()
+	t.Cleanup(func() {
+		DB = originalDB
+		common.SetMainDatabaseType(originalType)
+		initCol()
+	})
+}
 
 func TestUpdateOptionReturnsPersistenceErrorWithoutUpdatingMemory(t *testing.T) {
 	originalDB := DB
@@ -45,14 +63,11 @@ func TestUpdateOptionReturnsPersistenceErrorWithoutUpdatingMemory(t *testing.T) 
 }
 
 func TestGetOptionValueReadsCurrentDatabaseState(t *testing.T) {
-	originalDB := DB
-	t.Cleanup(func() { DB = originalDB })
-
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "read-option.db")), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&Option{}))
 	require.NoError(t, db.Create(&Option{Key: "payment_setting.mall_enabled", Value: "true"}).Error)
-	DB = db
+	useOptionTestDB(t, db, common.DatabaseTypeSQLite)
 
 	value, found, err := GetOptionValue("payment_setting.mall_enabled")
 	require.NoError(t, err)
@@ -65,8 +80,71 @@ func TestGetOptionValueReadsCurrentDatabaseState(t *testing.T) {
 	assert.Empty(t, value)
 }
 
+func TestOptionReadsWorkAcrossSupportedServerDatabases(t *testing.T) {
+	testCases := []struct {
+		name      string
+		envName   string
+		dbType    common.DatabaseType
+		dialector func(string) gorm.Dialector
+	}{
+		{
+			name:    "mysql",
+			envName: "TEST_MYSQL_DSN",
+			dbType:  common.DatabaseTypeMySQL,
+			dialector: func(dsn string) gorm.Dialector {
+				return mysql.Open(dsn)
+			},
+		},
+		{
+			name:    "postgresql",
+			envName: "TEST_POSTGRES_DSN",
+			dbType:  common.DatabaseTypePostgreSQL,
+			dialector: func(dsn string) gorm.Dialector {
+				return postgres.New(postgres.Config{
+					DSN:                  dsn,
+					PreferSimpleProtocol: true,
+				})
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			dsn := strings.TrimSpace(os.Getenv(testCase.envName))
+			if dsn == "" {
+				t.Skipf("%s is not configured", testCase.envName)
+			}
+
+			db, err := gorm.Open(testCase.dialector(dsn), &gorm.Config{})
+			require.NoError(t, err)
+			require.NoError(t, db.AutoMigrate(&Option{}))
+
+			useOptionTestDB(t, db, testCase.dbType)
+
+			const key = "test.option.reserved-key-read"
+			require.NoError(t, db.Where(commonKeyCol+" = ?", key).Delete(&Option{}).Error)
+			require.NoError(t, db.Create(&Option{Key: key, Value: "preserved"}).Error)
+			t.Cleanup(func() {
+				require.NoError(t, db.Where(commonKeyCol+" = ?", key).Delete(&Option{}).Error)
+				sqlDB, dbErr := db.DB()
+				if dbErr == nil {
+					require.NoError(t, sqlDB.Close())
+				}
+			})
+
+			value, found, err := GetOptionValue(key)
+			require.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, "preserved", value)
+
+			values, err := GetOptionValues([]string{key, "missing"})
+			require.NoError(t, err)
+			assert.Equal(t, map[string]string{key: "preserved"}, values)
+		})
+	}
+}
+
 func TestLoadInvoiceSettingsUsesCurrentDatabaseStateAndRejectsInvalidPolicy(t *testing.T) {
-	originalDB := DB
 	common.OptionMapRWMutex.Lock()
 	originalOptionMap := common.OptionMap
 	common.OptionMap = map[string]string{
@@ -77,7 +155,6 @@ func TestLoadInvoiceSettingsUsesCurrentDatabaseStateAndRejectsInvalidPolicy(t *t
 	}
 	common.OptionMapRWMutex.Unlock()
 	t.Cleanup(func() {
-		DB = originalDB
 		common.OptionMapRWMutex.Lock()
 		common.OptionMap = originalOptionMap
 		common.OptionMapRWMutex.Unlock()
@@ -92,7 +169,7 @@ func TestLoadInvoiceSettingsUsesCurrentDatabaseStateAndRejectsInvalidPolicy(t *t
 		{Key: "InvoiceLookbackDays", Value: "365"},
 		{Key: "InvoiceMonthlyLimit", Value: "4"},
 	}).Error)
-	DB = db
+	useOptionTestDB(t, db, common.DatabaseTypeSQLite)
 
 	settings, err := LoadInvoiceSettings()
 	require.NoError(t, err)
@@ -102,7 +179,7 @@ func TestLoadInvoiceSettingsUsesCurrentDatabaseStateAndRejectsInvalidPolicy(t *t
 	assert.Equal(t, 4, settings.MonthlyLimit)
 
 	require.NoError(t, db.Model(&Option{}).
-		Where("key = ?", "InvoiceLookbackDays").
+		Where(commonKeyCol+" = ?", "InvoiceLookbackDays").
 		Update("value", "invalid").Error)
 	settings, err = LoadInvoiceSettings()
 	require.Error(t, err)

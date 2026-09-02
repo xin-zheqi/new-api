@@ -4652,8 +4652,16 @@
     "订单有效期必须是 1 到 120 分钟之间的整数": "Thời hạn đơn hàng phải là số nguyên từ 1 đến 120 phút",
     "请使用微信扫描二维码完成支付": "Quét mã QR bằng WeChat để hoàn tất thanh toán",
     "请填写同一微信支付商户下签发的商户凭据。敏感字段保存后不会回显，留空表示保持原值。": "Dùng thông tin xác thực của cùng một thương nhân WeChat. Trường nhạy cảm sẽ bị ẩn sau khi lưu; để trống để giữ giá trị hiện tại.",
-    "请填写开票币种": "Nhập tiền tệ hóa đơn"
-  },
-  "Balance recharge": "Nạp số dư",
-  "Redemption code balance recharge": "Nạp số dư bằng mã đổi thưởng"
+    "请填写开票币种": "Nhập tiền tệ hóa đơn",
+    "Balance recharge": "Nạp số dư",
+    "Passkey 验证状态无效": "Trạng thái xác minh Passkey không hợp lệ.",
+    "Passkey 验证被取消": "Đã hủy xác minh bằng Passkey.",
+    "Passkey 验证被取消或超时": "Đã hủy hoặc hết thời gian xác minh bằng Passkey.",
+    "Redemption code balance recharge": "Nạp số dư bằng mã đổi thưởng",
+    "不支持的验证方式: {{method}}": "Phương thức xác minh không được hỗ trợ: {{method}}",
+    "开始验证失败": "Không thể bắt đầu xác minh.",
+    "登录流程已过期，请重新登录": "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+    "验证凭据未返回": "Không nhận được bằng chứng xác minh.",
+    "验证流程已过期": "Quy trình xác minh đã hết hạn."
+  }
 }

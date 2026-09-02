@@ -16,6 +16,7 @@ docs
 /web/default/dist
 /web/classic/node_modules
 /web/classic/dist
+/web/dist
 .env
 .env.*
 !.env.example

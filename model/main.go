@@ -3,7 +3,6 @@ package model
 import (
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/url"
@@ -23,7 +22,6 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 var commonGroupCol string
@@ -33,6 +31,19 @@ var commonFalseVal string
 
 var logKeyCol string
 var logGroupCol string
+
+// jsonScanBytes 归一化 json 列的驱动返回值:不同驱动/协议模式下同一列可能
+// 以 []byte 或 string 返回,静默丢弃 string 会导致字段被清零而不报错。
+func jsonScanBytes(value interface{}) []byte {
+	switch v := value.(type) {
+	case []byte:
+		return v
+	case string:
+		return []byte(v)
+	default:
+		return nil
+	}
+}
 
 func initCol() {
 	// init common column names
@@ -131,19 +142,6 @@ func normalizeClickHouseDSN(dsn string) string {
 	return parsed.String()
 }
 
-func newGormConfig(prepareStmt bool, output io.Writer) *gorm.Config {
-	return &gorm.Config{
-		PrepareStmt: prepareStmt,
-		Logger: gormlogger.New(log.New(output, "\r\n", log.LstdFlags), gormlogger.Config{
-			SlowThreshold:             200 * time.Millisecond,
-			LogLevel:                  gormlogger.Warn,
-			IgnoreRecordNotFoundError: true,
-			Colorful:                  false,
-			ParameterizedQueries:      true,
-		}),
-	}
-}
-
 func isLocalDatabaseHost(host string) bool {
 	host = strings.ToLower(strings.Trim(strings.TrimSpace(host), "[]"))
 	if host == "" || host == "localhost" || !strings.Contains(host, ".") {
@@ -213,6 +211,8 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 			}
 			// Use PostgreSQL
 			common.SysLog("using PostgreSQL as database")
+			// 同时关闭 pgx 隐式与 GORM 显式预处理语句:命名 prepared statement 与
+			// 事务池代理(PgBouncer/Neon/Supabase)不兼容,会触发 FATAL 08P01/42P05。
 			db, err := gorm.Open(postgres.New(postgres.Config{
 				DSN:                  dsn,
 				PreferSimpleProtocol: true, // disables implicit prepared statement usage
@@ -275,6 +275,9 @@ func InitDB() (err error) {
 		if !common.IsMasterNode {
 			return nil
 		}
+		if err := ensureUserQuotaColumns(DB, common.MainDatabaseType()); err != nil {
+			return err
+		}
 		if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
 			//_, _ = sqlDB.Exec("ALTER TABLE channels MODIFY model_mapping TEXT;") // TODO: delete this line when most users have upgraded
 		}
@@ -328,7 +331,77 @@ func InitLogDB() (err error) {
 	return err
 }
 
+var userQuotaColumns = []struct {
+	column string
+	field  string
+}{
+	{column: "quota", field: "Quota"},
+	{column: "used_quota", field: "UsedQuota"},
+	{column: "aff_quota", field: "AffQuota"},
+	{column: "aff_history", field: "AffHistoryQuota"},
+}
+
+// ensureUserQuotaColumns upgrades legacy wallet columns before AutoMigrate so
+// existing balances remain usable by the 64-bit quota domain.
+func ensureUserQuotaColumns(db *gorm.DB, dbType common.DatabaseType) error {
+	if db == nil || dbType == common.DatabaseTypeSQLite {
+		return nil
+	}
+	if !db.Migrator().HasTable(&User{}) {
+		return nil
+	}
+	columnTypes, err := db.Migrator().ColumnTypes(&User{})
+	if err != nil {
+		return fmt.Errorf("failed to inspect users schema: %w", err)
+	}
+	columnTypeByName := make(map[string]string, len(columnTypes))
+	for _, columnType := range columnTypes {
+		columnTypeByName[strings.ToLower(columnType.Name())] = columnType.DatabaseTypeName()
+	}
+	for _, quotaColumn := range userQuotaColumns {
+		dataType, exists := columnTypeByName[quotaColumn.column]
+		if !exists || is64BitIntegerType(dbType, dataType) {
+			continue
+		}
+		common.SysLog(fmt.Sprintf("upgrading users.%s from %s to 64-bit integer", quotaColumn.column, dataType))
+		if err := db.Migrator().AlterColumn(&User{}, quotaColumn.field); err != nil {
+			return fmt.Errorf("upgrade users.%s to 64-bit integer: %w", quotaColumn.column, err)
+		}
+	}
+
+	columnTypes, err = db.Migrator().ColumnTypes(&User{})
+	if err != nil {
+		return fmt.Errorf("verify users schema after quota migration: %w", err)
+	}
+	for _, actual := range columnTypes {
+		for _, quotaColumn := range userQuotaColumns {
+			if strings.EqualFold(actual.Name(), quotaColumn.column) && !is64BitIntegerType(dbType, actual.DatabaseTypeName()) {
+				return fmt.Errorf("users.%s still uses %s after quota migration", quotaColumn.column, actual.DatabaseTypeName())
+			}
+		}
+	}
+	return nil
+}
+
+func is64BitIntegerType(dbType common.DatabaseType, dataType string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(dataType))
+	switch dbType {
+	case common.DatabaseTypeMySQL:
+		return normalized == "bigint" || normalized == "unsigned bigint" || normalized == "bigint unsigned"
+	case common.DatabaseTypePostgreSQL:
+		return normalized == "bigint" || normalized == "int8"
+	default:
+		return false
+	}
+}
+
 func migrateDB() error {
+	if err := migrateTokenKeyUniqueness(DB); err != nil {
+		return err
+	}
+	if err := migratePrefillGroupUniqueness(DB); err != nil {
+		return err
+	}
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
@@ -340,8 +413,12 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&UserSession{},
+		&AuthFlow{},
+		&ExternalIdentityClaim{},
 		&PasskeyCredential{},
 		&Option{},
+		&LoginEncryptionKey{},
 		&Redemption{},
 		&Ability{},
 		&Log{},
@@ -349,6 +426,7 @@ func migrateDB() error {
 		&TopUp{},
 		&QuotaData{},
 		&Task{},
+		&TaskPlugin{},
 		&Model{},
 		&Vendor{},
 		&PrefillGroup{},
@@ -381,6 +459,12 @@ func migrateDB() error {
 	}
 	err := DB.AutoMigrate(autoMigrateModels...)
 	if err != nil {
+		return err
+	}
+	if err := InitializeUserAuthVersions(); err != nil {
+		return err
+	}
+	if err := InitializeExternalIdentityClaims(); err != nil {
 		return err
 	}
 	if err := normalizeTicketActiveSlotIndex(); err != nil {
@@ -523,7 +607,6 @@ func migrateDBFast() error {
 			return err
 		}
 	}
-	common.SysLog("database migrated")
 	return nil
 }
 

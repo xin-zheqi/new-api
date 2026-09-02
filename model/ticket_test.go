@@ -315,7 +315,11 @@ func TestTicketMigrationHasNoForeignKeysAndEnforcesOneActiveSlot(t *testing.T) {
 	DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	initCol()
-	require.NoError(t, db.AutoMigrate(&User{}, &UserOAuthBinding{}, &Option{}, &Ticket{}, &TicketMessage{}, &TicketAttachment{}))
+	require.NoError(t, db.AutoMigrate(
+		&User{}, &UserSession{}, &AuthFlow{}, &ExternalIdentityClaim{},
+		&PasskeyCredential{}, &TwoFA{}, &TwoFABackupCode{}, &Token{},
+		&UserOAuthBinding{}, &Option{}, &Ticket{}, &TicketMessage{}, &TicketAttachment{},
+	))
 	require.NoError(t, normalizeTicketActiveSlotIndex())
 
 	for _, table := range []string{"tickets", "ticket_messages", "ticket_attachments"} {

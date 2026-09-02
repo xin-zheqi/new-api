@@ -99,6 +99,8 @@ const AccountManagement = ({
   const isBound = (accountId) => Boolean(accountId);
   const [showTelegramBindModal, setShowTelegramBindModal] =
     React.useState(false);
+  const [telegramBindUrl, setTelegramBindUrl] = React.useState('');
+  const [telegramBindLoading, setTelegramBindLoading] = React.useState(false);
   const [customOAuthBindings, setCustomOAuthBindings] = React.useState([]);
   const [customOAuthLoading, setCustomOAuthLoading] = React.useState({});
 
@@ -112,7 +114,9 @@ const AccountManagement = ({
         showError(res.data.message || t('获取绑定信息失败'));
       }
     } catch (error) {
-      showError(error.response?.data?.message || error.message || t('获取绑定信息失败'));
+      showError(
+        error.response?.data?.message || error.message || t('获取绑定信息失败'),
+      );
     }
   };
 
@@ -126,7 +130,9 @@ const AccountManagement = ({
       onOk: async () => {
         setCustomOAuthLoading((prev) => ({ ...prev, [providerId]: true }));
         try {
-          const res = await API.delete(`/api/user/oauth/bindings/${providerId}`);
+          const res = await API.delete(
+            `/api/user/oauth/bindings/${providerId}`,
+          );
           if (res.data.success) {
             showSuccess(t('解绑成功'));
             await loadCustomOAuthBindings();
@@ -134,7 +140,9 @@ const AccountManagement = ({
             showError(res.data.message);
           }
         } catch (error) {
-          showError(error.response?.data?.message || error.message || t('操作失败'));
+          showError(
+            error.response?.data?.message || error.message || t('操作失败'),
+          );
         } finally {
           setCustomOAuthLoading((prev) => ({ ...prev, [providerId]: false }));
         }
@@ -147,16 +155,49 @@ const AccountManagement = ({
     onCustomOAuthClicked(provider);
   };
 
+  const handleTelegramBind = async () => {
+    setTelegramBindLoading(true);
+    try {
+      const response = await API.post('/api/oauth/telegram/bind/start');
+      const callback = response.data?.data?.callback_url;
+      const callbackUrl = new URL(callback, window.location.origin);
+      if (
+        !response.data?.success ||
+        callbackUrl.origin !== window.location.origin ||
+        !callbackUrl.pathname.startsWith('/api/oauth/telegram/bind/')
+      ) {
+        throw new Error(response.data?.message || t('操作失败，请重试'));
+      }
+      setTelegramBindUrl(`${callbackUrl.pathname}${callbackUrl.search}`);
+      setShowTelegramBindModal(true);
+    } catch (error) {
+      showError(
+        error.response?.data?.message || error.message || t('操作失败，请重试'),
+      );
+    } finally {
+      setTelegramBindLoading(false);
+    }
+  };
+
+  const closeTelegramBindModal = () => {
+    setShowTelegramBindModal(false);
+    setTelegramBindUrl('');
+  };
+
   // Check if custom OAuth provider is bound
   const isCustomOAuthBound = (providerId) => {
     const normalizedId = Number(providerId);
-    return customOAuthBindings.some((b) => Number(b.provider_id) === normalizedId);
+    return customOAuthBindings.some(
+      (b) => Number(b.provider_id) === normalizedId,
+    );
   };
 
   // Get binding info for a provider
   const getCustomOAuthBinding = (providerId) => {
     const normalizedId = Number(providerId);
-    return customOAuthBindings.find((b) => Number(b.provider_id) === normalizedId);
+    return customOAuthBindings.find(
+      (b) => Number(b.provider_id) === normalizedId,
+    );
   };
 
   React.useEffect(() => {
@@ -439,7 +480,8 @@ const AccountManagement = ({
                           type='primary'
                           theme='outline'
                           size='small'
-                          onClick={() => setShowTelegramBindModal(true)}
+                          onClick={handleTelegramBind}
+                          loading={telegramBindLoading}
                         >
                           {t('绑定')}
                         </Button>
@@ -460,7 +502,7 @@ const AccountManagement = ({
               <Modal
                 title={t('绑定 Telegram')}
                 visible={showTelegramBindModal}
-                onCancel={() => setShowTelegramBindModal(false)}
+                onCancel={closeTelegramBindModal}
                 footer={null}
               >
                 <div className='my-3 text-sm text-gray-600'>
@@ -468,10 +510,13 @@ const AccountManagement = ({
                 </div>
                 <div className='flex justify-center'>
                   <div className='scale-90'>
-                    <TelegramLoginButton
-                      dataAuthUrl='/api/oauth/telegram/bind'
-                      botName={status.telegram_bot_name}
-                    />
+                    {telegramBindUrl && (
+                      <TelegramLoginButton
+                        key={telegramBindUrl}
+                        dataAuthUrl={telegramBindUrl}
+                        botName={status.telegram_bot_name}
+                      />
+                    )}
                   </div>
                 </div>
               </Modal>
@@ -554,7 +599,10 @@ const AccountManagement = ({
                               size='small'
                               loading={customOAuthLoading[provider.id]}
                               onClick={() =>
-                                handleUnbindCustomOAuth(provider.id, provider.name)
+                                handleUnbindCustomOAuth(
+                                  provider.id,
+                                  provider.name,
+                                )
                               }
                             >
                               {t('解绑')}

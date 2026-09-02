@@ -19,7 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import i18next from 'i18next';
 
+import zhCNTranslation from '../../i18n/locales/zh-CN.json';
 import { formatInvoiceMoney } from './invoice.js';
 
 describe('classic invoice money formatting', () => {
@@ -38,5 +40,20 @@ describe('classic invoice money formatting', () => {
       '-',
     );
     assert.equal(formatInvoiceMoney(1000000, 'ZZZ', 'en-US'), '-');
+  });
+
+  test('resolves structured invoice item labels from the active namespace', async () => {
+    const instance = i18next.createInstance();
+    await instance.init({
+      lng: 'zh-CN',
+      fallbackLng: false,
+      resources: { 'zh-CN': zhCNTranslation },
+    });
+
+    assert.equal(instance.t('Balance recharge'), '余额充值');
+    assert.equal(
+      instance.t('Redemption code balance recharge'),
+      '兑换码充值余额',
+    );
   });
 });

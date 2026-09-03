@@ -446,8 +446,10 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("channel key is unavailable for task %s", taskId)
 	}
 	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
-		"task_id": task.GetUpstreamTaskID(),
-		"action":  constant.NormalizeTaskAction(task.Action),
+		"task_id":        task.GetUpstreamTaskID(),
+		"action":         constant.NormalizeTaskAction(task.Action),
+		"model":          task.Properties.OriginModelName,
+		"upstream_model": task.Properties.UpstreamModelName,
 	}, proxy)
 	if err != nil {
 		return fmt.Errorf("fetchTask failed for task %s: %w", taskId, err)

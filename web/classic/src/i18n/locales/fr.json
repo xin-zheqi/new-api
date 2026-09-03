@@ -4129,6 +4129,8 @@
     "开始验证失败": "Impossible de démarrer la vérification.",
     "登录流程已过期，请重新登录": "La session de connexion a expiré. Reconnectez-vous.",
     "验证凭据未返回": "La preuve de vérification n'a pas été renvoyée.",
-    "验证流程已过期": "Le processus de vérification a expiré."
+    "验证流程已过期": "Le processus de vérification a expiré.",
+    "支付币种": "Devise de paiement",
+    "支付币种无效": "Devise de paiement non valide"
   }
 }

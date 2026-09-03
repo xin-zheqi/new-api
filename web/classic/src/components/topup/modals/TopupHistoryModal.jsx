@@ -37,10 +37,16 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { Coins } from 'lucide-react';
 import { IconSearch } from '@douyinfe/semi-icons';
-import { API, formatPaymentAmount, timestamp2string } from '../../../helpers';
+import {
+  API,
+  formatPaymentAmount,
+  isSupportedCurrencyCode,
+  timestamp2string,
+} from '../../../helpers';
 import { isAdmin, isRoot } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 const { Text } = Typography;
+const DEFAULT_MANUAL_CURRENCY = 'CNY';
 
 // 状态映射配置
 const STATUS_CONFIG = {
@@ -87,8 +93,9 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     payment_method: 'bank_transfer',
     amount: 1,
     money: 0,
+    currency: DEFAULT_MANUAL_CURRENCY,
     invoice_amount: 0,
-    invoice_currency: 'USD',
+    invoice_currency: DEFAULT_MANUAL_CURRENCY,
     create_time: new Date(),
     credit_balance: false,
   });
@@ -184,6 +191,9 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       payment_method: 'bank_transfer',
       amount: 1,
       money: 0,
+      currency: DEFAULT_MANUAL_CURRENCY,
+      invoice_amount: 0,
+      invoice_currency: DEFAULT_MANUAL_CURRENCY,
       create_time: new Date(),
       credit_balance: false,
     });
@@ -236,6 +246,9 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       payment_method: String(manualForm.payment_method || '').trim(),
       amount: Number(manualForm.amount || 0),
       money: Number(manualForm.money || 0),
+      currency: String(manualForm.currency || '')
+        .trim()
+        .toUpperCase(),
       invoice_amount: Number(manualForm.invoice_amount || 0),
       invoice_currency: String(manualForm.invoice_currency || '')
         .trim()
@@ -246,8 +259,11 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     if (
       payload.user_id <= 0 ||
       !payload.payment_method ||
+      !Number.isSafeInteger(payload.amount) ||
       payload.amount <= 0 ||
+      !Number.isFinite(payload.money) ||
       payload.money < 0 ||
+      !Number.isFinite(payload.invoice_amount) ||
       payload.invoice_amount < 0 ||
       payload.create_time <= 0
     ) {
@@ -258,7 +274,14 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       Toast.error({ content: t('支付方式不能超过 50 个字符') });
       return;
     }
-    if (payload.invoice_amount > 0 && !payload.invoice_currency) {
+    if (!isSupportedCurrencyCode(payload.currency)) {
+      Toast.error({ content: t('支付币种无效') });
+      return;
+    }
+    if (
+      payload.invoice_amount > 0 &&
+      !isSupportedCurrencyCode(payload.invoice_currency)
+    ) {
       Toast.error({ content: t('请填写开票币种') });
       return;
     }
@@ -534,29 +557,46 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
               />
             </div>
 
+            <div>
+              <Text strong>{t('充值额度')}</Text>
+              <Input
+                className='mt-2'
+                type='number'
+                min={1}
+                value={manualForm.amount}
+                onChange={(value) =>
+                  setManualForm({ ...manualForm, amount: value })
+                }
+              />
+            </div>
+
             <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-              <div>
-                <Text strong>{t('充值额度')}</Text>
-                <Input
-                  className='mt-2'
-                  type='number'
-                  min={1}
-                  value={manualForm.amount}
-                  onChange={(value) =>
-                    setManualForm({ ...manualForm, amount: value })
-                  }
-                />
-              </div>
               <div>
                 <Text strong>{t('支付金额')}</Text>
                 <Input
                   className='mt-2'
                   type='number'
                   min={0}
+                  step={0.000001}
                   value={manualForm.money}
                   onChange={(value) =>
                     setManualForm({ ...manualForm, money: value })
                   }
+                />
+              </div>
+              <div>
+                <Text strong>{t('支付币种')}</Text>
+                <Input
+                  className='mt-2'
+                  maxLength={3}
+                  value={manualForm.currency}
+                  onChange={(value) =>
+                    setManualForm({
+                      ...manualForm,
+                      currency: value.toUpperCase(),
+                    })
+                  }
+                  placeholder={DEFAULT_MANUAL_CURRENCY}
                 />
               </div>
             </div>
@@ -568,7 +608,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
                   className='mt-2'
                   type='number'
                   min={0}
-                  step={0.01}
+                  step={0.000001}
                   value={manualForm.invoice_amount}
                   onChange={(value) =>
                     setManualForm({ ...manualForm, invoice_amount: value })
@@ -582,7 +622,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
                 <Text strong>{t('开票币种')}</Text>
                 <Input
                   className='mt-2'
-                  maxLength={8}
+                  maxLength={3}
                   value={manualForm.invoice_currency}
                   onChange={(value) =>
                     setManualForm({
@@ -590,7 +630,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
                       invoice_currency: value.toUpperCase(),
                     })
                   }
-                  placeholder='USD'
+                  placeholder={DEFAULT_MANUAL_CURRENCY}
                 />
               </div>
             </div>

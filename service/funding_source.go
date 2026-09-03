@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
 
@@ -40,7 +41,10 @@ type WalletFunding struct {
 func (w *WalletFunding) Source() string { return BillingSourceWallet }
 
 func (w *WalletFunding) PreConsume(amount int) error {
-	if amount <= 0 {
+	if err := common.ValidateQuota(amount); err != nil {
+		return err
+	}
+	if amount == 0 {
 		return nil
 	}
 	reserved, err := model.TryReserveUserQuota(w.userId, amount)
@@ -55,6 +59,9 @@ func (w *WalletFunding) PreConsume(amount int) error {
 }
 
 func (w *WalletFunding) Settle(delta int) error {
+	if err := common.ValidateQuotaDelta(delta); err != nil {
+		return err
+	}
 	if delta == 0 {
 		return nil
 	}
@@ -94,6 +101,9 @@ type SubscriptionFunding struct {
 func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription }
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
+	if s.amount <= 0 || s.amount > int64(common.MaxQuota) {
+		return errors.New("invalid subscription pre-consume amount")
+	}
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
 	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
 	if err != nil {
@@ -112,6 +122,9 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 }
 
 func (s *SubscriptionFunding) Settle(delta int) error {
+	if err := common.ValidateQuotaDelta(delta); err != nil {
+		return err
+	}
 	if delta == 0 {
 		return nil
 	}

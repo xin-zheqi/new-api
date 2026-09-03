@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -92,7 +93,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	if operation_setting.GetGeneralSetting().QuotaDisplayType == operation_setting.QuotaDisplayTypeCNY {
 		currency = operation_setting.QuotaDisplayTypeCNY
 	}
-	expectedPayment, err := model.NewSubscriptionPaymentFromMajorUnits(fmt.Sprintf("%.2f", plan.PriceAmount), currency)
+	expectedPayment, err := model.NewSubscriptionPaymentFromMajorUnits(strconv.FormatFloat(plan.PriceAmount, 'f', -1, 64), currency)
 	if err != nil {
 		common.ApiErrorMsg(c, "套餐金额配置错误")
 		return

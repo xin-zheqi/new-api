@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
@@ -163,8 +162,8 @@ func reserveTokenQuotaDB(id int, quota int) (bool, error) {
 // 缓存命中时以缓存余额为准（避免批量模式下过期的数据库余额放大并发超扣）；
 // Redis 异常或水合失败时降级为数据库条件更新，保证服务可用。
 func TryReserveUserQuota(id int, quota int) (bool, error) {
-	if quota < 0 {
-		return false, errors.New("quota 不能为负数！")
+	if err := common.ValidateQuota(quota); err != nil {
+		return false, err
 	}
 	if quota == 0 {
 		return true, nil
@@ -201,8 +200,8 @@ func TryReserveUserQuota(id int, quota int) (bool, error) {
 // TryReserveTokenQuota atomically checks and deducts a token quota. Unlimited
 // tokens skip the balance check but still update remain/used accounting.
 func TryReserveTokenQuota(id int, key string, quota int, unlimited bool) (bool, error) {
-	if quota < 0 {
-		return false, errors.New("quota 不能为负数！")
+	if err := common.ValidateQuota(quota); err != nil {
+		return false, err
 	}
 	if quota == 0 {
 		return true, nil

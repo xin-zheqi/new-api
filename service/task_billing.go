@@ -103,6 +103,9 @@ func taskIsSubscription(task *model.Task) bool {
 
 // taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
 func taskAdjustFunding(task *model.Task, delta int) error {
+	if err := common.ValidateQuotaDelta(delta); err != nil {
+		return err
+	}
 	if taskIsSubscription(task) {
 		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
 	}
@@ -218,6 +221,10 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 	if quota == 0 {
 		return true
 	}
+	if err := common.ValidateQuota(quota); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("拒绝异常任务退款 task %s: %s", task.TaskID, err.Error()))
+		return false
+	}
 
 	// 1. 退还资金来源（钱包或订阅）
 	if err := taskAdjustFunding(task, -quota); err != nil {
@@ -262,7 +269,12 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
 // clamps 可选：若计算 actualQuota 时发生额度饱和，将其记入日志 admin_info（仅管理员可见）。
 func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string, clamps ...*common.QuotaClamp) {
-	if actualQuota < 0 {
+	if err := common.ValidateQuota(actualQuota); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("拒绝异常任务结算 task %s: %s", task.TaskID, err.Error()))
+		return
+	}
+	if err := common.ValidateQuota(task.Quota); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("拒绝使用异常预扣额度结算 task %s: %s", task.TaskID, err.Error()))
 		return
 	}
 	preConsumedQuota := task.Quota
@@ -377,6 +389,10 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 
 	// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio * otherMultiplier（饱和转换，防止溢出成负数）
 	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
+	if clamp != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("任务 %s token 重算额度发生饱和，保留预扣额度: %v", task.TaskID, clamp))
+		return true
+	}
 
 	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
 	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)

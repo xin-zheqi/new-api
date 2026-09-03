@@ -42,6 +42,7 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import { getPaymentAmountError } from './paymentError';
 import WechatPayModal from './modals/WechatPayModal';
 
 const TopUp = () => {
@@ -475,7 +476,10 @@ const TopUp = () => {
           setAmount(parseFloat(data));
         } else {
           setAmount(0);
-          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+          Toast.error({
+            content: getPaymentAmountError(message, data, t('获取金额失败')),
+            id: 'getAmount',
+          });
         }
       } else {
         showError(res);
@@ -541,7 +545,10 @@ const TopUp = () => {
           setAmount(parseFloat(data));
         } else {
           setAmount(0);
-          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+          Toast.error({
+            content: getPaymentAmountError(message, data, t('获取金额失败')),
+            id: 'getAmount',
+          });
         }
       } else {
         showError(res);
@@ -867,7 +874,10 @@ const TopUp = () => {
           setAmount(parseFloat(data));
         } else {
           setAmount(0);
-          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+          Toast.error({
+            content: getPaymentAmountError(message, data, t('获取金额失败')),
+            id: 'getAmount',
+          });
         }
       } else {
         showError(res);
@@ -893,7 +903,10 @@ const TopUp = () => {
           setAmount(parseFloat(data));
         } else {
           setAmount(0);
-          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+          Toast.error({
+            content: getPaymentAmountError(message, data, t('获取金额失败')),
+            id: 'getAmount',
+          });
         }
       } else {
         showError(res);

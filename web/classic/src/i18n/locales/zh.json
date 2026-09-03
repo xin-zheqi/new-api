@@ -3107,6 +3107,8 @@
     "请填写开票币种": "请填写开票币种",
     "选择用户": "选择用户",
     "Balance recharge": "余额充值",
-    "Redemption code balance recharge": "兑换码充值余额"
+    "Redemption code balance recharge": "兑换码充值余额",
+    "支付币种": "支付币种",
+    "支付币种无效": "支付币种无效"
   }
 }

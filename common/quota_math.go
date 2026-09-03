@@ -16,6 +16,27 @@ const (
 	MaxWalletQuota = 1<<53 - 1
 )
 
+// ValidateQuota bounds one request's non-negative charge before it reaches a
+// wallet, subscription, or token mutation.
+func ValidateQuota(quota int) error {
+	if quota < 0 {
+		return fmt.Errorf("quota cannot be negative: %d", quota)
+	}
+	if quota > MaxQuota {
+		return fmt.Errorf("quota exceeds single-request limit %d: %d", MaxQuota, quota)
+	}
+	return nil
+}
+
+// ValidateQuotaDelta bounds a settlement adjustment. A valid delta is the
+// difference between two values that both passed ValidateQuota.
+func ValidateQuotaDelta(delta int) error {
+	if delta < -MaxQuota || delta > MaxQuota {
+		return fmt.Errorf("quota delta exceeds single-request limit %d: %d", MaxQuota, delta)
+	}
+	return nil
+}
+
 // ValidateWalletQuota enforces the upper bound shared by wallet mutations.
 // Negative balances remain valid because billing can temporarily overdraw a
 // wallet; callers that accept credits must apply their own positive check.

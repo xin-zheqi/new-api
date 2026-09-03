@@ -48,20 +48,21 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": message})
 		return
 	}
-	if req.Amount > 10000 {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值数量不能大于 10000"})
-		return
-	}
 	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
-	if rejectInvalidCreditedQuota(c, id, getStripeCreditedQuota(req.Amount, group)) {
+	amounts, err := calculateStripeTopUpAmounts(req.Amount, group)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 		return
 	}
-	payMoney := getStripePayMoney(float64(req.Amount), group)
+	if _, rejected := validateCreditedQuotaForUser(c, id, amounts.creditedQuota); rejected {
+		return
+	}
+	payMoney := getStripePayMoney(amounts.checkoutQuantity)
 	if payMoney <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
@@ -95,27 +96,32 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "用户不存在"})
 		return
 	}
-	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
-	if rejectInvalidCreditedQuota(c, id,
-		decimal.NewFromFloat(chargedMoney).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
-	) {
+	amounts, err := calculateStripeTopUpAmounts(req.Amount, user.Group)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
+		return
+	}
+	creditedQuota, rejected := validateCreditedQuotaForUser(c, id, amounts.creditedQuota)
+	if rejected {
 		return
 	}
 
 	reference := fmt.Sprintf("new-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))
 
-	payLink, currency, expectedAmountMicros, err := genStripeLinkWithSnapshot(referenceId, user.StripeCustomer, user.Email, req.Amount, req.SuccessURL, req.CancelURL)
+	payLink, currency, expectedAmountMicros, err := genStripeLinkWithSnapshot(referenceId, user.StripeCustomer, user.Email, amounts.checkoutQuantity, req.SuccessURL, req.CancelURL)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 创建 Checkout Session 失败 user_id=%d trade_no=%s amount=%d error=%q", id, referenceId, req.Amount, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
+	paidMoney := decimal.NewFromInt(expectedAmountMicros).Shift(-6).InexactFloat64()
 
 	topUp := &model.TopUp{
 		UserId:               id,
-		Amount:               req.Amount,
-		Money:                chargedMoney,
+		Amount:               amounts.checkoutQuantity,
+		Money:                paidMoney,
+		CreditedQuota:        int64(creditedQuota),
 		TradeNo:              referenceId,
 		PaymentMethod:        model.PaymentMethodStripe,
 		PaymentProvider:      model.PaymentProviderStripe,
@@ -131,7 +137,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Stripe 充值订单创建成功 user_id=%d trade_no=%s amount=%d money=%.2f", id, referenceId, req.Amount, chargedMoney))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Stripe 充值订单创建成功 user_id=%d trade_no=%s display_amount=%d checkout_quantity=%d paid_money=%.6f credited_quota=%d", id, referenceId, req.Amount, amounts.checkoutQuantity, paidMoney, creditedQuota))
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"data": gin.H{
@@ -447,43 +453,76 @@ func genStripeLinkWithSnapshot(referenceId string, customerId string, email stri
 	return result.URL, currency, expectedPayment.AmountMicros, nil
 }
 
+func stripeCreditUnits(count float64, group string) float64 {
+	if !isFinitePaymentValue(count) || count < 0 {
+		return 0
+	}
+	topUpGroupRatio, ok := topupPaymentGroupRatio(group)
+	if !ok {
+		return 0
+	}
+	charged := count * topUpGroupRatio
+	if !isFinitePaymentValue(charged) || charged < 0 {
+		return 0
+	}
+	return charged
+}
+
 func GetChargedAmount(count float64, user model.User) float64 {
-	topUpGroupRatio := common.GetTopupGroupRatio(user.Group)
-	if topUpGroupRatio == 0 {
-		topUpGroupRatio = 1
-	}
-
-	return count * topUpGroupRatio
+	return stripeCreditUnits(count, user.Group)
 }
 
-func getStripeCreditedQuota(amount int64, group string) decimal.Decimal {
-	topUpGroupRatio := common.GetTopupGroupRatio(group)
-	if topUpGroupRatio == 0 {
-		topUpGroupRatio = 1
-	}
-	return decimal.NewFromInt(amount).
-		Mul(decimal.NewFromFloat(topUpGroupRatio)).
-		Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+type stripeTopUpAmounts struct {
+	checkoutQuantity int64
+	creditedQuota    decimal.Decimal
 }
 
-func getStripePayMoney(amount float64, group string) float64 {
-	originalAmount := amount
+// calculateStripeTopUpAmounts converts the user-facing amount into Stripe's
+// integer product quantity. In token display mode this mirrors the existing
+// settlement truncation to whole quota units before any order is created.
+func calculateStripeTopUpAmounts(displayAmount int64, group string) (stripeTopUpAmounts, error) {
+	if displayAmount <= 0 || !hasValidQuotaPerUnit() {
+		return stripeTopUpAmounts{}, errors.New("充值数量无效")
+	}
+
+	checkoutQuantity := displayAmount
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		amount = amount / common.QuotaPerUnit
-	}
-	// Using float64 for monetary calculations is acceptable here due to the small amounts involved
-	topupGroupRatio := common.GetTopupGroupRatio(group)
-	if topupGroupRatio == 0 {
-		topupGroupRatio = 1
-	}
-	// apply optional preset discount by the original request amount (if configured), default 1.0
-	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(originalAmount)]; ok {
-		if ds > 0 {
-			discount = ds
+		units := decimal.NewFromInt(displayAmount).Div(decimal.NewFromFloat(common.QuotaPerUnit))
+		if !units.Equal(units.Truncate(0)) {
+			return stripeTopUpAmounts{}, errors.New("充值数量必须为完整额度单位")
 		}
+		checkoutQuantity = units.IntPart()
 	}
-	payMoney := amount * setting.StripeUnitPrice * topupGroupRatio * discount
+	if checkoutQuantity <= 0 || checkoutQuantity > maxTopUpDisplayAmount {
+		return stripeTopUpAmounts{}, errors.New("充值数量无效")
+	}
+
+	creditUnits := stripeCreditUnits(float64(checkoutQuantity), group)
+	if creditUnits <= 0 {
+		return stripeTopUpAmounts{}, errors.New("充值额度配置无效")
+	}
+	creditedQuota := decimal.NewFromFloat(creditUnits).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	return stripeTopUpAmounts{
+		checkoutQuantity: checkoutQuantity,
+		creditedQuota:    creditedQuota,
+	}, nil
+}
+
+func getStripePayMoney(checkoutQuantity int64) float64 {
+	if checkoutQuantity <= 0 {
+		return 0
+	}
+	if !isFinitePaymentValue(setting.StripeUnitPrice) || setting.StripeUnitPrice < 0 {
+		return 0
+	}
+	// StripePriceId owns the Checkout unit price. Local amount discounts and
+	// group ratios cannot alter a static Stripe Price and must not change the
+	// preview; Stripe promotion codes are applied by Checkout itself.
+	payMoney := float64(checkoutQuantity) * setting.StripeUnitPrice
+	if !isFinitePaymentValue(payMoney) || payMoney < 0 {
+		return 0
+	}
 	return payMoney
 }
 

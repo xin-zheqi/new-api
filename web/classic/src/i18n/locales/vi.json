@@ -4662,6 +4662,8 @@
     "开始验证失败": "Không thể bắt đầu xác minh.",
     "登录流程已过期，请重新登录": "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
     "验证凭据未返回": "Không nhận được bằng chứng xác minh.",
-    "验证流程已过期": "Quy trình xác minh đã hết hạn."
+    "验证流程已过期": "Quy trình xác minh đã hết hạn.",
+    "支付币种": "Tiền tệ thanh toán",
+    "支付币种无效": "Tiền tệ thanh toán không hợp lệ"
   }
 }

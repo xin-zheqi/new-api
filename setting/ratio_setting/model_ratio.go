@@ -351,6 +351,9 @@ func ModelPrice2JSONString() string {
 }
 
 func UpdateModelPriceByJSONString(jsonStr string) error {
+	if err := ValidateRatioMapJSONString(jsonStr); err != nil {
+		return err
+	}
 	return types.LoadFromJsonStringWithCallback(modelPriceMap, jsonStr, InvalidateExposedDataCache)
 }
 
@@ -369,6 +372,9 @@ func GetModelPrice(name string, printErr bool) (float64, bool) {
 }
 
 func UpdateModelRatioByJSONString(jsonStr string) error {
+	if err := ValidateRatioMapJSONString(jsonStr); err != nil {
+		return err
+	}
 	return types.LoadFromJsonStringWithCallback(modelRatioMap, jsonStr, InvalidateExposedDataCache)
 }
 
@@ -411,6 +417,9 @@ func CompletionRatio2JSONString() string {
 }
 
 func UpdateCompletionRatioByJSONString(jsonStr string) error {
+	if err := ValidateRatioMapJSONString(jsonStr); err != nil {
+		return err
+	}
 	return types.LoadFromJsonStringWithCallback(completionRatioMap, jsonStr, InvalidateExposedDataCache)
 }
 
@@ -642,6 +651,9 @@ func ImageRatio2JSONString() string {
 }
 
 func UpdateImageRatioByJSONString(jsonStr string) error {
+	if err := ValidateRatioMapJSONString(jsonStr); err != nil {
+		return err
+	}
 	return types.LoadFromJsonString(imageRatioMap, jsonStr)
 }
 
@@ -658,6 +670,9 @@ func AudioRatio2JSONString() string {
 }
 
 func UpdateAudioRatioByJSONString(jsonStr string) error {
+	if err := ValidateRatioMapJSONString(jsonStr); err != nil {
+		return err
+	}
 	return types.LoadFromJsonStringWithCallback(audioRatioMap, jsonStr, InvalidateExposedDataCache)
 }
 
@@ -666,6 +681,9 @@ func AudioCompletionRatio2JSONString() string {
 }
 
 func UpdateAudioCompletionRatioByJSONString(jsonStr string) error {
+	if err := ValidateRatioMapJSONString(jsonStr); err != nil {
+		return err
+	}
 	return types.LoadFromJsonStringWithCallback(audioCompletionRatioMap, jsonStr, InvalidateExposedDataCache)
 }
 

@@ -257,6 +257,10 @@ func RequestWechatPay(c *gin.Context) {
 	}
 
 	userID := c.GetInt("id")
+	creditedQuota, rejected := validateTopUpQuotaForUser(c, userID, req.Amount)
+	if rejected {
+		return
+	}
 	group, err := model.GetUserGroup(userID, true)
 	if err != nil {
 		common.ApiErrorMsg(c, "获取用户分组失败")
@@ -283,6 +287,7 @@ func RequestWechatPay(c *gin.Context) {
 		UserId:               userID,
 		Amount:               amount,
 		Money:                decimal.NewFromInt(snapshot.AmountMicros).Shift(-6).InexactFloat64(),
+		CreditedQuota:        int64(creditedQuota),
 		TradeNo:              tradeNo,
 		PaymentMethod:        model.PaymentMethodWechat,
 		PaymentProvider:      model.PaymentProviderWechat,

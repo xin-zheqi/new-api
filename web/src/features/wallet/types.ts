@@ -346,6 +346,9 @@ export interface ManualTopupRequest {
   payment_method: string
   amount: number
   money: number
+  currency: string
+  invoice_amount: number
+  invoice_currency: string
   create_time: number
   credit_balance: boolean
 }

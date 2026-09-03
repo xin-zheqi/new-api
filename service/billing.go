@@ -1,9 +1,11 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -26,9 +28,9 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 			types.ErrOptionWithSkipRetry(),
 		)
 	}
-	if preConsumedQuota < 0 {
+	if err := common.ValidateQuota(preConsumedQuota); err != nil {
 		return types.NewErrorWithStatusCode(
-			fmt.Errorf("pre-consume quota cannot be negative: %d", preConsumedQuota),
+			err,
 			types.ErrorCodeModelPriceError,
 			http.StatusBadRequest,
 			types.ErrOptionWithSkipRetry(),
@@ -49,6 +51,12 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 // SettleBilling 执行计费结算。如果 RelayInfo 上有 BillingSession 则通过 session 结算，
 // 否则回退到旧的 PostConsumeQuota 路径（兼容按次计费等场景）。
 func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int) error {
+	if relayInfo == nil {
+		return errors.New("relayInfo is nil")
+	}
+	if err := common.ValidateQuota(actualQuota); err != nil {
+		return err
+	}
 	if relayInfo.Billing != nil {
 		preConsumed := relayInfo.Billing.GetPreConsumedQuota()
 		delta := actualQuota - preConsumed

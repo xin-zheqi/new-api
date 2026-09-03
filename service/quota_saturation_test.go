@@ -15,6 +15,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type quotaBoundaryFunding struct {
+	settleCalls int
+}
+
+func (*quotaBoundaryFunding) Source() string       { return BillingSourceWallet }
+func (*quotaBoundaryFunding) PreConsume(int) error { return nil }
+func (f *quotaBoundaryFunding) Settle(int) error {
+	f.settleCalls++
+	return nil
+}
+func (*quotaBoundaryFunding) Refund() error { return nil }
+
 // TestAttachQuotaSaturationNestsUnderAdminInfo verifies the saturation marker
 // is nested under other.admin_info.quota_saturation so it is admin-only (the
 // log formatter strips admin_info for non-admin viewers).
@@ -50,7 +62,31 @@ func TestCalcViolationFeeQuotaSaturates(t *testing.T) {
 	common.QuotaPerUnit = 500_000
 	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
 
-	require.Equal(t, common.MaxQuota, calcViolationFeeQuota(1e20, 1))
+	quota, clamp := calcViolationFeeQuota(1e20, 1)
+	require.Equal(t, common.MaxQuota, quota)
+	require.NotNil(t, clamp)
+	require.Equal(t, common.QuotaClampOverflow, clamp.Kind)
+}
+
+func TestCalcViolationFeeQuotaRejectsNonFiniteInputs(t *testing.T) {
+	tests := []struct {
+		name       string
+		amount     float64
+		groupRatio float64
+	}{
+		{name: "NaN amount", amount: math.NaN(), groupRatio: 1},
+		{name: "infinite amount", amount: math.Inf(1), groupRatio: 1},
+		{name: "NaN group ratio", amount: 1, groupRatio: math.NaN()},
+		{name: "infinite group ratio", amount: 1, groupRatio: math.Inf(1)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			quota, clamp := calcViolationFeeQuota(tc.amount, tc.groupRatio)
+			require.Zero(t, quota)
+			require.Nil(t, clamp)
+		})
+	}
 }
 
 func TestCalcOpenRouterCacheCreateTokensDoesNotWrap(t *testing.T) {
@@ -135,4 +171,45 @@ func TestPreConsumeBillingRejectsNegativeQuotaBeforeDeduction(t *testing.T) {
 	require.Equal(t, types.ErrorCodeModelPriceError, apiErr.GetErrorCode())
 	require.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
 	require.Nil(t, info.Billing)
+}
+
+func TestPreConsumeBillingRejectsQuotaAboveSingleRequestLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{}
+
+	apiErr := PreConsumeBilling(c, common.MaxQuota+1, info)
+
+	require.NotNil(t, apiErr)
+	require.Equal(t, types.ErrorCodeModelPriceError, apiErr.GetErrorCode())
+	require.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
+	require.Nil(t, info.Billing)
+}
+
+func TestBillingSessionRejectsInvalidSettlementBeforeFundingMutation(t *testing.T) {
+	for _, actualQuota := range []int{-1, common.MaxQuota + 1} {
+		funding := &quotaBoundaryFunding{}
+		session := &BillingSession{
+			relayInfo:        &relaycommon.RelayInfo{IsPlayground: true},
+			funding:          funding,
+			preConsumedQuota: 100,
+		}
+
+		require.Error(t, session.Settle(actualQuota))
+		require.Zero(t, funding.settleCalls)
+		require.False(t, session.settled)
+	}
+}
+
+func TestBillingSessionReserveRejectsInvalidTargetBeforeFundingMutation(t *testing.T) {
+	funding := &quotaBoundaryFunding{}
+	session := &BillingSession{
+		relayInfo:        &relaycommon.RelayInfo{IsPlayground: true},
+		funding:          funding,
+		preConsumedQuota: 100,
+	}
+
+	require.Error(t, session.Reserve(common.MaxQuota+1))
+	require.Equal(t, 100, session.preConsumedQuota)
+	require.Zero(t, funding.settleCalls)
 }

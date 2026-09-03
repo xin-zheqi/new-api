@@ -34,6 +34,36 @@ const (
 	maxTopUpDisplayAmount  int64 = 10000
 )
 
+func isFinitePaymentValue(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func hasValidQuotaPerUnit() bool {
+	return common.QuotaPerUnit > 0 && isFinitePaymentValue(common.QuotaPerUnit)
+}
+
+// topupPaymentGroupRatio preserves the historical zero-ratio fallback while
+// rejecting invalid values before they reach decimal or float arithmetic.
+func topupPaymentGroupRatio(group string) (float64, bool) {
+	ratio := common.GetTopupGroupRatio(group)
+	if ratio == 0 {
+		ratio = 1
+	}
+	if ratio < 0 || !isFinitePaymentValue(ratio) {
+		return 0, false
+	}
+	return ratio, true
+}
+
+func topupPaymentDiscount(amount int64) float64 {
+	discount := 1.0
+	if configured, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok &&
+		configured > 0 && isFinitePaymentValue(configured) {
+		discount = configured
+	}
+	return discount
+}
+
 func parseTopUpQueryFilter(c *gin.Context) model.TopUpQueryFilter {
 	parseTime := func(keys ...string) int64 {
 		for _, key := range keys {
@@ -307,29 +337,30 @@ func getPayMoney(amount int64, group string) float64 {
 	// 充值金额以“展示类型”为准：
 	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		if !hasValidQuotaPerUnit() {
+			return 0
+		}
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		dAmount = dAmount.Div(dQuotaPerUnit)
 	}
 
-	topupGroupRatio := common.GetTopupGroupRatio(group)
-	if topupGroupRatio == 0 {
-		topupGroupRatio = 1
+	topupGroupRatio, ok := topupPaymentGroupRatio(group)
+	if !ok || !isFinitePaymentValue(operation_setting.Price) || operation_setting.Price < 0 {
+		return 0
 	}
 
 	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
 	dPrice := decimal.NewFromFloat(operation_setting.Price)
 	// apply optional preset discount by the original request amount (if configured), default 1.0
-	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok {
-		if ds > 0 {
-			discount = ds
-		}
-	}
+	discount := topupPaymentDiscount(amount)
 	dDiscount := decimal.NewFromFloat(discount)
 
 	payMoney := dAmount.Mul(dPrice).Mul(dTopupGroupRatio).Mul(dDiscount)
-
-	return payMoney.InexactFloat64()
+	result := payMoney.InexactFloat64()
+	if result < 0 || !isFinitePaymentValue(result) {
+		return 0
+	}
+	return result
 }
 
 func getMinTopup() int64 {
@@ -343,15 +374,15 @@ func topUpDisplayLimit(value int) int64 {
 	if value <= 0 || operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeTokens {
 		return int64(value)
 	}
-	if common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+	if !hasValidQuotaPerUnit() {
 		return 0
 	}
 	converted := decimal.NewFromInt(int64(value)).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
-	maxInt64 := decimal.NewFromInt(9223372036854775807)
+	maxInt64 := decimal.NewFromInt(math.MaxInt64)
 	if converted.GreaterThan(maxInt64) {
-		return 9223372036854775807
+		return math.MaxInt64
 	}
-	return converted.IntPart()
+	return converted.Ceil().IntPart()
 }
 
 func validateTopUpAmount(amount, minimum int64) (bool, string) {
@@ -362,10 +393,13 @@ func validateTopUpAmount(amount, minimum int64) (bool, string) {
 		return false, fmt.Sprintf("充值数量不能小于 %d", minimum)
 	}
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		if common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+		if !hasValidQuotaPerUnit() {
 			return false, "额度单位配置无效"
 		}
 		normalized := decimal.NewFromInt(amount).Div(decimal.NewFromFloat(common.QuotaPerUnit))
+		if !normalized.Equal(normalized.Truncate(0)) {
+			return false, "充值数量必须为完整额度单位"
+		}
 		if normalized.GreaterThan(decimal.NewFromInt(maxTopUpDisplayAmount)) {
 			return false, fmt.Sprintf("充值金额折算后不能大于 %d", maxTopUpDisplayAmount)
 		}
@@ -378,36 +412,53 @@ func validateTopUpAmount(amount, minimum int64) (bool, string) {
 }
 
 func getTopUpQuota(amount int64) (int, error) {
+	if amount <= 0 || !hasValidQuotaPerUnit() {
+		return 0, errors.New("充值数量无效")
+	}
+	quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 	quota := decimal.NewFromInt(amount)
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		quota = decimal.NewFromInt(quota.Div(quotaPerUnit).IntPart()).Mul(quotaPerUnit)
+		units := quota.Div(quotaPerUnit)
+		if !units.Equal(units.Truncate(0)) {
+			return 0, errors.New("充值数量必须为完整额度单位")
+		}
+		if units.GreaterThan(decimal.NewFromInt(math.MaxInt64)) {
+			return 0, errors.New("充值数量超出系统可表示范围")
+		}
+		quota = decimal.NewFromInt(units.IntPart()).Mul(quotaPerUnit)
 	} else {
-		quota = quota.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+		quota = quota.Mul(quotaPerUnit)
 	}
-	return common.WalletQuotaFromDecimalStrict(quota)
+	return common.WalletQuotaFromDecimalStrict(quota.Truncate(0))
 }
 
 func getMaxTopUpAmount() int64 {
-	if common.QuotaPerUnit <= 0 {
+	if !hasValidQuotaPerUnit() {
 		return 0
 	}
 	quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+	maxInt64 := decimal.NewFromInt(math.MaxInt64)
 	maxStoredAmount := decimal.NewFromInt(common.MaxWalletQuota).
 		Div(quotaPerUnit).
 		Floor()
+	if maxStoredAmount.LessThanOrEqual(decimal.Zero) {
+		return 0
+	}
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		return maxStoredAmount.Add(decimal.NewFromInt(1)).
-			Mul(quotaPerUnit).
-			Ceil().
-			Sub(decimal.NewFromInt(1)).
-			IntPart()
+		candidate := maxStoredAmount.Mul(quotaPerUnit).Floor()
+		if candidate.GreaterThan(maxInt64) {
+			return math.MaxInt64
+		}
+		return candidate.IntPart()
+	}
+	if maxStoredAmount.GreaterThan(maxInt64) {
+		return math.MaxInt64
 	}
 	return maxStoredAmount.IntPart()
 }
 
 func validateCreditedQuota(quota decimal.Decimal) (int, error) {
-	value, err := common.WalletQuotaFromDecimalStrict(quota)
+	value, err := common.WalletQuotaFromDecimalStrict(quota.Truncate(0))
 	if err != nil {
 		return 0, errors.New("充值额度超出系统可表示范围")
 	}
@@ -429,28 +480,28 @@ func validateTopUpQuota(amount int64) (int, error) {
 	return 0, errors.New("充值数量无效")
 }
 
-func rejectInvalidCreditedQuota(c *gin.Context, userId int, quota decimal.Decimal) bool {
+func validateCreditedQuotaForUser(c *gin.Context, userId int, quota decimal.Decimal) (int, bool) {
 	creditedQuota, err := validateCreditedQuota(quota)
 	if err == nil {
 		err = model.ValidateTopUpQuotaCapacity(userId, creditedQuota)
 	}
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
-		return true
+		return 0, true
 	}
-	return false
+	return creditedQuota, false
 }
 
-func rejectInvalidTopUpQuota(c *gin.Context, userId int, amount int64) bool {
+func validateTopUpQuotaForUser(c *gin.Context, userId int, amount int64) (int, bool) {
 	creditedQuota, err := validateTopUpQuota(amount)
 	if err == nil {
 		err = model.ValidateTopUpQuotaCapacity(userId, creditedQuota)
 	}
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
-		return true
+		return 0, true
 	}
-	return false
+	return creditedQuota, false
 }
 
 func RequestEpay(c *gin.Context) {
@@ -470,7 +521,8 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 	id := c.GetInt("id")
-	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+	creditedQuota, rejected := validateTopUpQuotaForUser(c, id, req.Amount)
+	if rejected {
 		return
 	}
 
@@ -524,6 +576,7 @@ func RequestEpay(c *gin.Context) {
 		UserId:          id,
 		Amount:          amount,
 		Money:           payMoney,
+		CreditedQuota:   int64(creditedQuota),
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
 		PaymentProvider: model.PaymentProviderEpay,
@@ -710,7 +763,7 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 	id := c.GetInt("id")
-	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+	if _, rejected := validateTopUpQuotaForUser(c, id, req.Amount); rejected {
 		return
 	}
 	group, err := model.GetUserGroup(id, true)
@@ -787,6 +840,7 @@ type AdminCreateManualTopUpRequest struct {
 	PaymentMethod   string  `json:"payment_method"`
 	Amount          int64   `json:"amount"`
 	Money           float64 `json:"money"`
+	Currency        string  `json:"currency"`
 	CreateTime      int64   `json:"create_time"`
 	CreditBalance   bool    `json:"credit_balance"`
 	InvoiceAmount   float64 `json:"invoice_amount"`
@@ -821,7 +875,8 @@ func AdminCreateManualTopUp(c *gin.Context) {
 	}
 
 	req.PaymentMethod = strings.TrimSpace(req.PaymentMethod)
-	if req.UserId <= 0 || req.PaymentMethod == "" || req.Amount <= 0 || req.Money < 0 || req.CreateTime <= 0 {
+	if req.UserId <= 0 || req.PaymentMethod == "" || req.Amount <= 0 ||
+		!isFinitePaymentValue(req.Money) || req.Money < 0 || req.CreateTime <= 0 {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
@@ -829,26 +884,45 @@ func AdminCreateManualTopUp(c *gin.Context) {
 		common.ApiErrorMsg(c, "支付方式不能超过 50 个字符")
 		return
 	}
-	if math.IsNaN(req.InvoiceAmount) || math.IsInf(req.InvoiceAmount, 0) || req.InvoiceAmount < 0 || req.InvoiceAmount > 9_000_000_000_000 {
+	if strings.TrimSpace(req.Currency) == "" {
+		req.Currency = "CNY"
+	}
+	paymentCurrency, normalizeErr := model.NormalizePaymentCurrency(req.Currency)
+	if normalizeErr != nil {
+		common.ApiErrorMsg(c, "支付币种无效")
+		return
+	}
+	if req.Money > 0 {
+		if _, paymentErr := model.NewSubscriptionPaymentFromMajorUnits(
+			strconv.FormatFloat(req.Money, 'f', -1, 64), paymentCurrency,
+		); paymentErr != nil {
+			common.ApiErrorMsg(c, "支付金额无效")
+			return
+		}
+	}
+	if math.IsNaN(req.InvoiceAmount) || math.IsInf(req.InvoiceAmount, 0) || req.InvoiceAmount < 0 {
 		common.ApiErrorMsg(c, "开票金额无效")
 		return
 	}
 	invoiceAmountMicros := int64(0)
 	invoiceCurrency := ""
 	if req.InvoiceAmount > 0 {
-		invoiceAmountMicros = int64(math.Round(req.InvoiceAmount * 1_000_000))
-		normalizedCurrency, normalizeErr := model.NormalizePaymentCurrency(req.InvoiceCurrency)
-		if normalizeErr != nil {
-			common.ApiErrorMsg(c, "开票币种无效")
+		invoicePayment, paymentErr := model.NewSubscriptionPaymentFromMajorUnits(
+			strconv.FormatFloat(req.InvoiceAmount, 'f', -1, 64), req.InvoiceCurrency,
+		)
+		if paymentErr != nil {
+			common.ApiErrorMsg(c, "开票金额或币种无效")
 			return
 		}
-		invoiceCurrency = normalizedCurrency
+		invoiceAmountMicros = invoicePayment.AmountMicros
+		invoiceCurrency = invoicePayment.Currency
 	}
 
 	topUp, err := model.CreateManualTopUp(model.ManualTopUpParams{
 		UserId:              req.UserId,
 		Amount:              req.Amount,
 		Money:               req.Money,
+		Currency:            paymentCurrency,
 		PaymentMethod:       req.PaymentMethod,
 		CreateTime:          req.CreateTime,
 		CallerIp:            common.GetClientIP(c),

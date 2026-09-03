@@ -103,6 +103,16 @@ func TestTryReserveQuotaWithoutRedis(t *testing.T) {
 	assert.Equal(t, 55, getTokenFromDB(t, token.Id).RemainQuota)
 }
 
+func TestTryReserveUserQuotaRejectsOversizedRequestWithoutMutation(t *testing.T) {
+	user := createReserveTestUser(t, common.MaxQuota+100)
+
+	reserved, err := TryReserveUserQuota(user.Id, common.MaxQuota+1)
+
+	require.Error(t, err)
+	assert.False(t, reserved)
+	assert.Equal(t, common.MaxQuota+100, getUserQuotaFromDB(t, user.Id))
+}
+
 func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
 	truncateTables(t)
 	resetBatchUpdateTestState(t)
@@ -218,6 +228,76 @@ func TestSynchronousReserveCompensatesCacheWhenPersistenceFails(t *testing.T) {
 	require.NoError(t, cacheErr)
 	assert.Equal(t, 12, cachedToken.RemainQuota)
 	assert.Zero(t, cachedToken.UsedQuota)
+}
+
+func TestQuotaMutationDoesNotTouchCacheWhenPersistenceFails(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	useUserCacheMiniRedis(t)
+
+	userMutations := []struct {
+		name   string
+		mutate func(int) error
+	}{
+		{name: "increase", mutate: func(id int) error { return IncreaseUserQuota(id, 4, true) }},
+		{name: "decrease", mutate: func(id int) error { return DecreaseUserQuota(id, 4, true) }},
+	}
+	for _, mutation := range userMutations {
+		t.Run("user "+mutation.name, func(t *testing.T) {
+			user := createReserveTestUser(t, 10)
+			require.NoError(t, populateUserCache(user))
+			require.NoError(t, DB.Delete(&user).Error)
+
+			err := mutation.mutate(user.Id)
+
+			assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+			cached, cacheErr := cacheGetUserBase(user.Id)
+			require.NoError(t, cacheErr)
+			assert.Equal(t, 10, cached.Quota)
+		})
+	}
+
+	tokenMutations := []struct {
+		name   string
+		mutate func(Token) error
+	}{
+		{name: "increase", mutate: func(token Token) error { return IncreaseTokenQuota(token.Id, token.Key, 4) }},
+		{name: "decrease", mutate: func(token Token) error { return DecreaseTokenQuota(token.Id, token.Key, 4) }},
+	}
+	for _, mutation := range tokenMutations {
+		t.Run("token "+mutation.name, func(t *testing.T) {
+			token := createReserveTestToken(t, 10)
+			_, err := GetTokenByKey(token.Key, true)
+			require.NoError(t, err)
+			require.NoError(t, DB.Delete(&token).Error)
+
+			err = mutation.mutate(token)
+
+			assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+			cached, cacheErr := cacheGetTokenByKey(token.Key)
+			require.NoError(t, cacheErr)
+			assert.Equal(t, 10, cached.RemainQuota)
+			assert.Zero(t, cached.UsedQuota)
+		})
+	}
+}
+
+func TestZeroQuotaMutationIsSideEffectFree(t *testing.T) {
+	truncateTables(t)
+	resetBatchUpdateTestState(t)
+	server := useUserCacheMiniRedis(t)
+
+	const missingUserID = 987654
+	const missingTokenID = 987655
+	const missingTokenKey = "zero-quota-missing-token"
+
+	require.NoError(t, IncreaseUserQuota(missingUserID, 0, true))
+	require.NoError(t, DecreaseUserQuota(missingUserID, 0, true))
+	require.NoError(t, IncreaseTokenQuota(missingTokenID, missingTokenKey, 0))
+	require.NoError(t, DecreaseTokenQuota(missingTokenID, missingTokenKey, 0))
+
+	assert.False(t, server.Exists(getUserCacheKey(missingUserID)))
+	assert.False(t, server.Exists(getTokenCacheKey(missingTokenKey)))
 }
 
 func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.T) {

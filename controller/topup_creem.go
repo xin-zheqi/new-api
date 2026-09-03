@@ -111,7 +111,8 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	selectedProduct.Currency = currency
 
 	id := c.GetInt("id")
-	if rejectInvalidCreditedQuota(c, id, decimal.NewFromInt(selectedProduct.Quota)) {
+	creditedQuota, rejected := validateCreditedQuotaForUser(c, id, decimal.NewFromInt(selectedProduct.Quota))
+	if rejected {
 		return
 	}
 
@@ -130,6 +131,7 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 		UserId:          id,
 		Amount:          selectedProduct.Quota, // 充值额度
 		Money:           selectedProduct.Price, // 支付金额
+		CreditedQuota:   int64(creditedQuota),
 		TradeNo:         referenceId,
 		PaymentMethod:   model.PaymentMethodCreem,
 		PaymentProvider: model.PaymentProviderCreem,
@@ -138,7 +140,7 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 		Status:          common.TopUpStatusPending,
 	}
 	expectedPayment, paymentErr := model.NewSubscriptionPaymentFromMajorUnits(
-		strconv.FormatFloat(selectedProduct.Price, 'f', 2, 64), currency)
+		strconv.FormatFloat(selectedProduct.Price, 'f', -1, 64), currency)
 	if paymentErr != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 产品金额配置无效 user_id=%d product_id=%s error=%q", id, selectedProduct.ProductId, paymentErr.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "产品金额配置错误"})

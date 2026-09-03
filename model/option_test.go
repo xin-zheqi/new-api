@@ -62,6 +62,91 @@ func TestUpdateOptionReturnsPersistenceErrorWithoutUpdatingMemory(t *testing.T) 
 	common.OptionMapRWMutex.RUnlock()
 }
 
+func TestUpdateOptionRejectsInvalidRatioBeforePersistence(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "invalid-ratio.db")), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&Option{}))
+	useOptionTestDB(t, db, common.DatabaseTypeSQLite)
+
+	err = UpdateOption("ModelRatio", `{"model":-1}`)
+	require.Error(t, err)
+
+	var count int64
+	require.NoError(t, db.Model(&Option{}).Where(commonKeyCol+" = ?", "ModelRatio").Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestUpdateOptionRejectsInvalidPaymentAmountConfigurationBeforePersistence(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "invalid-payment-config.db")), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&Option{}))
+	useOptionTestDB(t, db, common.DatabaseTypeSQLite)
+
+	testCases := []struct {
+		key   string
+		value string
+	}{
+		{key: "payment_setting.amount_options", value: `[10,-1]`},
+		{key: "payment_setting.amount_discount", value: `{"100":0}`},
+		{key: "payment_setting.amount_discount", value: `{"invalid":0.8}`},
+		{key: "payment_setting.amount_discount", value: `{" 100 ":0.8}`},
+	}
+	for _, testCase := range testCases {
+		err = UpdateOption(testCase.key, testCase.value)
+		require.Error(t, err)
+	}
+
+	var count int64
+	require.NoError(t, db.Model(&Option{}).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestUpdateOptionRejectsInvalidExchangeRateBeforePersistence(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "invalid-exchange-rate.db")), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&Option{}))
+	useOptionTestDB(t, db, common.DatabaseTypeSQLite)
+
+	for _, value := range []string{"0", "-1", "NaN", "+Inf"} {
+		err = UpdateOption("USDExchangeRate", value)
+		require.Error(t, err, "exchange rate %q must be rejected", value)
+	}
+
+	var count int64
+	require.NoError(t, db.Model(&Option{}).Where(commonKeyCol+" = ?", "USDExchangeRate").Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestValidatedNumericOptionsAreNormalizedBeforePersistence(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "normalized-number.db")), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&Option{}))
+	useOptionTestDB(t, db, common.DatabaseTypeSQLite)
+
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.OptionMapRWMutex.Lock()
+	originalOptionMap := common.OptionMap
+	common.OptionMap = make(map[string]string)
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.QuotaPerUnit = originalQuotaPerUnit
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = originalOptionMap
+		common.OptionMapRWMutex.Unlock()
+	})
+
+	require.NoError(t, UpdateOption("QuotaPerUnit", " 7.25 "))
+	assert.Equal(t, 7.25, common.QuotaPerUnit)
+	var option Option
+	require.NoError(t, db.Where(commonKeyCol+" = ?", "QuotaPerUnit").First(&option).Error)
+	assert.Equal(t, "7.25", option.Value)
+
+	require.NoError(t, UpdateOptionsBulk(map[string]string{"QuotaPerUnit": " 8.5 "}))
+	assert.Equal(t, 8.5, common.QuotaPerUnit)
+	require.NoError(t, db.Where(commonKeyCol+" = ?", "QuotaPerUnit").First(&option).Error)
+	assert.Equal(t, "8.5", option.Value)
+}
+
 func TestGetOptionValueReadsCurrentDatabaseState(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "read-option.db")), &gorm.Config{})
 	require.NoError(t, err)

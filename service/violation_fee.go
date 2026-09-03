@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -81,21 +82,21 @@ func shouldChargeViolationFee(err *types.NewAPIError) bool {
 	return HasCSAMViolationMarker(err)
 }
 
-func calcViolationFeeQuota(amount, groupRatio float64) int {
-	if amount <= 0 {
-		return 0
+func calcViolationFeeQuota(amount, groupRatio float64) (int, *common.QuotaClamp) {
+	if amount <= 0 || groupRatio <= 0 || common.QuotaPerUnit <= 0 ||
+		math.IsNaN(amount) || math.IsInf(amount, 0) ||
+		math.IsNaN(groupRatio) || math.IsInf(groupRatio, 0) ||
+		math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+		return 0, nil
 	}
-	if groupRatio <= 0 {
-		return 0
-	}
-	quota := common.QuotaFromDecimal(decimal.NewFromFloat(amount).
+	quota, clamp := common.QuotaFromDecimalChecked(decimal.NewFromFloat(amount).
 		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
 		Mul(decimal.NewFromFloat(groupRatio)).
 		Round(0))
 	if quota <= 0 {
-		return 0
+		return 0, clamp
 	}
-	return quota
+	return quota, clamp
 }
 
 // ChargeViolationFeeIfNeeded charges an additional fee after the normal flow finishes (including refund).
@@ -117,7 +118,7 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 	}
 
 	groupRatio := relayInfo.PriceData.GroupRatioInfo.GroupRatio
-	feeQuota := calcViolationFeeQuota(settings.ViolationDeductionAmount, groupRatio)
+	feeQuota, quotaClamp := calcViolationFeeQuota(settings.ViolationDeductionAmount, groupRatio)
 	if feeQuota <= 0 {
 		return false
 	}
@@ -144,6 +145,11 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		"upstream_error_type":  oai.Type,
 		"upstream_error_code":  fmt.Sprintf("%v", oai.Code),
 		"violation_fee_marker": CSAMViolationMarker,
+	}
+	if quotaClamp != nil {
+		feeRelayInfo := *relayInfo
+		feeRelayInfo.QuotaClamp = quotaClamp
+		attachQuotaSaturation(ctx, &feeRelayInfo, other)
 	}
 
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{

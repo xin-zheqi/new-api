@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -275,6 +276,10 @@ func loadOptionsFromDatabase() {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
 	for _, option := range options {
+		if err := validateOptionValue(option.Key, option.Value); err != nil {
+			common.SysLog("ignored invalid persisted option " + option.Key + ": " + err.Error())
+			continue
+		}
 		err := updateOptionMapLocked(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
@@ -291,8 +296,15 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	value = normalizeOptionValue(key, value)
 	if key == operation_setting.ToolPriceOptionKey {
 		return operation_setting.ValidateToolPricesJSON(value)
+	}
+	if key == "payment_setting.amount_options" {
+		return operation_setting.ValidatePaymentAmountOptions(value)
+	}
+	if key == "payment_setting.amount_discount" {
+		return operation_setting.ValidatePaymentAmountDiscount(value)
 	}
 	if key == operation_setting.ChannelTestConcurrencyOptionKey {
 		return operation_setting.ValidateChannelTestConcurrency(value)
@@ -300,10 +312,41 @@ func validateOptionValue(key string, value string) error {
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
 	}
+	if key == "TopupGroupRatio" {
+		return common.ValidateTopupGroupRatioByJSONString(value)
+	}
+	switch key {
+	case "ModelRatio", "CompletionRatio", "ModelPrice", "CacheRatio", "CreateCacheRatio", "ImageRatio", "AudioRatio", "AudioCompletionRatio", "GroupRatio":
+		return ratio_setting.ValidateRatioMapJSONString(value)
+	case "GroupGroupRatio":
+		return ratio_setting.ValidateNestedRatioMapJSONString(value)
+	}
+	if key == "QuotaPerUnit" || key == "USDExchangeRate" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) || parsed <= 0 {
+			return fmt.Errorf("%s must be a finite positive number", key)
+		}
+	}
+	if key == "Price" || key == "StripeUnitPrice" || key == "WaffoUnitPrice" || key == "WaffoPancakeUnitPrice" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) || parsed < 0 {
+			return fmt.Errorf("%s must be a finite non-negative number", key)
+		}
+	}
 	return nil
 }
 
+func normalizeOptionValue(key string, value string) string {
+	switch key {
+	case "QuotaPerUnit", "USDExchangeRate", "Price", "StripeUnitPrice", "WaffoUnitPrice", "WaffoPancakeUnitPrice":
+		return strings.TrimSpace(value)
+	default:
+		return value
+	}
+}
+
 func UpdateOption(key string, value string) error {
+	value = normalizeOptionValue(key, value)
 	if err := validateOptionValue(key, value); err != nil {
 		return err
 	}
@@ -329,19 +372,22 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	normalizedValues := make(map[string]string, len(values))
 	for key, value := range values {
+		value = normalizeOptionValue(key, value)
 		if err := validateOptionValue(key, value); err != nil {
 			return err
 		}
+		normalizedValues[key] = value
 	}
 	keys := make([]string, 0, len(values))
-	for key := range values {
+	for key := range normalizedValues {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for _, k := range keys {
-			v := values[k]
+			v := normalizedValues[k]
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
@@ -360,7 +406,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 	defer common.OptionMapRWMutex.Unlock()
 	var firstErr error
 	for _, key := range keys {
-		if err := updateOptionMapLocked(key, values[key]); err != nil && firstErr == nil {
+		if err := updateOptionMapLocked(key, normalizedValues[key]); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("publish option %q: %w", key, err)
 		}
 	}
@@ -374,6 +420,7 @@ func updateOptionMap(key string, value string) (err error) {
 }
 
 func updateOptionMapLocked(key string, value string) (err error) {
+	value = normalizeOptionValue(key, value)
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理

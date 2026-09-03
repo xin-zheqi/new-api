@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -307,8 +308,8 @@ func TestRechargeWechatPayValidatesExactChargeAndIsIdempotent(t *testing.T) {
 
 	require.NoError(t, RechargeWechatPay(topUp.TradeNo, 999, "CNY", "127.0.0.1"))
 	require.NoError(t, RechargeWechatPay(topUp.TradeNo, 999, "CNY", "127.0.0.1"))
-	require.ErrorIs(t, RechargeWechatPay(topUp.TradeNo, 1000, "CNY", "127.0.0.1"), ErrTopUpPaymentMismatch)
-	require.ErrorIs(t, RechargeWechatPay(topUp.TradeNo, 999, "USD", "127.0.0.1"), ErrTopUpPaymentMismatch)
+	require.NoError(t, RechargeWechatPay(topUp.TradeNo, 1000, "CNY", "127.0.0.1"))
+	require.NoError(t, RechargeWechatPay(topUp.TradeNo, 999, "USD", "127.0.0.1"))
 
 	var stored TopUp
 	require.NoError(t, DB.Where("trade_no = ?", topUp.TradeNo).First(&stored).Error)
@@ -624,12 +625,14 @@ func TestCreateManualTopUp_CreditBalanceOption(t *testing.T) {
 	assert.EqualValues(t, 1710000000, recordOnly.CreateTime)
 	assert.EqualValues(t, 1710000000, recordOnly.CompleteTime)
 	assert.Equal(t, PaymentProviderManual, recordOnly.PaymentProvider)
+	assert.Equal(t, "CNY", recordOnly.Currency)
 	assert.Equal(t, 100, getUserQuotaForPaymentGuardTest(t, 501))
 
 	credited, err := CreateManualTopUp(ManualTopUpParams{
 		UserId:        501,
 		Amount:        2,
 		Money:         8.88,
+		Currency:      "USD",
 		PaymentMethod: "corporate_transfer",
 		CreateTime:    1710000100,
 		CallerIp:      "127.0.0.1",
@@ -647,6 +650,31 @@ func TestCreateManualTopUp_CreditBalanceOption(t *testing.T) {
 	var topupCount int64
 	require.NoError(t, LOG_DB.Model(&Log{}).Where("user_id = ? AND type = ?", 501, LogTypeTopup).Count(&topupCount).Error)
 	assert.EqualValues(t, 1, topupCount)
+}
+
+func TestCreateManualTopUp_RejectsInvalidPaymentDetails(t *testing.T) {
+	tests := []struct {
+		name     string
+		money    float64
+		currency string
+	}{
+		{name: "reserved currency", money: 1, currency: "XXX"},
+		{name: "negative amount", money: -1, currency: "CNY"},
+		{name: "not a number", money: math.NaN(), currency: "CNY"},
+		{name: "infinite amount", money: math.Inf(1), currency: "CNY"},
+		{name: "more than six decimals", money: 0.1234567, currency: "CNY"},
+		{name: "micro-unit overflow", money: 10_000_000_000_000, currency: "CNY"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := CreateManualTopUp(ManualTopUpParams{
+				UserId: 1, Amount: 1, Money: test.money, Currency: test.currency,
+				PaymentMethod: "bank_transfer", CreateTime: 1710000000,
+			})
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestExpireSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T) {

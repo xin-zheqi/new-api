@@ -4291,6 +4291,8 @@
     "开始验证失败": "Failed to start verification.",
     "登录流程已过期，请重新登录": "Login flow expired. Please sign in again.",
     "验证凭据未返回": "Verification proof was not returned.",
-    "验证流程已过期": "Verification flow expired."
+    "验证流程已过期": "Verification flow expired.",
+    "支付币种": "Payment currency",
+    "支付币种无效": "Invalid payment currency"
   }
 }

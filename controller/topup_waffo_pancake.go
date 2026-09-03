@@ -40,7 +40,7 @@ func RequestWaffoPancakeAmount(c *gin.Context) {
 		return
 	}
 	id := c.GetInt("id")
-	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+	if _, rejected := validateTopUpQuotaForUser(c, id, req.Amount); rejected {
 		return
 	}
 
@@ -64,32 +64,39 @@ func getWaffoPancakeMinTopup() int64 {
 }
 
 func getWaffoPancakePayMoney(amount int64, group string) float64 {
+	if amount <= 0 || !hasValidQuotaPerUnit() {
+		return 0
+	}
 	dAmount := decimal.NewFromInt(amount)
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		dAmount = dAmount.Div(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
 
-	topupGroupRatio := common.GetTopupGroupRatio(group)
-	if topupGroupRatio == 0 {
-		topupGroupRatio = 1
+	topupGroupRatio, ok := topupPaymentGroupRatio(group)
+	if !ok || !isFinitePaymentValue(setting.WaffoPancakeUnitPrice) || setting.WaffoPancakeUnitPrice < 0 {
+		return 0
 	}
 
-	discount := 1.0
-	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok && ds > 0 {
-		discount = ds
-	}
+	discount := topupPaymentDiscount(amount)
 
 	payMoney := dAmount.
 		Mul(decimal.NewFromFloat(setting.WaffoPancakeUnitPrice)).
 		Mul(decimal.NewFromFloat(topupGroupRatio)).
 		Mul(decimal.NewFromFloat(discount))
 
-	return payMoney.InexactFloat64()
+	result := payMoney.InexactFloat64()
+	if !isFinitePaymentValue(result) || result < 0 {
+		return 0
+	}
+	return result
 }
 
 func normalizeWaffoPancakeTopUpAmount(amount int64) int64 {
 	if operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeTokens {
 		return amount
+	}
+	if !hasValidQuotaPerUnit() {
+		return 0
 	}
 
 	normalized := decimal.NewFromInt(amount).
@@ -370,7 +377,8 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		return
 	}
 	id := c.GetInt("id")
-	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+	creditedQuota, rejected := validateTopUpQuotaForUser(c, id, req.Amount)
+	if rejected {
 		return
 	}
 
@@ -397,6 +405,7 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		UserId:          id,
 		Amount:          normalizeWaffoPancakeTopUpAmount(req.Amount),
 		Money:           payMoney,
+		CreditedQuota:   int64(creditedQuota),
 		TradeNo:         tradeNo,
 		PaymentMethod:   model.PaymentMethodWaffoPancake,
 		PaymentProvider: model.PaymentProviderWaffoPancake,

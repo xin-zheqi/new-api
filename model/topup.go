@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,7 @@ type TopUp struct {
 	UserId               int     `json:"user_id" gorm:"index"`
 	Amount               int64   `json:"amount"`
 	Money                float64 `json:"money"`
+	CreditedQuota        int64   `json:"credited_quota" gorm:"type:bigint;not null;default:0"`
 	TradeNo              string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod        string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider      string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
@@ -75,6 +77,7 @@ type ManualTopUpParams struct {
 	UserId              int
 	Amount              int64
 	Money               float64
+	Currency            string
 	PaymentMethod       string
 	CreateTime          int64
 	CallerIp            string
@@ -90,6 +93,12 @@ func (topUp *TopUp) Insert() error {
 }
 
 func (topUp *TopUp) BeforeSave(tx *gorm.DB) error {
+	if math.IsNaN(topUp.Money) || math.IsInf(topUp.Money, 0) || topUp.Money < 0 {
+		return errors.New("invalid topup money")
+	}
+	if topUp.CreditedQuota < 0 || topUp.CreditedQuota > int64(common.MaxWalletQuota) {
+		return ErrInvalidTopUpQuota
+	}
 	if topUp.Source == "" {
 		topUp.Source = TopUpSourceRecharge
 	}
@@ -213,17 +222,56 @@ func topUpQuotaFromDecimal(value decimal.Decimal) (int, error) {
 	return quota, nil
 }
 
-// Manual administrator credits historically saturated oversized values. Keep
-// that compatibility at the input boundary, while creditTopUpQuotaTx still
-// enforces the user's actual int32 headroom atomically.
-func topUpQuotaFromDecimalSaturating(value decimal.Decimal) (int, error) {
-	quota, clamp := common.QuotaFromDecimalChecked(value.Truncate(0))
-	if clamp != nil && clamp.Kind != common.QuotaClampOverflow {
-		return 0, fmt.Errorf("%w: %v", ErrTopUpQuotaOverflow, clamp)
+func validQuotaPerUnit() bool {
+	return common.QuotaPerUnit > 0 && !math.IsNaN(common.QuotaPerUnit) && !math.IsInf(common.QuotaPerUnit, 0)
+}
+
+func topUpQuotaFromAmount(amount int64) (int, error) {
+	if amount <= 0 || !validQuotaPerUnit() {
+		return 0, ErrInvalidTopUpQuota
 	}
-	if quota <= 0 {
-		return 0, errors.New("无效的充值额度")
+	return topUpQuotaFromDecimal(decimal.NewFromInt(amount).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+}
+
+func topUpQuotaFromMoney(money float64) (int, error) {
+	if math.IsNaN(money) || math.IsInf(money, 0) || money <= 0 || !validQuotaPerUnit() {
+		return 0, ErrInvalidTopUpQuota
 	}
+	return topUpQuotaFromDecimal(decimal.NewFromFloat(money).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+}
+
+// resolveTopUpCreditedQuota uses the immutable order snapshot when present.
+// Orders created before the snapshot column was introduced retain their
+// provider-specific legacy calculation.
+func resolveTopUpCreditedQuota(topUp *TopUp) (int, error) {
+	if topUp == nil {
+		return 0, ErrInvalidTopUpQuota
+	}
+	if topUp.CreditedQuota < 0 || topUp.CreditedQuota > int64(common.MaxWalletQuota) {
+		return 0, ErrInvalidTopUpQuota
+	}
+	if topUp.CreditedQuota > 0 {
+		return int(topUp.CreditedQuota), nil
+	}
+
+	var quota int
+	var err error
+	switch topUp.PaymentProvider {
+	case PaymentProviderStripe:
+		quota, err = topUpQuotaFromMoney(topUp.Money)
+	case PaymentProviderCreem:
+		quota, err = topUpQuotaFromDecimal(decimal.NewFromInt(topUp.Amount))
+	default:
+		quota, err = topUpQuotaFromAmount(topUp.Amount)
+	}
+	if err != nil {
+		return 0, err
+	}
+	// Persisted by the surrounding settlement transaction, so a successfully
+	// migrated legacy order no longer depends on later unit-price changes.
+	topUp.CreditedQuota = int64(quota)
 	return quota, nil
 }
 
@@ -282,7 +330,19 @@ func expectedTopUpPayment(topUp *TopUp, paid SubscriptionPaymentSnapshot) (Subsc
 			return SubscriptionPaymentSnapshot{}, ErrTopUpPaymentMismatch
 		}
 		expected := SubscriptionPaymentSnapshot{AmountMicros: topUp.ExpectedAmountMicros, Currency: expectedCurrency}
-		if expected.AmountMicros != paid.AmountMicros || expected.Currency != paid.Currency {
+		if expected.Currency != paid.Currency {
+			return SubscriptionPaymentSnapshot{}, ErrTopUpPaymentMismatch
+		}
+		if topUp.PaymentProvider == PaymentProviderStripe {
+			// Stripe Checkout can reduce amount_total through an operator-enabled
+			// promotion code. The signed callback is authoritative for that lower
+			// amount, while an unexpected increase must never settle the order.
+			if paid.AmountMicros > expected.AmountMicros {
+				return SubscriptionPaymentSnapshot{}, ErrTopUpPaymentMismatch
+			}
+			return paid, nil
+		}
+		if expected.AmountMicros != paid.AmountMicros {
 			return SubscriptionPaymentSnapshot{}, ErrTopUpPaymentMismatch
 		}
 		return expected, nil
@@ -312,10 +372,13 @@ func expectedTopUpPayment(topUp *TopUp, paid SubscriptionPaymentSnapshot) (Subsc
 			legacyCurrency = paid.Currency
 		}
 	}
-	// Money was persisted as a float before the fixed-point snapshot columns
-	// existed. Recreate the exact two-decimal checkout amount for old rows;
-	// newly-created rows always take the fixed-point branch above.
-	expected, err := NewSubscriptionPaymentFromMajorUnits(strconv.FormatFloat(topUp.Money, 'f', 2, 64), legacyCurrency)
+	// Most legacy integrations sent two decimal places. Creem preserved the
+	// currency precision, including three-decimal currencies such as KWD.
+	digits := 2
+	if topUp.PaymentProvider == PaymentProviderCreem {
+		digits = -1
+	}
+	expected, err := NewSubscriptionPaymentFromMajorUnits(strconv.FormatFloat(topUp.Money, 'f', digits, 64), legacyCurrency)
 	if err != nil || expected.AmountMicros != paid.AmountMicros || expected.Currency != paid.Currency {
 		return SubscriptionPaymentSnapshot{}, ErrTopUpPaymentMismatch
 	}
@@ -425,14 +488,14 @@ func RechargeWithPayment(referenceId string, customerId string, callerIp string,
 			return err
 		}
 
-		quota, err = topUpQuotaFromDecimal(decimal.NewFromFloat(topUp.Money).
-			Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+		quota, err = resolveTopUpCreditedQuota(topUp)
 		if err != nil {
 			return err
 		}
 		topUp.ExpectedAmountMicros = expectedPayment.AmountMicros
 		topUp.ExpectedCurrency = expectedPayment.Currency
-		topUp.Currency = paidPayment.Currency
+		topUp.Money = decimal.NewFromInt(expectedPayment.AmountMicros).Shift(-6).InexactFloat64()
+		topUp.Currency = expectedPayment.Currency
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
 		if err = tx.Save(topUp).Error; err != nil {
@@ -452,7 +515,7 @@ func RechargeWithPayment(referenceId string, customerId string, callerIp string,
 	}
 	if credited {
 		syncCreditUserQuotaCache(topUp.UserId, quota, "stripe topup")
-		RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(quota), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值额度: %v，支付金额：%.6f %s", logger.FormatQuota(quota), topUp.Money, topUp.Currency), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
 	}
 
 	return nil
@@ -500,8 +563,7 @@ func RechargeEpayWithPayment(tradeNo, actualPaymentMethod, paidAmount, callerIp 
 			return err
 		}
 
-		quotaToAdd, err = topUpQuotaFromDecimal(decimal.NewFromInt(topUp.Amount).
-			Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+		quotaToAdd, err = resolveTopUpCreditedQuota(&topUp)
 		if err != nil {
 			return err
 		}
@@ -558,10 +620,6 @@ func RechargeWechatPay(tradeNo string, paidAmountMinor int64, paidCurrency, call
 	if tradeNo == "" || paidAmountMinor <= 0 {
 		return errors.New("invalid wechat payment")
 	}
-	paidPayment, err := NewSubscriptionPaymentFromMinorUnits(paidAmountMinor, paidCurrency)
-	if err != nil {
-		return ErrTopUpPaymentMismatch
-	}
 
 	var topUp TopUp
 	var quotaToAdd int
@@ -570,7 +628,7 @@ func RechargeWechatPay(tradeNo string, paidAmountMinor int64, paidCurrency, call
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		refCol = `"trade_no"`
 	}
-	err = DB.Transaction(func(tx *gorm.DB) error {
+	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&topUp).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrTopUpNotFound
@@ -580,19 +638,22 @@ func RechargeWechatPay(tradeNo string, paidAmountMinor int64, paidCurrency, call
 		if topUp.PaymentProvider != PaymentProviderWechat {
 			return ErrPaymentMethodMismatch
 		}
-		verifiedPayment, err := expectedTopUpPayment(&topUp, paidPayment)
-		if err != nil {
-			return err
-		}
 		if topUp.Status == common.TopUpStatusSuccess {
 			return nil
 		}
 		if topUp.Status != common.TopUpStatusPending {
 			return ErrTopUpStatusInvalid
 		}
+		paidPayment, err := NewSubscriptionPaymentFromMinorUnits(paidAmountMinor, paidCurrency)
+		if err != nil {
+			return ErrTopUpPaymentMismatch
+		}
+		verifiedPayment, err := expectedTopUpPayment(&topUp, paidPayment)
+		if err != nil {
+			return err
+		}
 		paidPayment = verifiedPayment
-		quotaToAdd, err = topUpQuotaFromDecimal(decimal.NewFromInt(topUp.Amount).
-			Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+		quotaToAdd, err = resolveTopUpCreditedQuota(&topUp)
 		if err != nil {
 			return err
 		}
@@ -829,24 +890,11 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			return errors.New("订单状态不是待支付，无法补单")
 		}
 
-		// 计算应充值额度：
-		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
-		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
-		var quotaErr error
-		if topUp.PaymentProvider == PaymentProviderStripe {
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd, quotaErr = topUpQuotaFromDecimal(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit))
-			if quotaErr != nil {
-				return quotaErr
-			}
-		} else {
-			dAmount := decimal.NewFromInt(topUp.Amount)
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd, quotaErr = topUpQuotaFromDecimal(dAmount.Mul(dQuotaPerUnit))
-			if quotaErr != nil {
-				return quotaErr
-			}
+		resolvedQuota, quotaErr := resolveTopUpCreditedQuota(topUp)
+		if quotaErr != nil {
+			return quotaErr
 		}
+		quotaToAdd = resolvedQuota
 
 		// 标记完成
 		topUp.CompleteTime = common.GetTimestamp()
@@ -888,8 +936,22 @@ func CreateManualTopUp(params ManualTopUpParams) (*TopUp, error) {
 	if params.Amount <= 0 {
 		return nil, errors.New("充值额度必须大于 0")
 	}
-	if params.Money < 0 {
-		return nil, errors.New("支付金额不能为负数")
+	if math.IsNaN(params.Money) || math.IsInf(params.Money, 0) || params.Money < 0 {
+		return nil, errors.New("支付金额无效")
+	}
+	if strings.TrimSpace(params.Currency) == "" {
+		params.Currency = "CNY"
+	}
+	paymentCurrency, err := NormalizePaymentCurrency(params.Currency)
+	if err != nil {
+		return nil, errors.New("支付币种无效")
+	}
+	if params.Money > 0 {
+		if _, err = NewSubscriptionPaymentFromMajorUnits(
+			strconv.FormatFloat(params.Money, 'f', -1, 64), paymentCurrency,
+		); err != nil {
+			return nil, errors.New("支付金额无效")
+		}
 	}
 	if params.PaymentMethod == "" {
 		return nil, errors.New("支付方式不能为空")
@@ -901,8 +963,11 @@ func CreateManualTopUp(params ManualTopUpParams) (*TopUp, error) {
 	tradeNo := strconv.FormatInt(common.NextSnowflakeID(), 10)
 	quotaToAdd := 0
 	if params.CreditBalance {
+		if !validQuotaPerUnit() {
+			return nil, ErrInvalidTopUpQuota
+		}
 		var quotaErr error
-		quotaToAdd, quotaErr = topUpQuotaFromDecimalSaturating(decimal.NewFromInt(params.Amount).
+		quotaToAdd, quotaErr = topUpQuotaFromDecimal(decimal.NewFromInt(params.Amount).
 			Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
 		if quotaErr != nil {
 			return nil, quotaErr
@@ -913,6 +978,8 @@ func CreateManualTopUp(params ManualTopUpParams) (*TopUp, error) {
 		UserId:              params.UserId,
 		Amount:              params.Amount,
 		Money:               params.Money,
+		Currency:            paymentCurrency,
+		CreditedQuota:       int64(quotaToAdd),
 		TradeNo:             tradeNo,
 		PaymentMethod:       params.PaymentMethod,
 		PaymentProvider:     PaymentProviderManual,
@@ -923,7 +990,7 @@ func CreateManualTopUp(params ManualTopUpParams) (*TopUp, error) {
 		InvoiceCurrency:     params.InvoiceCurrency,
 	}
 
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err = DB.Transaction(func(tx *gorm.DB) error {
 		var user User
 		if err := tx.Select("id").Where("id = ?", params.UserId).First(&user).Error; err != nil {
 			return errors.New("用户不存在")
@@ -958,7 +1025,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 	if err != nil {
 		return err
 	}
-	paidPayment, parseErr := NewSubscriptionPaymentFromMajorUnits(strconv.FormatFloat(topUp.Money, 'f', 2, 64), paidCurrency)
+	paidPayment, parseErr := NewSubscriptionPaymentFromMajorUnits(strconv.FormatFloat(topUp.Money, 'f', -1, 64), paidCurrency)
 	if parseErr != nil {
 		return parseErr
 	}
@@ -1002,7 +1069,7 @@ func RechargeCreemWithPayment(referenceId string, customerEmail string, customer
 			return err
 		}
 
-		quota, err = topUpQuotaFromDecimal(decimal.NewFromInt(topUp.Amount))
+		quota, err = resolveTopUpCreditedQuota(topUp)
 		if err != nil {
 			return err
 		}
@@ -1108,8 +1175,7 @@ func RechargeWaffoWithPayment(tradeNo string, callerIp string, paidPayment Subsc
 			return err
 		}
 
-		quotaToAdd, err = topUpQuotaFromDecimal(decimal.NewFromInt(topUp.Amount).
-			Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+		quotaToAdd, err = resolveTopUpCreditedQuota(topUp)
 		if err != nil {
 			return err
 		}
@@ -1193,8 +1259,7 @@ func RechargeWaffoPancakeWithPayment(tradeNo string, paidPayment SubscriptionPay
 			return err
 		}
 
-		quotaToAdd, err = topUpQuotaFromDecimal(decimal.NewFromInt(topUp.Amount).
-			Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+		quotaToAdd, err = resolveTopUpCreditedQuota(topUp)
 		if err != nil {
 			return err
 		}

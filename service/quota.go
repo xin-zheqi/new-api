@@ -390,8 +390,11 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 }
 
 func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
-	if quota < 0 {
-		return errors.New("quota 不能为负数！")
+	if relayInfo == nil {
+		return errors.New("relayInfo is nil")
+	}
+	if err := common.ValidateQuota(quota); err != nil {
+		return err
 	}
 	if relayInfo.IsPlayground {
 		return nil
@@ -422,9 +425,17 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 }
 
 func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {
-
+	if relayInfo == nil {
+		return result, errors.New("relayInfo is nil")
+	}
+	if err := common.ValidateQuotaDelta(quota); err != nil {
+		return result, err
+	}
+	if err := common.ValidateQuota(preConsumedQuota); err != nil {
+		return result, fmt.Errorf("invalid pre-consumed quota: %w", err)
+	}
 	// 1) Consume from wallet quota OR subscription item
-	if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {
+	if relayInfo.BillingSource == BillingSourceSubscription {
 		if relayInfo.SubscriptionId == 0 {
 			return result, errors.New("subscription id is missing")
 		}

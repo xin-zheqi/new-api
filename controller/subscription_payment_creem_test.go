@@ -65,12 +65,13 @@ func TestSubscriptionCreemOrderUsesSystemCurrencyAndSnapshottedProduct(t *testin
 	}
 	require.NoError(t, db.Create(&user).Error)
 	plan := model.SubscriptionPlan{
-		Title: "EUR Creem plan", PriceAmount: 9.99, Currency: "EUR",
+		Title: "EUR Creem plan", PriceAmount: 9.123456, Currency: "EUR",
 		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
 		Enabled: true, TotalAmount: 1000, InvoiceEligible: true, CreemProductId: "prod_eur_test",
 	}
 	require.NoError(t, db.Create(&plan).Error)
 	model.InvalidateSubscriptionPlanCache(plan.Id)
+	t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
 
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
@@ -88,7 +89,7 @@ func TestSubscriptionCreemOrderUsesSystemCurrencyAndSnapshottedProduct(t *testin
 	assert.Contains(t, recorder.Body.String(), `"message":"success"`)
 	var order model.SubscriptionOrder
 	require.NoError(t, db.Where("user_id = ? AND plan_id = ?", user.Id, plan.Id).First(&order).Error)
-	assert.Equal(t, int64(9_990_000), order.ExpectedAmountMicros)
+	assert.Equal(t, int64(9_123_456), order.ExpectedAmountMicros)
 	assert.Equal(t, "CNY", order.ExpectedCurrency)
 	assert.NotEmpty(t, order.PlanSnapshot)
 

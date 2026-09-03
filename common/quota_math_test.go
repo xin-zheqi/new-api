@@ -144,3 +144,28 @@ func TestWalletQuotaFromDecimalStrict(t *testing.T) {
 	assert.Equal(t, "WalletQuotaFromDecimal", clamp.Op)
 	assert.Equal(t, QuotaClampOverflow, clamp.Kind)
 }
+
+func TestQuotaValidatorsEnforceSingleRequestDomain(t *testing.T) {
+	for _, quota := range []int{0, 1, MaxQuota} {
+		require.NoError(t, ValidateQuota(quota))
+	}
+	require.Error(t, ValidateQuota(-1))
+	require.Error(t, ValidateQuota(MaxQuota+1))
+
+	for _, delta := range []int{-MaxQuota, 0, MaxQuota} {
+		require.NoError(t, ValidateQuotaDelta(delta))
+	}
+	require.Error(t, ValidateQuotaDelta(-MaxQuota-1))
+	require.Error(t, ValidateQuotaDelta(MaxQuota+1))
+}
+
+func TestGetTrustQuotaUsesSingleRequestBounds(t *testing.T) {
+	originalQuotaPerUnit := QuotaPerUnit
+	t.Cleanup(func() { QuotaPerUnit = originalQuotaPerUnit })
+
+	QuotaPerUnit = float64(MaxQuota)
+	assert.Equal(t, MaxQuota, GetTrustQuota())
+
+	QuotaPerUnit = math.NaN()
+	assert.Zero(t, GetTrustQuota())
+}

@@ -7,12 +7,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCalcSubscriptionBalanceQuotaRejectsSaturatedConversion(t *testing.T) {
+func TestCalcSubscriptionBalanceQuotaUsesWalletQuotaBoundary(t *testing.T) {
 	originalQuotaPerUnit := common.QuotaPerUnit
-	common.QuotaPerUnit = float64(common.MaxQuota)
+	common.QuotaPerUnit = 1
 	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
 
-	quota, err := calcSubscriptionBalanceQuota(9999)
+	quota, err := calcSubscriptionBalanceQuota(float64(common.MaxQuota + 1))
+	require.NoError(t, err)
+	require.Equal(t, common.MaxQuota+1, quota)
+
+	quota, err = calcSubscriptionBalanceQuota(float64(common.MaxWalletQuota) + 1)
 	require.Error(t, err)
 	require.Zero(t, quota)
 	var clamp *common.QuotaClamp

@@ -16,14 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
-import * as z from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { searchUsers, getUsers } from '@/features/users/api'
-import type { User } from '@/features/users/types'
+import * as z from 'zod'
+
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -36,6 +35,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -51,27 +51,62 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { searchUsers, getUsers } from '@/features/users/api'
+import type { User } from '@/features/users/types'
+import { isSupportedCurrencyCode } from '@/lib/iso-currency'
+
 import { createManualTopup, isApiSuccess } from '../../api'
 
 const createManualTopupSchema = (t: (key: string) => string) =>
-  z.object({
-    user_id: z.string().min(1, t('Please select a user')),
-    payment_method: z
-      .string()
-      .trim()
-      .min(1, t('Payment method is required'))
-      .max(50, t('Payment method cannot exceed 50 characters')),
-    amount: z.coerce
-      .number()
-      .positive(t('Recharge amount must be greater than 0')),
-    money: z.coerce.number().min(0, t('Payment amount cannot be negative')),
-    create_time: z.string().min(1, t('Create time is required')),
-    credit_balance: z.boolean(),
-  })
+  z
+    .object({
+      user_id: z.string().min(1, t('Please select a user')),
+      payment_method: z
+        .string()
+        .trim()
+        .min(1, t('Payment method is required'))
+        .max(50, t('Payment method cannot exceed 50 characters')),
+      amount: z.coerce
+        .number()
+        .int(t('Amount must be a whole number'))
+        .refine(Number.isSafeInteger, t('Amount must be a whole number'))
+        .positive(t('Recharge amount must be greater than 0')),
+      money: z.coerce.number().min(0, t('Payment amount cannot be negative')),
+      currency: z
+        .string()
+        .trim()
+        .transform((value) => value.toUpperCase()),
+      invoice_amount: z.coerce
+        .number()
+        .min(0, t('Invoiceable amount cannot be negative')),
+      invoice_currency: z
+        .string()
+        .trim()
+        .transform((value) => value.toUpperCase()),
+      create_time: z.string().min(1, t('Create time is required')),
+      credit_balance: z.boolean(),
+    })
+    .superRefine((values, context) => {
+      if (!isSupportedCurrencyCode(values.currency)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['currency'],
+          message: t('Enter a valid ISO 4217 currency code'),
+        })
+      }
+      if (
+        values.invoice_amount > 0 &&
+        !isSupportedCurrencyCode(values.invoice_currency)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['invoice_currency'],
+          message: t('Enter a valid ISO 4217 currency code'),
+        })
+      }
+    })
 
-type ManualTopupFormInput = z.input<
-  ReturnType<typeof createManualTopupSchema>
->
+type ManualTopupFormInput = z.input<ReturnType<typeof createManualTopupSchema>>
 type ManualTopupFormValues = z.output<
   ReturnType<typeof createManualTopupSchema>
 >
@@ -116,6 +151,9 @@ export function ManualTopupDialog({
       payment_method: 'bank_transfer',
       amount: 1,
       money: 0,
+      currency: 'CNY',
+      invoice_amount: 0,
+      invoice_currency: 'CNY',
       create_time: toDatetimeLocal(new Date()),
       credit_balance: false,
     },
@@ -128,6 +166,9 @@ export function ManualTopupDialog({
       payment_method: 'bank_transfer',
       amount: 1,
       money: 0,
+      currency: 'CNY',
+      invoice_amount: 0,
+      invoice_currency: 'CNY',
       create_time: toDatetimeLocal(new Date()),
       credit_balance: false,
     })
@@ -181,6 +222,9 @@ export function ManualTopupDialog({
         payment_method: values.payment_method.trim(),
         amount: values.amount,
         money: values.money,
+        currency: values.currency,
+        invoice_amount: values.invoice_amount,
+        invoice_currency: values.invoice_currency,
         create_time: createTime,
         credit_balance: values.credit_balance,
       })
@@ -202,7 +246,7 @@ export function ManualTopupDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[520px]'>
+      <DialogContent className='max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-[560px]'>
         <DialogHeader>
           <DialogTitle>{t('Create recharge record')}</DialogTitle>
           <DialogDescription>
@@ -230,9 +274,14 @@ export function ManualTopupDialog({
                       />
                       <Select
                         value={field.value}
-                        onValueChange={(value) => value && field.onChange(value)}
+                        onValueChange={(value) =>
+                          value && field.onChange(value)
+                        }
                       >
-                        <SelectTrigger className='w-full'>
+                        <SelectTrigger
+                          className='w-full'
+                          aria-label={t('User')}
+                        >
                           <SelectValue
                             placeholder={
                               loadingUsers
@@ -279,18 +328,41 @@ export function ManualTopupDialog({
               )}
             />
 
+            <FormField
+              control={form.control}
+              name='amount'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Recharge Amount')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      step='1'
+                      min='1'
+                      name={field.name}
+                      value={toInputNumberValue(field.value)}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <div className='grid gap-4 sm:grid-cols-2'>
               <FormField
                 control={form.control}
-                name='amount'
+                name='money'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Recharge Amount')}</FormLabel>
+                    <FormLabel>{t('Payment Amount')}</FormLabel>
                     <FormControl>
                       <Input
                         type='number'
-                        step='1'
-                        min='1'
+                        step='any'
+                        min='0'
                         name={field.name}
                         value={toInputNumberValue(field.value)}
                         onChange={field.onChange}
@@ -305,20 +377,67 @@ export function ManualTopupDialog({
 
               <FormField
                 control={form.control}
-                name='money'
+                name='currency'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Payment Amount')}</FormLabel>
+                    <FormLabel>{t('Payment currency')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        maxLength={3}
+                        placeholder='CNY'
+                        onChange={(event) =>
+                          field.onChange(event.target.value.toUpperCase())
+                        }
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid items-start gap-4 sm:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='invoice_amount'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Invoiceable amount')}</FormLabel>
                     <FormControl>
                       <Input
                         type='number'
-                        step='0.01'
+                        step='any'
                         min='0'
                         name={field.name}
                         value={toInputNumberValue(field.value)}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
                         ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Actual amount to be invoiced; 0 disables invoicing.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='invoice_currency'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Invoice currency')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        maxLength={3}
+                        placeholder='CNY'
+                        onChange={(event) =>
+                          field.onChange(event.target.value.toUpperCase())
+                        }
                       />
                     </FormControl>
                     <FormMessage />
@@ -349,7 +468,9 @@ export function ManualTopupDialog({
                   <div className='flex flex-col gap-1'>
                     <FormLabel>{t('Sync increase balance')}</FormLabel>
                     <p className='text-muted-foreground text-sm'>
-                      {t('When enabled, the user balance is credited immediately.')}
+                      {t(
+                        'When enabled, the user balance is credited immediately.'
+                      )}
                     </p>
                   </div>
                   <FormControl>

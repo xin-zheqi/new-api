@@ -57,6 +57,10 @@ func UserCheckin(userId int) (*Checkin, error) {
 	if !setting.Enabled {
 		return nil, errors.New("签到功能未启用")
 	}
+	minQuota, maxQuota := setting.MinQuota, setting.MaxQuota
+	if minQuota < 0 || maxQuota < minQuota || maxQuota > common.MaxQuota {
+		return nil, errors.New("签到额度配置错误")
+	}
 
 	// 检查今天是否已签到
 	hasChecked, err := HasCheckedInToday(userId)
@@ -68,9 +72,9 @@ func UserCheckin(userId int) (*Checkin, error) {
 	}
 
 	// 计算随机额度奖励
-	quotaAwarded := setting.MinQuota
-	if setting.MaxQuota > setting.MinQuota {
-		quotaAwarded = setting.MinQuota + rand.Intn(setting.MaxQuota-setting.MinQuota+1)
+	quotaAwarded := minQuota
+	if maxQuota > minQuota {
+		quotaAwarded = minQuota + int(rand.Int63n(int64(maxQuota)-int64(minQuota)+1))
 	}
 
 	today := time.Now().Format("2006-01-02")
@@ -100,10 +104,14 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 			return errors.New("签到失败，请稍后重试")
 		}
 
-		// 步骤2: 在事务中增加用户额度
-		if err := tx.Model(&User{}).Where("id = ?", userId).
-			Update("quota", gorm.Expr("quota + ?", quotaAwarded)).Error; err != nil {
-			return errors.New("签到失败：更新额度出错")
+		// 步骤2: 在事务中增加用户额度，并复用钱包上限保护。
+		if quotaAwarded == 0 {
+			var user User
+			if err := tx.Select("id").Where("id = ?", userId).First(&user).Error; err != nil {
+				return err
+			}
+		} else if err := creditTopUpQuotaTx(tx, userId, quotaAwarded, nil); err != nil {
+			return err
 		}
 
 		return nil
@@ -129,12 +137,23 @@ func userCheckinWithoutTransaction(checkin *Checkin, userId int, quotaAwarded in
 		return nil, errors.New("签到失败，请稍后重试")
 	}
 
-	// 步骤2: 增加用户额度
+	// 步骤2: 增加用户额度。零奖励只需确认用户存在，不执行无意义的更新。
+	if quotaAwarded == 0 {
+		var count int64
+		if err := DB.Model(&User{}).Where("id = ?", userId).Count(&count).Error; err != nil || count == 0 {
+			_ = DB.Delete(checkin)
+			if err != nil {
+				return nil, err
+			}
+			return nil, gorm.ErrRecordNotFound
+		}
+		return checkin, nil
+	}
 	// 使用 db=true 强制直接写入数据库，不使用批量更新
 	if err := IncreaseUserQuota(userId, quotaAwarded, true); err != nil {
 		// 如果增加额度失败，需要回滚签到记录
-		DB.Delete(checkin)
-		return nil, errors.New("签到失败：更新额度出错")
+		_ = DB.Delete(checkin)
+		return nil, err
 	}
 
 	return checkin, nil

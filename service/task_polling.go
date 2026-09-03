@@ -638,12 +638,13 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 			logger.LogWarn(ctx, fmt.Sprintf("任务 %s 表达式结算失败，保留预扣额度: %v", task.TaskID, err))
 			return true
 		}
-		if result.Clamp != nil {
-			logger.LogWarn(ctx, fmt.Sprintf("任务 %s 表达式结算额度发生饱和: %+v", task.TaskID, result.Clamp))
-		}
 		bc.TieredSnapshot.UsageFacts = usageFacts
 		bc.TieredSnapshot.EstimatedTier = result.MatchedTier
-		RecalculateTaskQuota(ctx, task, result.ActualQuotaAfterGroup, "任务用量表达式结算", result.Clamp)
+		if result.Clamp != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("任务 %s 表达式结算额度发生饱和，保留预扣额度: %+v", task.TaskID, result.Clamp))
+			return true
+		}
+		RecalculateTaskQuota(ctx, task, result.ActualQuotaAfterGroup, "任务用量表达式结算")
 		return true
 	}
 	// 按次计费的成功任务保持预扣；失败任务由调用方全额退款。
@@ -652,7 +653,11 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		return false
 	}
 	// 优先让 adaptor 决定最终额度。
-	if actualQuota := adaptor.AdjustBillingOnComplete(task, taskResult); actualQuota > 0 {
+	if actualQuota := adaptor.AdjustBillingOnComplete(task, taskResult); actualQuota != 0 {
+		if err := common.ValidateQuota(actualQuota); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("任务 %s adaptor 返回异常结算额度，保留预扣额度: %v", task.TaskID, err))
+			return true
+		}
 		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整")
 		return true
 	}

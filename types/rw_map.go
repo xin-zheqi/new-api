@@ -12,10 +12,7 @@ type RWMap[K comparable, V any] struct {
 }
 
 func (m *RWMap[K, V]) UnmarshalJSON(b []byte) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.data = make(map[K]V)
-	return common.Unmarshal(b, &m.data)
+	return m.replaceFromJSON(b)
 }
 
 func (m *RWMap[K, V]) MarshalJSON() ([]byte, error) {
@@ -74,21 +71,33 @@ func (m *RWMap[K, V]) Len() int {
 }
 
 func LoadFromJsonString[K comparable, V any](m *RWMap[K, V], jsonStr string) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.data = make(map[K]V)
-	return common.Unmarshal([]byte(jsonStr), &m.data)
+	return m.replaceFromJSON([]byte(jsonStr))
 }
 
 func LoadFromJsonStringWithCallback[K comparable, V any](m *RWMap[K, V], jsonStr string, onSuccess func()) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.data = make(map[K]V)
-	err := common.Unmarshal([]byte(jsonStr), &m.data)
-	if err == nil && onSuccess != nil {
+	if err := m.replaceFromJSON([]byte(jsonStr)); err != nil {
+		return err
+	}
+	if onSuccess != nil {
 		onSuccess()
 	}
-	return err
+	return nil
+}
+
+// replaceFromJSON publishes a fully parsed map in one assignment. Failed
+// updates leave the last known-good value available to concurrent readers.
+func (m *RWMap[K, V]) replaceFromJSON(data []byte) error {
+	parsed := make(map[K]V)
+	if err := common.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+	if parsed == nil {
+		parsed = make(map[K]V)
+	}
+	m.mutex.Lock()
+	m.data = parsed
+	m.mutex.Unlock()
+	return nil
 }
 
 func (m *RWMap[K, V]) MarshalJSONString() string {

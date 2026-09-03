@@ -540,6 +540,33 @@ func TestPrepareMidjourneyTaskBillingKeepsUnbilledMarkerClear(t *testing.T) {
 	assert.Zero(t, task.BillingChannelId)
 }
 
+func TestPrepareMidjourneyTaskBillingRejectsOutOfRangeQuota(t *testing.T) {
+	for _, quota := range []int{-1, common.MaxQuota + 1} {
+		task := &model.Midjourney{Quota: 900, TokenId: 7, BillingChannelId: 8}
+
+		prepared, err := PrepareMidjourneyTaskBilling(&relaycommon.RelayInfo{}, task, quota, true)
+
+		require.Error(t, err)
+		assert.False(t, prepared)
+		assert.Zero(t, task.Quota)
+		assert.Zero(t, task.TokenId)
+		assert.Zero(t, task.BillingChannelId)
+	}
+}
+
+func TestSettleAndRefundMidjourneyRejectOutOfRangePersistedQuota(t *testing.T) {
+	for _, quota := range []int{-1, common.MaxQuota + 1} {
+		task := &model.Midjourney{Id: 1, MjId: "invalid-midjourney-quota", Quota: quota}
+
+		billed, err := SettleMidjourneyTaskBilling(&relaycommon.RelayInfo{}, task, true)
+
+		require.Error(t, err)
+		assert.False(t, billed)
+		assert.False(t, RefundMidjourneyQuota(context.Background(), task, "invalid quota"))
+		assert.Equal(t, quota, task.Quota)
+	}
+}
+
 func TestSettleMidjourneyTaskBillingRequiresPersistedTask(t *testing.T) {
 	truncate(t)
 
@@ -1441,6 +1468,75 @@ func TestSettle_NonPerCallBilling_AppliesAdaptorAdjustment(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestSettle_InvalidAdaptorQuotaKeepsPreConsumedCharge(t *testing.T) {
+	ctx := context.Background()
+	task := makeTask(32, 32, 5000, 0, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusFailure
+
+	for _, quota := range []int{-1, common.MaxQuota + 1} {
+		settled := settleTaskBillingOnComplete(ctx, &mockAdaptor{adjustReturn: quota}, task, &relaycommon.TaskInfo{Status: model.TaskStatusFailure})
+
+		assert.True(t, settled)
+		assert.Equal(t, 5000, task.Quota)
+	}
+}
+
+func TestRecalculateTaskQuotaByTokensSaturationKeepsPreConsumedCharge(t *testing.T) {
+	const modelName = "task-saturated-ratio-test"
+	originalRatios := ratio_setting.GetModelRatioCopy()
+	ratios := ratio_setting.GetModelRatioCopy()
+	ratios[modelName] = math.MaxFloat64
+	encoded, err := common.Marshal(ratios)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(string(encoded)))
+	t.Cleanup(func() {
+		encoded, err := common.Marshal(originalRatios)
+		require.NoError(t, err)
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(string(encoded)))
+	})
+
+	task := makeTask(1, 1, 5000, 0, BillingSourceWallet, 0)
+	task.TaskID = "saturated-token-recalculation"
+	task.Group = "default"
+	task.PrivateData.BillingContext.OriginModelName = modelName
+
+	assert.True(t, RecalculateTaskQuotaByTokens(context.Background(), task, 2))
+	assert.Equal(t, 5000, task.Quota)
+}
+
+func TestSettle_TieredSaturationKeepsPreConsumedCharge(t *testing.T) {
+	truncate(t)
+	const userID, preConsumed = 39, 5_000
+	const initialQuota = common.MaxQuota + 10_000
+	seedUser(t, userID, initialQuota)
+
+	expression := `tier("base", u("units"))`
+	task := makeTask(userID, 0, preConsumed, 0, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusSuccess
+	task.PrivateData.BillingContext.TieredSnapshot = &billingexpr.BillingSnapshot{
+		ExprString:       expression,
+		ExprHash:         billingexpr.ExprHashString(expression),
+		GroupRatio:       1,
+		QuotaPerUnit:     math.MaxFloat64,
+		ExprVersion:      1,
+		TaskUsageBilling: true,
+	}
+
+	settled := settleTaskBillingOnComplete(
+		context.Background(),
+		&mockAdaptor{},
+		task,
+		&relaycommon.TaskInfo{Status: model.TaskStatusSuccess, UsageFacts: map[string]any{"units": float64(2)}},
+	)
+
+	assert.True(t, settled)
+	assert.Equal(t, preConsumed, task.Quota)
+	assert.Equal(t, initialQuota, getUserQuota(t, userID))
+	assert.Equal(t, int64(0), countLogs(t))
+	assert.Equal(t, map[string]any{"units": float64(2)}, task.PrivateData.BillingContext.TieredSnapshot.UsageFacts)
+	assert.Equal(t, "base", task.PrivateData.BillingContext.TieredSnapshot.EstimatedTier)
 }
 
 func TestSettle_TieredEvaluationFailureKeepsPreConsumedCharge(t *testing.T) {

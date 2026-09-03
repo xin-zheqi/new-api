@@ -45,8 +45,8 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	if relayInfo == nil {
 		return false, errors.New("relay info is nil")
 	}
-	if quota < 0 {
-		return false, errors.New("quota cannot be negative")
+	if err := common.ValidateQuota(quota); err != nil {
+		return false, err
 	}
 	if relayInfo.BillingSource == BillingSourceSubscription {
 		return false, errors.New("legacy Midjourney billing does not support subscriptions")
@@ -70,6 +70,9 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 	}
 	if task == nil || task.Id == 0 {
 		return false, errors.New("Midjourney task must be persisted before billing")
+	}
+	if err := common.ValidateQuota(task.Quota); err != nil {
+		return false, fmt.Errorf("invalid Midjourney task quota: %w", err)
 	}
 
 	result, billingErr := postConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
@@ -95,9 +98,17 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 
 // RefundMidjourneyQuota reverses every accounting element recorded for a billed legacy task.
 func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason string) bool {
+	if task == nil {
+		logger.LogError(ctx, "拒绝空 Midjourney 任务退款")
+		return false
+	}
 	quota := task.Quota
 	if quota == 0 {
 		return true
+	}
+	if err := common.ValidateQuota(quota); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("拒绝异常 Midjourney 任务退款 task %s: %s", task.MjId, err.Error()))
+		return false
 	}
 
 	if err := model.IncreaseUserQuota(task.UserId, quota, false); err != nil {

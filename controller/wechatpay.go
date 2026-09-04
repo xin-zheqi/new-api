@@ -50,6 +50,7 @@ type wechatRuntimeSettings struct {
 	Enabled            bool
 	NotifyURL          string
 	OrderExpireMinutes int
+	MinTopUp           int
 	UnitPrice          float64
 	Config             service.WechatPayConfig
 }
@@ -69,6 +70,7 @@ func currentWechatRuntimeSettings() wechatRuntimeSettings {
 		Enabled:            setting.WechatEnabled,
 		NotifyURL:          setting.WechatNotifyURL,
 		OrderExpireMinutes: setting.WechatOrderExpireMinutes,
+		MinTopUp:           setting.EffectiveWechatMinTopUp(operation_setting.MinTopUp),
 		UnitPrice:          setting.EffectiveWechatUnitPrice(operation_setting.Price),
 		Config: service.WechatPayConfig{
 			MchID:                   setting.WechatMchID,
@@ -293,7 +295,7 @@ func RequestWechatPay(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if valid, message := validateTopUpAmount(req.Amount, getMinTopup()); !valid {
+	if valid, message := validateTopUpAmount(req.Amount, topUpDisplayLimit(wechatSettings.MinTopUp)); !valid {
 		common.ApiErrorMsg(c, message)
 		return
 	}
@@ -379,13 +381,18 @@ func RequestWechatAmount(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
 	}
+	settings := currentWechatRuntimeSettings()
+	if _, err := newConfiguredWechatClient(settings); err != nil {
+		common.ApiErrorMsg(c, "微信支付暂未配置完整")
+		return
+	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
 	var req WechatPayRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if valid, message := validateTopUpAmount(req.Amount, getMinTopup()); !valid {
+	if valid, message := validateTopUpAmount(req.Amount, topUpDisplayLimit(settings.MinTopUp)); !valid {
 		common.ApiErrorMsg(c, message)
 		return
 	}
@@ -398,7 +405,6 @@ func RequestWechatAmount(c *gin.Context) {
 		common.ApiErrorMsg(c, "获取用户分组失败")
 		return
 	}
-	settings := currentWechatRuntimeSettings()
 	snapshot, _, err := wechatTopUpPaymentSnapshot(req.Amount, group, settings.UnitPrice)
 	if err != nil {
 		common.ApiErrorMsg(c, "充值金额配置错误")

@@ -228,6 +228,7 @@ function createPaymentSchema(t: TFunction) {
         .max(64 * 1024, t('Credential content is too long')),
       WechatNotifyURL: z.string(),
       WechatOrderExpireMinutes: z.coerce.number().int().min(1).max(120),
+      WechatMinTopUp: z.coerce.number().int().min(1).max(10_000),
       WechatUnitPrice: z.coerce.number().finite().gt(0).max(1_000_000),
     })
     .superRefine((values, ctx) => {
@@ -621,6 +622,7 @@ export function PaymentSettingsSection({
       WechatPlatformCertificate: values.WechatPlatformCertificate.trim(),
       WechatNotifyURL: removeTrailingSlash(values.WechatNotifyURL.trim()),
       WechatOrderExpireMinutes: values.WechatOrderExpireMinutes,
+      WechatMinTopUp: values.WechatMinTopUp,
       WechatUnitPrice: values.WechatUnitPrice,
     }
 
@@ -688,6 +690,7 @@ export function PaymentSettingsSection({
         initialRef.current.WechatNotifyURL.trim()
       ),
       WechatOrderExpireMinutes: initialRef.current.WechatOrderExpireMinutes,
+      WechatMinTopUp: initialRef.current.WechatMinTopUp,
       WechatUnitPrice: initialRef.current.WechatUnitPrice,
     }
 
@@ -906,6 +909,7 @@ export function PaymentSettingsSection({
       sanitized.WechatPayPublicKeyID !== initial.WechatPayPublicKeyID ||
       sanitized.WechatNotifyURL !== initial.WechatNotifyURL ||
       sanitized.WechatOrderExpireMinutes !== initial.WechatOrderExpireMinutes ||
+      sanitized.WechatMinTopUp !== initial.WechatMinTopUp ||
       sanitized.WechatUnitPrice !== initial.WechatUnitPrice ||
       sanitized.WechatApiV3Key.length > 0 ||
       sanitized.WechatPrivateKey.length > 0 ||
@@ -959,6 +963,7 @@ export function PaymentSettingsSection({
           platform_certificate: sanitized.WechatPlatformCertificate,
           notify_url: sanitized.WechatNotifyURL,
           order_expire_minutes: sanitized.WechatOrderExpireMinutes,
+          min_topup: sanitized.WechatMinTopUp,
           unit_price: sanitized.WechatUnitPrice,
         })
       }

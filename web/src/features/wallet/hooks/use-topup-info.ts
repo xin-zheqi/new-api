@@ -55,8 +55,18 @@ function parseJsonArray(data: unknown): unknown[] {
 
 function parsePaymentMethods(
   data: unknown,
-  stripeMinTopup: number
+  stripeMinTopup?: number,
+  wechatMinTopup?: number
 ): PaymentMethod[] {
+  const fallbackStripeMinimum =
+    Number.isFinite(Number(stripeMinTopup)) && Number(stripeMinTopup) > 0
+      ? Number(stripeMinTopup)
+      : 1
+  const fallbackWechatMinimum =
+    Number.isFinite(Number(wechatMinTopup)) && Number(wechatMinTopup) > 0
+      ? Number(wechatMinTopup)
+      : 1
+
   return parseJsonArray(data)
     .filter(
       (item): item is Record<string, unknown> =>
@@ -66,16 +76,19 @@ function parsePaymentMethods(
       const rawMinTopup = Number(item.min_topup)
       const normalizedMinTopup = Number.isFinite(rawMinTopup) ? rawMinTopup : 0
       const type = typeof item.type === 'string' ? item.type : ''
+      let minTopup = normalizedMinTopup
+      if (minTopup <= 0 && type === 'stripe') {
+        minTopup = fallbackStripeMinimum
+      } else if (minTopup <= 0 && type === 'wechat_native_v3') {
+        minTopup = fallbackWechatMinimum
+      }
 
       return {
         name: typeof item.name === 'string' ? item.name : '',
         type,
         color: typeof item.color === 'string' ? item.color : undefined,
         icon: typeof item.icon === 'string' ? item.icon : undefined,
-        min_topup:
-          type === 'stripe' && normalizedMinTopup <= 0
-            ? stripeMinTopup
-            : normalizedMinTopup,
+        min_topup: minTopup,
       }
     })
     .filter((item) => item.name && item.type && item.type !== 'waffo')
@@ -184,7 +197,8 @@ export function useTopupInfo() {
         ...response.data,
         pay_methods: parsePaymentMethods(
           response.data.pay_methods,
-          response.data.stripe_min_topup
+          response.data.stripe_min_topup,
+          response.data.wechat_min_topup
         ),
         amount_options: parseAmountOptions(response.data.amount_options),
         discount: parseDiscountMap(response.data.discount),
@@ -192,6 +206,20 @@ export function useTopupInfo() {
         waffo_pay_methods: parseWaffoPayMethods(
           response.data.waffo_pay_methods
         ),
+      }
+
+      const wechatMinTopup = Number(response.data.wechat_min_topup)
+      if (Number.isFinite(wechatMinTopup) && wechatMinTopup > 0) {
+        processedData.wechat_min_topup = wechatMinTopup
+      }
+
+      const wechatUnitPrice = Number(response.data.wechat_unit_price)
+      if (Number.isFinite(wechatUnitPrice) && wechatUnitPrice > 0) {
+        processedData.wechat_unit_price = wechatUnitPrice
+      }
+      if (typeof response.data.default_payment_method === 'string') {
+        processedData.default_payment_method =
+          response.data.default_payment_method.trim() || undefined
       }
 
       setTopupInfo(processedData)

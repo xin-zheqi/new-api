@@ -95,10 +95,28 @@ func GetTopUpInfo(c *gin.Context) {
 		return
 	}
 
-	// 获取支付方式
-	payMethods := append([]map[string]string(nil), operation_setting.PayMethods...)
-	if !complianceConfirmed {
-		payMethods = []map[string]string{}
+	// Epay methods are only exposed when its credentials and webhook settings
+	// are complete. Dedicated gateways (including WeChat Native) are appended
+	// below and never routed through the legacy Epay endpoint.
+	epayEnabled := isEpayTopUpEnabled()
+	payMethods := make([]map[string]string, 0, len(operation_setting.PayMethods)+4)
+	if epayEnabled {
+		for _, method := range operation_setting.PayMethods {
+			if !isEpayPaymentMethod(method["type"]) {
+				continue
+			}
+			copyMethod := make(map[string]string, len(method))
+			for key, value := range method {
+				copyMethod[key] = value
+			}
+			// A missing per-method limit means that the legacy gateway
+			// uses the global Epay minimum. Publish it explicitly so both
+			// wallet implementations enforce the same value.
+			if configuredMinimum, err := strconv.ParseInt(strings.TrimSpace(copyMethod["min_topup"]), 10, 64); err != nil || configuredMinimum <= 0 {
+				copyMethod["min_topup"] = strconv.FormatInt(getMinTopup(), 10)
+			}
+			payMethods = append(payMethods, copyMethod)
+		}
 	}
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
@@ -148,8 +166,9 @@ func GetTopUpInfo(c *gin.Context) {
 	// existing wallet flow can render it alongside Epay methods. The request
 	// handler still enforces the provider server-side; this list is only UI
 	// capability metadata.
-	enableWechat := isWechatTopUpEnabled()
-	if complianceConfirmed && enableWechat {
+	wechatSettings := currentWechatRuntimeSettings()
+	enableWechat := complianceConfirmed && isWechatTopUpEnabledForSettings(wechatSettings)
+	if enableWechat {
 		hasWechat := false
 		for _, method := range payMethods {
 			if method["type"] == model.PaymentMethodWechat {
@@ -162,7 +181,7 @@ func GetTopUpInfo(c *gin.Context) {
 				"name":      "WeChat Pay",
 				"type":      model.PaymentMethodWechat,
 				"color":     "#07C160",
-				"min_topup": strconv.FormatInt(getMinTopup(), 10),
+				"min_topup": strconv.FormatInt(topUpDisplayLimit(wechatSettings.MinTopUp), 10),
 			})
 		}
 	}
@@ -190,12 +209,12 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"enable_online_topup":              complianceConfirmed && isEpayTopUpEnabled(),
+		"enable_online_topup":              epayEnabled,
 		"enable_stripe_topup":              complianceConfirmed && isStripeTopUpEnabled(),
 		"enable_creem_topup":               complianceConfirmed && isCreemTopUpEnabled(),
 		"enable_waffo_topup":               complianceConfirmed && enableWaffo,
 		"enable_waffo_pancake_topup":       complianceConfirmed && enableWaffoPancake,
-		"enable_wechat_topup":              complianceConfirmed && enableWechat,
+		"enable_wechat_topup":              enableWechat,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,
@@ -205,9 +224,17 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 			return nil
 		}(),
-		"creem_products":          setting.CreemProducts,
-		"pay_methods":             payMethods,
-		"min_topup":               getMinTopup(),
+		"creem_products": setting.CreemProducts,
+		"pay_methods":    payMethods,
+		// Keep the preference explicit instead of making clients infer it from
+		// array order. Official WeChat Native is preferred when available so a
+		// configured WeChat-only checkout is not accidentally routed to Epay.
+		"default_payment_method": defaultTopUpPaymentMethod(payMethods, enableWechat),
+		"min_topup":              getMinTopup(),
+		"wechat_min_topup":       topUpDisplayLimit(wechatSettings.MinTopUp),
+		// This is a non-sensitive display value. The actual order amount is
+		// recalculated and validated by the server at checkout time.
+		"wechat_unit_price":       wechatSettings.UnitPrice,
 		"stripe_min_topup":        getStripeMinTopup(),
 		"waffo_min_topup":         getWaffoMinTopup(),
 		"waffo_pancake_min_topup": getWaffoPancakeMinTopup(),
@@ -218,6 +245,23 @@ func GetTopUpInfo(c *gin.Context) {
 		"mall_url":                mallURL,
 	}
 	common.ApiSuccess(c, data)
+}
+
+// defaultTopUpPaymentMethod returns the payment method that the wallet should
+// select initially. The explicit WeChat preference is intentional: Native
+// WeChat has its own signed order flow and must not be mistaken for Epay wxpay.
+func defaultTopUpPaymentMethod(methods []map[string]string, wechatEnabled bool) string {
+	if wechatEnabled {
+		for _, method := range methods {
+			if method["type"] == model.PaymentMethodWechat {
+				return model.PaymentMethodWechat
+			}
+		}
+	}
+	if len(methods) > 0 {
+		return methods[0]["type"]
+	}
+	return ""
 }
 
 func canonicalMallHostname(hostname string) string {
@@ -541,7 +585,7 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 
-	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+	if !isEpayPaymentMethod(req.PaymentMethod) || !operation_setting.ContainsPayMethod(req.PaymentMethod) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}

@@ -36,6 +36,7 @@ const defaultInputs = {
   WechatPlatformCertificate: '',
   WechatNotifyURL: '',
   WechatOrderExpireMinutes: 120,
+  WechatMinTopUp: 1,
   WechatUnitPrice: 7.3,
 };
 
@@ -67,6 +68,11 @@ export default function SettingsPaymentGatewayWechat(props) {
       WechatNotifyURL: props.options.WechatNotifyURL || '',
       WechatOrderExpireMinutes:
         parseInt(props.options.WechatOrderExpireMinutes) || 120,
+      WechatMinTopUp:
+        Number.isInteger(parseInt(props.options.WechatMinTopUp, 10)) &&
+        parseInt(props.options.WechatMinTopUp, 10) >= 1
+          ? parseInt(props.options.WechatMinTopUp, 10)
+          : 1,
       WechatUnitPrice:
         Number.isFinite(parseFloat(props.options.WechatUnitPrice)) &&
         parseFloat(props.options.WechatUnitPrice) > 0
@@ -87,9 +93,17 @@ export default function SettingsPaymentGatewayWechat(props) {
     const apiV3Key = String(inputs.WechatApiV3Key || '').trim();
     const notifyUrl = String(inputs.WechatNotifyURL || '').trim();
     const expiryMinutes = Number(inputs.WechatOrderExpireMinutes);
+    const minTopUp = Number(inputs.WechatMinTopUp);
     const unitPrice = Number(inputs.WechatUnitPrice);
 
-    if (!Number.isFinite(unitPrice) || unitPrice <= 0 || unitPrice > 1000000) {
+    if (
+      !Number.isInteger(minTopUp) ||
+      minTopUp < 1 ||
+      minTopUp > 10000 ||
+      !Number.isFinite(unitPrice) ||
+      unitPrice <= 0 ||
+      unitPrice > 1000000
+    ) {
       showError(t('请输入有效的数字'));
       return;
     }
@@ -163,6 +177,7 @@ export default function SettingsPaymentGatewayWechat(props) {
         ).trim(),
         notify_url: notifyUrl.replace(/\/+$/, ''),
         order_expire_minutes: expiryMinutes,
+        min_topup: minTopUp,
         unit_price: unitPrice,
       });
       if (!response.data?.success) {
@@ -267,6 +282,16 @@ export default function SettingsPaymentGatewayWechat(props) {
           </Row>
 
           <Row gutter={16} style={{ marginTop: 16 }}>
+            <Col xs={24} md={8}>
+              <Form.InputNumber
+                field='WechatMinTopUp'
+                label={t('最低充值美元数量')}
+                min={1}
+                max={10000}
+                step={1}
+                precision={0}
+              />
+            </Col>
             <Col xs={24} md={8}>
               <Form.InputNumber
                 field='WechatUnitPrice'

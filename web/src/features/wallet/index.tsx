@@ -50,7 +50,8 @@ import {
 import {
   canPurchaseBuiltInSubscriptions,
   getDefaultPaymentType,
-  getMinTopupAmount,
+  getPaymentMinTopupAmount,
+  getPaymentUnitPrice,
   isWechatNativePayment,
   dispatchSelectedPayment,
 } from './lib'
@@ -154,11 +155,11 @@ export function Wallet(props: WalletProps) {
   useEffect(() => {
     if (topupInfo && !topupAmountInitializedRef.current) {
       topupAmountInitializedRef.current = true
-      const minTopup = getMinTopupAmount(topupInfo)
+      const defaultPaymentType = getDefaultPaymentType(topupInfo)
+      const minTopup = getPaymentMinTopupAmount(topupInfo, defaultPaymentType)
       setTopupAmount(minTopup)
 
       // Calculate initial payment amount with default payment type
-      const defaultPaymentType = getDefaultPaymentType(topupInfo)
       calculatePaymentAmount(minTopup, defaultPaymentType)
     }
   }, [topupInfo, calculatePaymentAmount])
@@ -167,6 +168,12 @@ export function Wallet(props: WalletProps) {
   const getCurrentPaymentType = useCallback(() => {
     return selectedPaymentMethod?.type || getDefaultPaymentType(topupInfo)
   }, [selectedPaymentMethod, topupInfo])
+
+  const paymentPriceRatio = getPaymentUnitPrice(
+    topupInfo,
+    getCurrentPaymentType(),
+    (status?.price as number) || 1
+  )
 
   // Handle preset selection
   const handleSelectPreset = (preset: PresetAmount) => {
@@ -190,7 +197,7 @@ export function Wallet(props: WalletProps) {
 
     try {
       // Validate minimum topup
-      const minTopup = getMinTopupAmount(topupInfo)
+      const minTopup = getPaymentMinTopupAmount(topupInfo, method.type)
       if (topupAmount < minTopup) {
         return
       }
@@ -355,7 +362,7 @@ export function Wallet(props: WalletProps) {
                   redeeming={redeeming}
                   topupLink={topupInfo?.topup_link}
                   loading={topupLoading}
-                  priceRatio={(status?.price as number) || 1}
+                  priceRatio={paymentPriceRatio}
                   usdExchangeRate={effectiveUsdExchangeRate}
                   onOpenBilling={() => setBillingDialogOpen(true)}
                   creemProducts={topupInfo?.creem_products}
@@ -369,6 +376,7 @@ export function Wallet(props: WalletProps) {
                     topupInfo?.enable_waffo_pancake_topup
                   }
                   enableWechatTopup={topupInfo?.enable_wechat_topup}
+                  paymentType={getCurrentPaymentType()}
                 />
               </div>
 

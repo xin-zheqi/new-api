@@ -3,6 +3,7 @@ package controller
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -98,7 +99,29 @@ func isEpayTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	return isEpayWebhookConfigured() && len(operation_setting.PayMethods) > 0
+	if !isEpayWebhookConfigured() {
+		return false
+	}
+	for _, method := range operation_setting.PayMethods {
+		if isEpayPaymentMethod(method["type"]) {
+			return true
+		}
+	}
+	return false
+}
+
+// isEpayPaymentMethod identifies payment types handled by the legacy Epay
+// gateway. Dedicated gateways have their own signed request and callback
+// paths, so accepting them through /api/user/pay would mix provider state.
+func isEpayPaymentMethod(paymentType string) bool {
+	switch strings.TrimSpace(paymentType) {
+	case "", model.PaymentMethodStripe, model.PaymentMethodCreem,
+		model.PaymentMethodWaffo, model.PaymentMethodWaffoPancake,
+		model.PaymentMethodWechat:
+		return false
+	default:
+		return true
+	}
 }
 
 func isEpayWebhookConfigured() bool {
@@ -108,7 +131,10 @@ func isEpayWebhookConfigured() bool {
 }
 
 func isEpayWebhookEnabled() bool {
-	return isEpayTopUpEnabled()
+	// Keep callbacks available for already-created orders even after an
+	// administrator removes every Epay checkout method. Signature verification
+	// still requires the configured merchant credentials.
+	return isPaymentComplianceConfirmed() && isEpayWebhookConfigured()
 }
 
 // isWechatNotifyURLConfigured validates the callback destination before it is

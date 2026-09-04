@@ -28,6 +28,7 @@ type wechatSettingsUpdateRequest struct {
 	PlatformCertificate     string   `json:"platform_certificate"`
 	NotifyURL               string   `json:"notify_url"`
 	OrderExpireMinutes      *int     `json:"order_expire_minutes"`
+	MinTopUp                *int     `json:"min_topup"`
 	UnitPrice               *float64 `json:"unit_price"`
 }
 
@@ -36,7 +37,7 @@ func isWechatPaymentOptionKey(key string) bool {
 	case "WechatEnabled", "WechatMchID", "WechatAppID", "WechatApiV3Key",
 		"WechatCertificateSerialNumber", "WechatPrivateKey", "WechatMerchantCertificate",
 		"WechatPayPublicKeyID", "WechatPayPublicKey", "WechatPlatformCertificate",
-		"WechatNotifyURL", "WechatOrderExpireMinutes", "WechatUnitPrice":
+		"WechatNotifyURL", "WechatOrderExpireMinutes", "WechatMinTopUp", "WechatUnitPrice":
 		return true
 	default:
 		return false
@@ -50,6 +51,14 @@ func buildWechatSettingsUpdate(request wechatSettingsUpdateRequest) (map[string]
 		return nil, errors.New("wechat enabled state is required")
 	}
 	currentSettings := currentWechatRuntimeSettings()
+	minTopUp := currentSettings.MinTopUp
+	if request.MinTopUp != nil {
+		normalized, err := normalizeOptionUpdateValue("WechatMinTopUp", strconv.Itoa(*request.MinTopUp), "")
+		if err != nil {
+			return nil, err
+		}
+		minTopUp, _ = strconv.Atoi(normalized)
+	}
 	unitPrice := strconv.FormatFloat(currentSettings.UnitPrice, 'f', -1, 64)
 	if request.UnitPrice != nil {
 		var err error
@@ -67,6 +76,9 @@ func buildWechatSettingsUpdate(request wechatSettingsUpdateRequest) (map[string]
 	// so in-flight callbacks can still be verified after checkout is hidden.
 	if !*request.Enabled && currentSettings.Enabled {
 		values := map[string]string{"WechatEnabled": "false"}
+		if request.MinTopUp != nil {
+			values["WechatMinTopUp"] = strconv.Itoa(minTopUp)
+		}
 		if request.UnitPrice != nil {
 			values["WechatUnitPrice"] = unitPrice
 		}
@@ -168,7 +180,7 @@ func buildWechatSettingsUpdate(request wechatSettingsUpdateRequest) (map[string]
 		}
 	}
 
-	return map[string]string{
+	values := map[string]string{
 		"WechatEnabled":                 strconv.FormatBool(*request.Enabled),
 		"WechatMchID":                   config.MchID,
 		"WechatAppID":                   config.AppID,
@@ -182,7 +194,11 @@ func buildWechatSettingsUpdate(request wechatSettingsUpdateRequest) (map[string]
 		"WechatNotifyURL":               notifyURL,
 		"WechatOrderExpireMinutes":      expireMinutes,
 		"WechatUnitPrice":               unitPrice,
-	}, nil
+	}
+	if request.MinTopUp != nil {
+		values["WechatMinTopUp"] = strconv.Itoa(minTopUp)
+	}
+	return values, nil
 }
 
 func UpdateWechatPaymentSettings(c *gin.Context) {

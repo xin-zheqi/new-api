@@ -127,8 +127,14 @@ export interface TopupInfo {
   enable_stripe_topup: boolean
   /** Available payment methods */
   pay_methods: PaymentMethod[]
+  /** Payment method selected when the wallet first loads */
+  default_payment_method?: string
   /** Minimum topup amount for online topup */
   min_topup: number
+  /** Minimum topup amount for WeChat Native, in USD display units */
+  wechat_min_topup?: number
+  /** CNY charged by WeChat Native for one displayed USD */
+  wechat_unit_price?: number
   /** Minimum topup amount for Stripe */
   stripe_min_topup: number
   /** Preset amount options */

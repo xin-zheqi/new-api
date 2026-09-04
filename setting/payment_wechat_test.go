@@ -23,3 +23,17 @@ func TestEffectiveWechatUnitPricePrefersConfiguredValueAndFallsBackSafely(t *tes
 	WechatUnitPrice = MaxWechatUnitPrice + 1
 	assert.Equal(t, 6.9, EffectiveWechatUnitPrice(6.9))
 }
+
+func TestEffectiveWechatMinTopUpPrefersConfiguredValueAndFallsBackSafely(t *testing.T) {
+	original := WechatMinTopUp
+	t.Cleanup(func() { WechatMinTopUp = original })
+
+	WechatMinTopUp = 5
+	assert.Equal(t, 5, EffectiveWechatMinTopUp(2))
+
+	WechatMinTopUp = 0
+	assert.Equal(t, 2, EffectiveWechatMinTopUp(2))
+
+	WechatMinTopUp = MaxWechatMinTopUp + 1
+	assert.Equal(t, DefaultWechatMinTopUp, EffectiveWechatMinTopUp(0))
+}

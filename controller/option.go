@@ -96,6 +96,13 @@ func normalizeOptionUpdateValue(key, value, applicationHost string) (string, err
 		return normalized, nil
 	case "WechatOrderExpireMinutes":
 		return normalizeBoundedIntegerOption(key, value, 1, 120)
+	case "WechatMinTopUp":
+		return normalizeBoundedIntegerOption(
+			key,
+			value,
+			setting.DefaultWechatMinTopUp,
+			setting.MaxWechatMinTopUp,
+		)
 	case "WechatUnitPrice":
 		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) ||

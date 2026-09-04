@@ -163,7 +163,35 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 	operation_setting.EpayKey = "epay_key"
 	require.True(t, isEpayWebhookEnabled())
+	require.True(t, isEpayTopUpEnabled())
+
+	operation_setting.PayMethods = []map[string]string{{"type": "wechat_native_v3"}}
+	require.True(t, isEpayWebhookEnabled())
+	require.False(t, isEpayTopUpEnabled())
+
+	operation_setting.PayMethods = []map[string]string{
+		{"type": "wechat_native_v3"},
+		{"type": "alipay"},
+	}
+	require.True(t, isEpayWebhookEnabled())
 
 	operation_setting.PayMethods = nil
-	require.False(t, isEpayWebhookEnabled())
+	require.True(t, isEpayWebhookEnabled())
+	require.False(t, isEpayTopUpEnabled())
+}
+
+func TestDedicatedPaymentMethodsNeverUseEpayRoutes(t *testing.T) {
+	for _, paymentType := range []string{
+		"",
+		"stripe",
+		"creem",
+		"waffo",
+		"waffo_pancake",
+		"wechat_native_v3",
+	} {
+		require.False(t, isEpayPaymentMethod(paymentType), paymentType)
+	}
+	require.True(t, isEpayPaymentMethod("alipay"))
+	require.True(t, isEpayPaymentMethod("wxpay"))
+	require.True(t, isEpayPaymentMethod("custom1"))
 }

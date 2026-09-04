@@ -319,8 +319,8 @@ const RechargeCard = ({
                       onBlur={(e) => {
                         const value = parseInt(e.target.value);
                         if (!value || value < 1) {
-                          setTopUpCount(1);
-                          getAmount(1);
+                          setTopUpCount(minTopUp);
+                          getAmount(minTopUp);
                         }
                       }}
                       formatter={(value) => (value ? `${value}` : '')}
@@ -328,26 +328,31 @@ const RechargeCard = ({
                         value ? parseInt(value.replace(/[^\d]/g, '')) : 0
                       }
                       extraText={
-                        <Skeleton
-                          loading={showAmountSkeleton}
-                          active
-                          placeholder={
-                            <Skeleton.Title
-                              style={{
-                                width: 120,
-                                height: 20,
-                                borderRadius: 6,
-                              }}
-                            />
-                          }
-                        >
-                          <Text type='secondary' className='text-red-600'>
-                            {t('实付金额：')}
-                            <span style={{ color: 'red' }}>
-                              {renderAmount()}
-                            </span>
+                        <div className='flex flex-col gap-1'>
+                          <Skeleton
+                            loading={showAmountSkeleton}
+                            active
+                            placeholder={
+                              <Skeleton.Title
+                                style={{
+                                  width: 120,
+                                  height: 20,
+                                  borderRadius: 6,
+                                }}
+                              />
+                            }
+                          >
+                            <Text type='secondary' className='text-red-600'>
+                              {t('实付金额：')}
+                              <span style={{ color: 'red' }}>
+                                {renderAmount()}
+                              </span>
+                            </Text>
+                          </Skeleton>
+                          <Text type='tertiary' size='small'>
+                            {t('最低充值美元数量')}：{minTopUp}
                           </Text>
-                        </Skeleton>
+                        </div>
                       }
                       style={{ width: '100%' }}
                     />

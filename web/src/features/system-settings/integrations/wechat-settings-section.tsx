@@ -51,6 +51,7 @@ type WechatFormValues = {
   WechatPlatformCertificate: string
   WechatNotifyURL: string
   WechatOrderExpireMinutes: number
+  WechatMinTopUp: number
   WechatUnitPrice: number
 }
 
@@ -164,6 +165,28 @@ export function WechatSettingsSection() {
               </FormControl>
               <FormDescription>
                 {t('Allowed range: 1 to 120 minutes.')}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name='WechatMinTopUp'
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('Minimum top-up (USD)')}</FormLabel>
+              <FormControl>
+                <Input
+                  type='number'
+                  min={1}
+                  max={10_000}
+                  step={1}
+                  {...safeNumberFieldProps(field)}
+                />
+              </FormControl>
+              <FormDescription>
+                {t('Minimum recharge amount in USD')}
               </FormDescription>
               <FormMessage />
             </FormItem>

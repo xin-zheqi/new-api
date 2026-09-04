@@ -51,6 +51,9 @@ func TestNormalizeOptionUpdateValueValidatesManagedSettings(t *testing.T) {
 		{name: "wechat expiry minimum", key: "WechatOrderExpireMinutes", value: "1", expected: "1"},
 		{name: "wechat expiry too short", key: "WechatOrderExpireMinutes", value: "0", shouldErr: true},
 		{name: "wechat expiry too long", key: "WechatOrderExpireMinutes", value: "121", shouldErr: true},
+		{name: "wechat minimum topup canonical", key: "WechatMinTopUp", value: "0005", expected: "5"},
+		{name: "wechat minimum topup too low", key: "WechatMinTopUp", value: "0", shouldErr: true},
+		{name: "wechat minimum topup too high", key: "WechatMinTopUp", value: "10001", shouldErr: true},
 		{name: "wechat unit price", key: "WechatUnitPrice", value: " 7.3000 ", expected: "7.3"},
 		{name: "wechat unit price zero", key: "WechatUnitPrice", value: "0", shouldErr: true},
 		{name: "wechat unit price too high", key: "WechatUnitPrice", value: "1000001", shouldErr: true},
@@ -90,6 +93,7 @@ func TestWechatPaymentOptionsRequireAtomicSettingsEndpoint(t *testing.T) {
 		"WechatPrivateKey",
 		"WechatPayPublicKey",
 		"WechatNotifyURL",
+		"WechatMinTopUp",
 		"WechatUnitPrice",
 	} {
 		assert.True(t, isWechatPaymentOptionKey(key), key)

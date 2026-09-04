@@ -185,6 +185,121 @@ func TestGetTopUpInfoPreservesMallModeAndExposesOnlyValidURL(t *testing.T) {
 	}
 }
 
+func TestGetTopUpInfoKeepsEpayAndWechatIndependent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	confirmPaymentComplianceForTest(t)
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "payment-methods.db")), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.Create([]model.Option{
+		{Key: "payment_setting.mall_enabled", Value: "false"},
+		{Key: "MallURL", Value: ""},
+	}).Error)
+	model.DB = db
+	t.Cleanup(func() {
+		model.DB = originalDB
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	originalPayAddress := operation_setting.PayAddress
+	originalEpayID := operation_setting.EpayId
+	originalEpayKey := operation_setting.EpayKey
+	originalPayMethods := operation_setting.PayMethods
+	originalMinTopUp := operation_setting.MinTopUp
+	originalWechatMinTopUp := setting.WechatMinTopUp
+	t.Cleanup(func() {
+		operation_setting.PayAddress = originalPayAddress
+		operation_setting.EpayId = originalEpayID
+		operation_setting.EpayKey = originalEpayKey
+		operation_setting.PayMethods = originalPayMethods
+		operation_setting.MinTopUp = originalMinTopUp
+		setting.WechatMinTopUp = originalWechatMinTopUp
+	})
+
+	operation_setting.PayAddress = "https://pay.example.com"
+	operation_setting.EpayId = "epay-id"
+	operation_setting.EpayKey = "epay-key"
+	operation_setting.PayMethods = []map[string]string{
+		{"name": "Alipay", "type": "alipay"},
+		{"name": "Wrong WeChat route", "type": model.PaymentMethodWechat},
+	}
+	operation_setting.MinTopUp = 7
+	setting.WechatMinTopUp = 3
+	configureWechatNotifyTest(t)
+	setting.WechatMinTopUp = 3
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "https://api.example.com/api/user/topup/info", nil)
+	GetTopUpInfo(context)
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			EnableOnlineTopUp bool                `json:"enable_online_topup"`
+			EnableWechatTopUp bool                `json:"enable_wechat_topup"`
+			WechatMinTopUp    int64               `json:"wechat_min_topup"`
+			WechatUnitPrice   float64             `json:"wechat_unit_price"`
+			DefaultPayment    string              `json:"default_payment_method"`
+			PayMethods        []map[string]string `json:"pay_methods"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.True(t, response.Data.EnableOnlineTopUp)
+	require.True(t, response.Data.EnableWechatTopUp)
+	require.EqualValues(t, 3, response.Data.WechatMinTopUp)
+	require.Equal(t, 1.0, response.Data.WechatUnitPrice)
+	require.Equal(t, model.PaymentMethodWechat, response.Data.DefaultPayment)
+	require.Len(t, response.Data.PayMethods, 2)
+	assert.Equal(t, "alipay", response.Data.PayMethods[0]["type"])
+	assert.Equal(t, "7", response.Data.PayMethods[0]["min_topup"])
+	assert.Equal(t, model.PaymentMethodWechat, response.Data.PayMethods[1]["type"])
+	assert.Equal(t, "3", response.Data.PayMethods[1]["min_topup"])
+}
+
+func TestDefaultTopUpPaymentMethodPrefersConfiguredWechat(t *testing.T) {
+	tests := []struct {
+		name          string
+		methods       []map[string]string
+		wechatEnabled bool
+		expected      string
+	}{
+		{
+			name: "wechat preferred over epay",
+			methods: []map[string]string{
+				{"type": "alipay"},
+				{"type": model.PaymentMethodWechat},
+			},
+			wechatEnabled: true,
+			expected:      model.PaymentMethodWechat,
+		},
+		{
+			name:          "first method used without wechat",
+			methods:       []map[string]string{{"type": "alipay"}, {"type": "wxpay"}},
+			wechatEnabled: false,
+			expected:      "alipay",
+		},
+		{
+			name:          "missing enabled wechat falls back to first method",
+			methods:       []map[string]string{{"type": "alipay"}},
+			wechatEnabled: true,
+			expected:      "alipay",
+		},
+		{name: "empty methods", wechatEnabled: true, expected: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expected, defaultTopUpPaymentMethod(test.methods, test.wechatEnabled))
+		})
+	}
+}
+
 func TestGetTopUpInfoFailsClosedWhenMallSettingsCannotBeRead(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalDB := model.DB

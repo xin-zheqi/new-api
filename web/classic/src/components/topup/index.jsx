@@ -31,6 +31,7 @@ import {
   openHttpCheckoutUrl,
   redirectToHttpCheckoutUrl,
   submitHttpCheckoutForm,
+  toBoolean,
 } from '../../helpers';
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
@@ -84,6 +85,7 @@ const TopUp = () => {
   const [enableWaffoPancakeTopUp, setEnableWaffoPancakeTopUp] = useState(false);
   const [waffoPancakeMinTopUp, setWaffoPancakeMinTopUp] = useState(1);
   const [enableWechatTopUp, setEnableWechatTopUp] = useState(false);
+  const [wechatUnitPrice, setWechatUnitPrice] = useState(7.3);
   const [wechatPayment, setWechatPayment] = useState(null);
   const [wechatVisible, setWechatVisible] = useState(false);
 
@@ -121,6 +123,9 @@ const TopUp = () => {
   const [topupInfo, setTopupInfo] = useState({
     amount_options: [],
     discount: {},
+    wechat_min_topup: 1,
+    wechat_unit_price: 7.3,
+    default_payment_method: '',
     enable_redemption: true,
     enable_wechat_topup: false,
     payment_compliance_confirmed: true,
@@ -141,9 +146,16 @@ const TopUp = () => {
 
   const getPaymentMinTopUp = (payment) => {
     const configuredMinTopUp = Number(getPayMethodConfig(payment)?.min_topup);
-    return Number.isFinite(configuredMinTopUp) && configuredMinTopUp > 0
-      ? configuredMinTopUp
-      : minTopUp;
+    if (Number.isFinite(configuredMinTopUp) && configuredMinTopUp > 0) {
+      return configuredMinTopUp;
+    }
+    if (payment === 'wechat_native_v3') {
+      const wechatMinimum = Number(topupInfo.wechat_min_topup);
+      if (Number.isFinite(wechatMinimum) && wechatMinimum > 0) {
+        return wechatMinimum;
+      }
+    }
+    return minTopUp;
   };
 
   const requestAmountByPayment = async (payment, value) => {
@@ -160,6 +172,19 @@ const TopUp = () => {
       return getWechatAmount(value);
     }
     return getAmount(value);
+  };
+
+  const getCurrentPaymentAmount = (value) =>
+    requestAmountByPayment(payWay || payMethods[0]?.type || '', value);
+
+  const getPaymentPriceRatio = (payment) => {
+    if (payment === 'wechat_native_v3') {
+      const configuredPrice = Number(wechatUnitPrice);
+      return Number.isFinite(configuredPrice) && configuredPrice > 0
+        ? configuredPrice
+        : priceRatio;
+    }
+    return priceRatio;
   };
 
   const topUp = async () => {
@@ -253,7 +278,7 @@ const TopUp = () => {
     setPaymentLoading(true);
     try {
       const selectedMinTopUp = getPaymentMinTopUp(payment);
-      await requestAmountByPayment(payment);
+      await requestAmountByPayment(payment, topUpCount);
 
       if (topUpCount < selectedMinTopUp) {
         showError(t('充值数量不能小于') + selectedMinTopUp);
@@ -321,20 +346,13 @@ const TopUp = () => {
       return;
     }
 
-    if (payWay === 'stripe') {
-      // Stripe 支付处理
-      if (amount === 0) {
-        await getStripeAmount();
-      }
-    } else {
-      // 普通支付处理
-      if (amount === 0) {
-        await getAmount();
-      }
+    const selectedMinTopUp = getPaymentMinTopUp(payWay);
+    if (amount === 0) {
+      await requestAmountByPayment(payWay, topUpCount);
     }
 
-    if (topUpCount < minTopUp) {
-      showError('充值数量不能小于' + minTopUp);
+    if (topUpCount < selectedMinTopUp) {
+      showError(t('充值数量不能小于') + selectedMinTopUp);
       return;
     }
     setConfirmLoading(true);
@@ -672,104 +690,177 @@ const TopUp = () => {
       const res = await API.get('/api/user/topup/info');
       const { message, data, success } = res.data;
       if (success) {
-        setTopupInfo({
-          amount_options: data.amount_options || [],
-          discount: data.discount || {},
-        });
-        setMallEnabled(data.mall_enabled === true);
+        const parseArray = (value) => {
+          if (Array.isArray(value)) return value;
+          if (typeof value !== 'string' || value.trim() === '') return [];
+          try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        };
+        const normalizedAmountOptions = parseArray(data.amount_options)
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0);
+        const normalizedDiscount = (() => {
+          const parsed =
+            typeof data.discount === 'string'
+              ? (() => {
+                  try {
+                    return JSON.parse(data.discount);
+                  } catch {
+                    return {};
+                  }
+                })()
+              : data.discount;
+          return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+            ? parsed
+            : {};
+        })();
+        const wechatMinimum = Number(data.wechat_min_topup);
+        const normalizedWechatMinimum =
+          Number.isFinite(wechatMinimum) && wechatMinimum > 0
+            ? wechatMinimum
+            : 1;
+        const normalizedWechatUnitPrice = Number(data.wechat_unit_price);
+        const effectiveWechatUnitPrice =
+          Number.isFinite(normalizedWechatUnitPrice) &&
+          normalizedWechatUnitPrice > 0
+            ? normalizedWechatUnitPrice
+            : priceRatio;
+        const enableStripeTopUp = toBoolean(data.enable_stripe_topup);
+        const enableOnlineTopUp = toBoolean(data.enable_online_topup);
+        const enableCreemTopUp = toBoolean(data.enable_creem_topup);
+        const enableWaffoTopUp = toBoolean(data.enable_waffo_topup);
+        const enableWaffoPancakeTopUp = toBoolean(
+          data.enable_waffo_pancake_topup,
+        );
+        const enableWechatTopUp = toBoolean(data.enable_wechat_topup);
+        setMallEnabled(toBoolean(data.mall_enabled));
         setMallUrl(data.mall_url || '');
         setMallModeKnown(true);
 
         // 处理支付方式
-        let payMethods = data.pay_methods || [];
+        let payMethods = parseArray(data.pay_methods);
         try {
-          if (typeof payMethods === 'string') {
-            payMethods = JSON.parse(payMethods);
-          }
-          if (payMethods && payMethods.length > 0) {
-            // 检查name和type是否为空
-            payMethods = payMethods.filter((method) => {
-              return method.name && method.type;
-            });
-            // 如果没有color，则设置默认颜色
-            payMethods = payMethods.map((method) => {
-              // 规范化最小充值数
-              const normalizedMinTopup = Number(method.min_topup);
-              method.min_topup = Number.isFinite(normalizedMinTopup)
-                ? normalizedMinTopup
-                : 0;
-
-              // Stripe 的最小充值从后端字段回填
-              if (
-                method.type === 'stripe' &&
-                (!method.min_topup || method.min_topup <= 0)
-              ) {
-                const stripeMin = Number(data.stripe_min_topup);
-                if (Number.isFinite(stripeMin)) {
-                  method.min_topup = stripeMin;
-                }
+          payMethods = payMethods
+            .filter((method) => method && method.name && method.type)
+            .map((method) => {
+              const type = String(method.type);
+              const configuredMinTopup = Number(method.min_topup);
+              let minimum =
+                Number.isFinite(configuredMinTopup) && configuredMinTopup > 0
+                  ? configuredMinTopup
+                  : 0;
+              if (minimum <= 0 && type === 'stripe') {
+                const stripeMinimum = Number(data.stripe_min_topup);
+                minimum =
+                  Number.isFinite(stripeMinimum) && stripeMinimum > 0
+                    ? stripeMinimum
+                    : 0;
+              }
+              if (minimum <= 0 && type === 'wechat_native_v3') {
+                minimum = normalizedWechatMinimum;
               }
 
-              if (!method.color) {
-                if (method.type === 'alipay') {
-                  method.color = 'rgba(var(--semi-blue-5), 1)';
-                } else if (method.type === 'wxpay') {
-                  method.color = 'rgba(var(--semi-green-5), 1)';
-                } else if (method.type === 'stripe') {
-                  method.color = 'rgba(var(--semi-purple-5), 1)';
+              let color = method.color;
+              if (!color) {
+                if (type === 'alipay') {
+                  color = 'rgba(var(--semi-blue-5), 1)';
+                } else if (type === 'wxpay') {
+                  color = 'rgba(var(--semi-green-5), 1)';
+                } else if (type === 'stripe') {
+                  color = 'rgba(var(--semi-purple-5), 1)';
                 } else {
-                  method.color = 'rgba(var(--semi-primary-5), 1)';
+                  color = 'rgba(var(--semi-primary-5), 1)';
                 }
               }
-              return method;
+              return { ...method, type, min_topup: minimum, color };
             });
-          } else {
-            payMethods = [];
-          }
 
           // 如果启用了 Stripe 支付，添加到支付方法列表
           // 这个逻辑现在由后端处理，如果 Stripe 启用，后端会在 pay_methods 中包含它
 
           setPayMethods(payMethods);
-          const enableStripeTopUp = data.enable_stripe_topup || false;
-          const enableOnlineTopUp = data.enable_online_topup || false;
-          const enableCreemTopUp = data.enable_creem_topup || false;
-          const enableWaffoTopUp = data.enable_waffo_topup || false;
-          const enableWaffoPancakeTopUp =
-            data.enable_waffo_pancake_topup || false;
-          const enableWechatTopUp = data.enable_wechat_topup || false;
-          const minTopUpValue = enableOnlineTopUp
-            ? data.min_topup
-            : enableStripeTopUp
-              ? data.stripe_min_topup
-              : enableWaffoTopUp
-                ? data.waffo_min_topup
-                : enableWaffoPancakeTopUp
-                  ? data.waffo_pancake_min_topup
-                  : enableWechatTopUp
-                    ? data.min_topup
-                    : 1;
+          const configuredDefault = String(
+            data.default_payment_method || '',
+          ).trim();
+          let defaultPayment = payMethods.some(
+            (method) => method.type === configuredDefault,
+          )
+            ? configuredDefault
+            : '';
+          if (
+            !defaultPayment &&
+            enableWechatTopUp &&
+            payMethods.some((method) => method.type === 'wechat_native_v3')
+          ) {
+            defaultPayment = 'wechat_native_v3';
+          }
+          if (!defaultPayment) {
+            defaultPayment = payMethods[0]?.type || '';
+          }
+          setPayWay(defaultPayment);
+
+          let minTopUpValue = Number(data.min_topup);
+          const selectedMethod = payMethods.find(
+            (method) => method.type === defaultPayment,
+          );
+          if (selectedMethod?.min_topup > 0) {
+            minTopUpValue = selectedMethod.min_topup;
+          } else if (defaultPayment === 'stripe') {
+            minTopUpValue = Number(data.stripe_min_topup);
+          } else if (defaultPayment === 'waffo_pancake') {
+            minTopUpValue = Number(data.waffo_pancake_min_topup);
+          } else if (defaultPayment.startsWith('waffo:')) {
+            minTopUpValue = Number(data.waffo_min_topup);
+          } else if (defaultPayment === 'wechat_native_v3') {
+            minTopUpValue = normalizedWechatMinimum;
+          }
+          if (!Number.isFinite(minTopUpValue) || minTopUpValue <= 0) {
+            minTopUpValue = 1;
+          }
+
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
           setEnableWaffoTopUp(enableWaffoTopUp);
           setWaffoPayMethods(data.waffo_pay_methods || []);
-          setWaffoMinTopUp(data.waffo_min_topup || 1);
+          setWaffoMinTopUp(Number(data.waffo_min_topup) || 1);
           setEnableWaffoPancakeTopUp(enableWaffoPancakeTopUp);
           setEnableWechatTopUp(enableWechatTopUp);
-          setWaffoPancakeMinTopUp(data.waffo_pancake_min_topup || 1);
+          setWaffoPancakeMinTopUp(Number(data.waffo_pancake_min_topup) || 1);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
           setTopUpLink(data.topup_link || '');
-          setTopupInfo((prev) => ({
-            ...prev,
-            enable_redemption: data.enable_redemption !== false,
+          setTopupInfo({
+            amount_options: normalizedAmountOptions,
+            discount: normalizedDiscount,
+            enable_redemption: !(
+              data.enable_redemption === false ||
+              data.enable_redemption === 'false'
+            ),
             payment_compliance_confirmed:
               data.payment_compliance_confirmed !== false,
             payment_compliance_terms_version:
               data.payment_compliance_terms_version || '',
             enable_wechat_topup: enableWechatTopUp,
-          }));
+            wechat_min_topup: normalizedWechatMinimum,
+            wechat_unit_price: effectiveWechatUnitPrice,
+            default_payment_method: defaultPayment,
+            pay_methods: payMethods,
+            enable_online_topup: enableOnlineTopUp,
+            enable_stripe_topup: enableStripeTopUp,
+            enable_creem_topup: enableCreemTopUp,
+            enable_waffo_topup: enableWaffoTopUp,
+            enable_waffo_pancake_topup: enableWaffoPancakeTopUp,
+            min_topup: Number(data.min_topup) || 1,
+            stripe_min_topup: Number(data.stripe_min_topup) || 1,
+            waffo_min_topup: Number(data.waffo_min_topup) || 1,
+            waffo_pancake_min_topup: Number(data.waffo_pancake_min_topup) || 1,
+          });
+          setWechatUnitPrice(effectiveWechatUnitPrice);
 
           // 设置 Creem 产品
           try {
@@ -780,21 +871,21 @@ const TopUp = () => {
           }
 
           // 如果没有自定义充值数量选项，根据最小充值金额生成预设充值额度选项
-          if (topupInfo.amount_options.length === 0) {
+          if (normalizedAmountOptions.length === 0) {
             setPresetAmounts(generatePresetAmounts(minTopUpValue));
           }
 
           // 初始化显示实付金额
-          getAmount(minTopUpValue);
+          await requestAmountByPayment(defaultPayment, minTopUpValue);
         } catch (e) {
           setPayMethods([]);
         }
 
         // 如果有自定义充值数量选项，使用它们替换默认的预设选项
-        if (data.amount_options && data.amount_options.length > 0) {
-          const customPresets = data.amount_options.map((amount) => ({
+        if (normalizedAmountOptions.length > 0) {
+          const customPresets = normalizedAmountOptions.map((amount) => ({
             value: amount,
-            discount: data.discount[amount] || 1.0,
+            discount: normalizedDiscount[amount] || 1.0,
           }));
           setPresetAmounts(customPresets);
         }
@@ -977,10 +1068,9 @@ const TopUp = () => {
     setTopUpCount(preset.value);
     setSelectedPreset(preset.value);
 
-    // 计算实际支付金额，考虑折扣
-    const discount = preset.discount || topupInfo.discount[preset.value] || 1.0;
-    const discountedAmount = preset.value * priceRatio * discount;
-    setAmount(discountedAmount);
+    // Keep the displayed amount in sync with the selected gateway. Native
+    // WeChat uses its own CNY exchange rate, while Epay uses the legacy rate.
+    requestAmountByPayment(payWay || payMethods[0]?.type || '', preset.value);
   };
 
   // 格式化大数字显示
@@ -1094,11 +1184,11 @@ const TopUp = () => {
           selectedPreset={selectedPreset}
           selectPresetAmount={selectPresetAmount}
           formatLargeNumber={formatLargeNumber}
-          priceRatio={priceRatio}
+          priceRatio={getPaymentPriceRatio(payWay || payMethods[0]?.type || '')}
           topUpCount={topUpCount}
-          minTopUp={minTopUp}
+          minTopUp={getPaymentMinTopUp(payWay || payMethods[0]?.type || '')}
           renderQuotaWithAmount={renderQuotaWithAmount}
-          getAmount={getAmount}
+          getAmount={getCurrentPaymentAmount}
           setTopUpCount={setTopUpCount}
           setSelectedPreset={setSelectedPreset}
           renderAmount={renderAmount}

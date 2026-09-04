@@ -117,6 +117,7 @@ const defaultBillingSettings: BillingSettings = {
   WechatPlatformCertificate: '',
   WechatNotifyURL: '',
   WechatOrderExpireMinutes: 120,
+  WechatMinTopUp: 1,
   WechatUnitPrice: 7.3,
   'checkin_setting.enabled': false,
   'checkin_setting.min_quota': 1000,

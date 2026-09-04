@@ -98,7 +98,23 @@ export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {
     return DEFAULT_PAYMENT_TYPE
   }
 
-  // Return first available payment method or default
+  const availableTypes = new Set(
+    topupInfo.pay_methods?.map((method) => method.type) ?? []
+  )
+  const configuredDefault = topupInfo.default_payment_method?.trim()
+  if (configuredDefault && availableTypes.has(configuredDefault)) {
+    return configuredDefault
+  }
+
+  // Keep older server responses compatible while still preferring the
+  // dedicated WeChat flow when it is the only explicitly enabled gateway.
+  if (
+    topupInfo.enable_wechat_topup &&
+    availableTypes.has(PAYMENT_TYPES.WECHAT_NATIVE)
+  ) {
+    return PAYMENT_TYPES.WECHAT_NATIVE
+  }
+
   if (topupInfo.pay_methods?.length > 0) {
     return topupInfo.pay_methods[0].type
   }
@@ -122,35 +138,70 @@ export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {
   return DEFAULT_PAYMENT_TYPE
 }
 
+function positiveAmount(value: unknown): number | undefined {
+  const amount = Number(value)
+  return Number.isFinite(amount) && amount > 0 ? amount : undefined
+}
+
 /**
- * Get minimum topup amount from topup info
+ * Resolve the local-currency price for one displayed USD. Dedicated gateways
+ * can publish their own rate while legacy methods continue using the status
+ * price supplied by the existing wallet flow.
  */
-export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
+export function getPaymentUnitPrice(
+  topupInfo: TopupInfo | null,
+  paymentType: string | undefined,
+  fallback: number
+): number {
+  const safeFallback = positiveAmount(fallback) ?? 1
+  if (paymentType !== PAYMENT_TYPES.WECHAT_NATIVE) {
+    return safeFallback
+  }
+  return positiveAmount(topupInfo?.wechat_unit_price) ?? safeFallback
+}
+
+/**
+ * Resolve the minimum amount for one concrete payment method. The method
+ * metadata is authoritative; gateway-level fields are fallbacks for older
+ * server responses that predate per-method limits.
+ */
+export function getPaymentMinTopupAmount(
+  topupInfo: TopupInfo | null,
+  paymentType?: string
+): number {
   if (!topupInfo) {
     return DEFAULT_MIN_TOPUP
   }
 
-  if (topupInfo.enable_online_topup) {
-    return topupInfo.min_topup
+  const type = paymentType || getDefaultPaymentType(topupInfo)
+  const methodMinimum = positiveAmount(
+    topupInfo.pay_methods?.find((method) => method.type === type)?.min_topup
+  )
+  if (methodMinimum !== undefined) {
+    return methodMinimum
   }
 
-  if (topupInfo.enable_stripe_topup) {
-    return topupInfo.stripe_min_topup
+  switch (type) {
+    case PAYMENT_TYPES.STRIPE:
+      return positiveAmount(topupInfo.stripe_min_topup) ?? DEFAULT_MIN_TOPUP
+    case PAYMENT_TYPES.WAFFO:
+      return positiveAmount(topupInfo.waffo_min_topup) ?? DEFAULT_MIN_TOPUP
+    case PAYMENT_TYPES.WAFFO_PANCAKE:
+      return (
+        positiveAmount(topupInfo.waffo_pancake_min_topup) ?? DEFAULT_MIN_TOPUP
+      )
+    case PAYMENT_TYPES.WECHAT_NATIVE:
+      return positiveAmount(topupInfo.wechat_min_topup) ?? DEFAULT_MIN_TOPUP
+    default:
+      return positiveAmount(topupInfo.min_topup) ?? DEFAULT_MIN_TOPUP
   }
+}
 
-  if (topupInfo.enable_waffo_topup) {
-    return topupInfo.waffo_min_topup || DEFAULT_MIN_TOPUP
-  }
-
-  if (topupInfo.enable_waffo_pancake_topup) {
-    return topupInfo.waffo_pancake_min_topup || DEFAULT_MIN_TOPUP
-  }
-
-  if (topupInfo.enable_wechat_topup) {
-    return topupInfo.min_topup || DEFAULT_MIN_TOPUP
-  }
-
-  return DEFAULT_MIN_TOPUP
+/**
+ * Get minimum topup amount from topup info
+ */
+export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
+  return getPaymentMinTopupAmount(topupInfo)
 }
 
 /**

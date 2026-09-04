@@ -190,6 +190,9 @@ func InitOptionMap() {
 	common.OptionMap["WechatPlatformCertificate"] = setting.WechatPlatformCertificate
 	common.OptionMap["WechatNotifyURL"] = setting.WechatNotifyURL
 	common.OptionMap["WechatOrderExpireMinutes"] = strconv.Itoa(setting.WechatOrderExpireMinutes)
+	common.OptionMap["WechatMinTopUp"] = strconv.Itoa(
+		setting.EffectiveWechatMinTopUp(operation_setting.MinTopUp),
+	)
 	common.OptionMap["WechatUnitPrice"] = strconv.FormatFloat(
 		setting.EffectiveWechatUnitPrice(operation_setting.Price), 'f', -1, 64,
 	)
@@ -279,6 +282,7 @@ func loadOptionsFromDatabase() {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
 	wechatUnitPriceLoaded := false
+	wechatMinTopUpLoaded := false
 	for _, option := range options {
 		if err := validateOptionValue(option.Key, option.Value); err != nil {
 			common.SysLog("ignored invalid persisted option " + option.Key + ": " + err.Error())
@@ -292,6 +296,9 @@ func loadOptionsFromDatabase() {
 		if option.Key == "WechatUnitPrice" {
 			wechatUnitPriceLoaded = true
 		}
+		if option.Key == "WechatMinTopUp" {
+			wechatMinTopUpLoaded = true
+		}
 	}
 	// Older databases do not have a dedicated WeChat rate. Keep the option
 	// endpoint useful by exposing the effective legacy Epay price until the
@@ -302,6 +309,14 @@ func loadOptionsFromDatabase() {
 		setting.WechatUnitPrice = 0
 		common.OptionMap["WechatUnitPrice"] = strconv.FormatFloat(
 			setting.EffectiveWechatUnitPrice(operation_setting.Price), 'f', -1, 64,
+		)
+	}
+	if !wechatMinTopUpLoaded {
+		// Keep old installations compatible while allowing a later explicit
+		// WeChat minimum to remain independent from Epay.
+		setting.WechatMinTopUp = 0
+		common.OptionMap["WechatMinTopUp"] = strconv.Itoa(
+			setting.EffectiveWechatMinTopUp(operation_setting.MinTopUp),
 		)
 	}
 }
@@ -359,12 +374,18 @@ func validateOptionValue(key string, value string) error {
 			return fmt.Errorf("%s must be a finite positive number no greater than %d", key, setting.MaxWechatUnitPrice)
 		}
 	}
+	if key == "WechatMinTopUp" {
+		parsed, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || parsed < setting.DefaultWechatMinTopUp || parsed > setting.MaxWechatMinTopUp {
+			return fmt.Errorf("WechatMinTopUp must be an integer between %d and %d", setting.DefaultWechatMinTopUp, setting.MaxWechatMinTopUp)
+		}
+	}
 	return nil
 }
 
 func normalizeOptionValue(key string, value string) string {
 	switch key {
-	case "QuotaPerUnit", "USDExchangeRate", "Price", "StripeUnitPrice", "WaffoUnitPrice", "WaffoPancakeUnitPrice", "WechatUnitPrice":
+	case "QuotaPerUnit", "USDExchangeRate", "Price", "StripeUnitPrice", "WaffoUnitPrice", "WaffoPancakeUnitPrice", "WechatUnitPrice", "WechatMinTopUp":
 		return strings.TrimSpace(value)
 	default:
 		return value
@@ -624,6 +645,11 @@ func updateOptionMapLocked(key string, value string) (err error) {
 		operation_setting.USDExchangeRate, _ = strconv.ParseFloat(value, 64)
 	case "MinTopUp":
 		operation_setting.MinTopUp, _ = strconv.Atoi(value)
+		if setting.WechatMinTopUp == 0 {
+			common.OptionMap["WechatMinTopUp"] = strconv.Itoa(
+				setting.EffectiveWechatMinTopUp(operation_setting.MinTopUp),
+			)
+		}
 	case "StripeApiSecret":
 		setting.StripeApiSecret = value
 	case "StripeWebhookSecret":
@@ -714,6 +740,8 @@ func updateOptionMapLocked(key string, value string) (err error) {
 		setting.WechatOrderExpireMinutes, _ = strconv.Atoi(value)
 	case "WechatUnitPrice":
 		setting.WechatUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "WechatMinTopUp":
+		setting.WechatMinTopUp, _ = strconv.Atoi(value)
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":

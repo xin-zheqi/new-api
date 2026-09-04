@@ -59,6 +59,7 @@ func configureWechatNotifyTest(t *testing.T) *rsa.PrivateKey {
 	originalEnabled := setting.WechatEnabled
 	originalNotifyURL := setting.WechatNotifyURL
 	originalExpireMinutes := setting.WechatOrderExpireMinutes
+	originalMinTopUp := setting.WechatMinTopUp
 	originalUnitPrice := setting.WechatUnitPrice
 
 	merchantPrivate, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -82,6 +83,7 @@ func configureWechatNotifyTest(t *testing.T) *rsa.PrivateKey {
 	setting.WechatPlatformCertificate = ""
 	setting.WechatNotifyURL = "https://pay.example.com/api/wechat/notify"
 	setting.WechatOrderExpireMinutes = 120
+	setting.WechatMinTopUp = 1
 	// Keep existing request fixtures deterministic; conversion behavior is
 	// covered separately with an explicit non-default rate.
 	setting.WechatUnitPrice = 1
@@ -100,10 +102,56 @@ func configureWechatNotifyTest(t *testing.T) *rsa.PrivateKey {
 		setting.WechatPlatformCertificate = originalConfig.PlatformCertificate
 		setting.WechatNotifyURL = originalNotifyURL
 		setting.WechatOrderExpireMinutes = originalExpireMinutes
+		setting.WechatMinTopUp = originalMinTopUp
 		setting.WechatUnitPrice = originalUnitPrice
 		resetWechatClientCacheForTest()
 	})
 	return platformPrivate
+}
+
+func TestRequestWechatAmountRequiresConfiguredGateway(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalEnabled := setting.WechatEnabled
+	setting.WechatEnabled = false
+	t.Cleanup(func() { setting.WechatEnabled = originalEnabled })
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Set("id", 1)
+	context.Request = httptest.NewRequest(http.MethodPost, "/api/user/wechat/amount", strings.NewReader(`{"amount":1}`))
+	RequestWechatAmount(context)
+
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Equal(t, "微信支付暂未配置完整", response.Message)
+}
+
+func TestRequestWechatPayEnforcesDedicatedMinimum(t *testing.T) {
+	configureWechatNotifyTest(t)
+	confirmPaymentComplianceForTest(t)
+	setting.WechatMinTopUp = 5
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/wechat/pay",
+		strings.NewReader(`{"amount":4}`),
+	)
+	context.Request.Header.Set("Content-Type", "application/json")
+	RequestWechatPay(context)
+
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Equal(t, "充值数量不能小于 5", response.Message)
 }
 
 func signedWechatNotifyRequest(t *testing.T, platformPrivate *rsa.PrivateKey, tradeNo string, amountMinor int64) *http.Request {
@@ -1186,6 +1234,7 @@ func TestBuildWechatSettingsUpdateRetainsHiddenCredentials(t *testing.T) {
 	configureWechatNotifyTest(t)
 	enabled := true
 	expireMinutes := 90
+	minTopUp := 5
 	unitPrice := 8.2
 	values, err := buildWechatSettingsUpdate(wechatSettingsUpdateRequest{
 		Enabled:                 &enabled,
@@ -1195,6 +1244,7 @@ func TestBuildWechatSettingsUpdateRetainsHiddenCredentials(t *testing.T) {
 		PayPublicKeyID:          controllerWechatPublicKeyID,
 		NotifyURL:               "https://pay.example.com/api/wechat/notify/",
 		OrderExpireMinutes:      &expireMinutes,
+		MinTopUp:                &minTopUp,
 		UnitPrice:               &unitPrice,
 	})
 	require.NoError(t, err)
@@ -1204,6 +1254,7 @@ func TestBuildWechatSettingsUpdateRetainsHiddenCredentials(t *testing.T) {
 	assert.Equal(t, "A1B2C3D4", values["WechatCertificateSerialNumber"])
 	assert.Equal(t, "https://pay.example.com/api/wechat/notify", values["WechatNotifyURL"])
 	assert.Equal(t, "90", values["WechatOrderExpireMinutes"])
+	assert.Equal(t, "5", values["WechatMinTopUp"])
 	assert.Equal(t, "8.2", values["WechatUnitPrice"])
 }
 

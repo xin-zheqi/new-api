@@ -49,14 +49,17 @@ import {
 
 const { Text } = Typography;
 
-// 过滤易支付方式
-function getEpayMethods(payMethods = [], excludeWechatNative = false) {
+// Only legacy Epay method types may use the Epay subscription endpoint.
+function getEpayMethods(payMethods = []) {
+  const dedicatedPaymentTypes = new Set([
+    'stripe',
+    'creem',
+    'waffo',
+    'waffo_pancake',
+    'wechat_native_v3',
+  ]);
   return (payMethods || []).filter(
-    (m) =>
-      m?.type &&
-      m.type !== 'stripe' &&
-      m.type !== 'creem' &&
-      (!excludeWechatNative || m.type !== 'wechat_native_v3'),
+    (method) => method?.type && !dedicatedPaymentTypes.has(method.type),
   );
 }
 
@@ -87,10 +90,7 @@ const SubscriptionPlansCard = ({
   const [wechatPayment, setWechatPayment] = useState(null);
   const [wechatVisible, setWechatVisible] = useState(false);
 
-  const epayMethods = useMemo(
-    () => getEpayMethods(payMethods, enableWechatTopUp),
-    [enableWechatTopUp, payMethods],
-  );
+  const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
   const openBuy = (p) => {
     setSelectedPlan(p);

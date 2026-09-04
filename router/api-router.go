@@ -108,6 +108,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)
 				selfRoute.POST("/wechat/pay", middleware.CriticalRateLimit(), controller.RequestWechatPay)
+				selfRoute.POST("/wechat/amount", controller.RequestWechatAmount)
 				selfRoute.GET("/wechat/order/:trade_no", middleware.WechatOrderQueryRateLimit(), controller.QueryWechatOrder)
 				selfRoute.POST("/amount", controller.RequestAmount)
 				selfRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.RequestStripePay)

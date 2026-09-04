@@ -36,6 +36,7 @@ const defaultInputs = {
   WechatPlatformCertificate: '',
   WechatNotifyURL: '',
   WechatOrderExpireMinutes: 120,
+  WechatUnitPrice: 7.3,
 };
 
 export default function SettingsPaymentGatewayWechat(props) {
@@ -66,6 +67,11 @@ export default function SettingsPaymentGatewayWechat(props) {
       WechatNotifyURL: props.options.WechatNotifyURL || '',
       WechatOrderExpireMinutes:
         parseInt(props.options.WechatOrderExpireMinutes) || 120,
+      WechatUnitPrice:
+        Number.isFinite(parseFloat(props.options.WechatUnitPrice)) &&
+        parseFloat(props.options.WechatUnitPrice) > 0
+          ? parseFloat(props.options.WechatUnitPrice)
+          : 7.3,
     };
     setInputs(values);
     formApiRef.current?.setValues(values);
@@ -81,6 +87,12 @@ export default function SettingsPaymentGatewayWechat(props) {
     const apiV3Key = String(inputs.WechatApiV3Key || '').trim();
     const notifyUrl = String(inputs.WechatNotifyURL || '').trim();
     const expiryMinutes = Number(inputs.WechatOrderExpireMinutes);
+    const unitPrice = Number(inputs.WechatUnitPrice);
+
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0 || unitPrice > 1000000) {
+      showError(t('请输入有效的数字'));
+      return;
+    }
 
     if (inputs.WechatEnabled) {
       if (
@@ -151,6 +163,7 @@ export default function SettingsPaymentGatewayWechat(props) {
         ).trim(),
         notify_url: notifyUrl.replace(/\/+$/, ''),
         order_expire_minutes: expiryMinutes,
+        unit_price: unitPrice,
       });
       if (!response.data?.success) {
         throw new Error(response.data?.message || t('更新失败'));
@@ -249,6 +262,20 @@ export default function SettingsPaymentGatewayWechat(props) {
                 label={t('微信支付公钥 ID')}
                 placeholder='PUB_KEY_ID_...'
                 extraText={t('使用微信支付公钥验签时填写')}
+              />
+            </Col>
+          </Row>
+
+          <Row gutter={16} style={{ marginTop: 16 }}>
+            <Col xs={24} md={8}>
+              <Form.InputNumber
+                field='WechatUnitPrice'
+                label={t('充值价格（x元/美金）')}
+                min={0.000001}
+                max={1000000}
+                step={0.01}
+                precision={6}
+                extraText={t('例如：7，就是7元/美金')}
               />
             </Col>
           </Row>

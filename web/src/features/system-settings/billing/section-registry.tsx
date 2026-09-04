@@ -168,6 +168,7 @@ const BILLING_SECTIONS = [
           WechatPlatformCertificate: settings.WechatPlatformCertificate ?? '',
           WechatNotifyURL: settings.WechatNotifyURL ?? '',
           WechatOrderExpireMinutes: settings.WechatOrderExpireMinutes ?? 120,
+          WechatUnitPrice: settings.WechatUnitPrice ?? 7.3,
         }}
         waffoDefaultValues={{
           WaffoEnabled: settings.WaffoEnabled ?? false,

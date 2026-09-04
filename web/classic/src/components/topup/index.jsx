@@ -156,6 +156,9 @@ const TopUp = () => {
     if (typeof payment === 'string' && payment.startsWith('waffo:')) {
       return getWaffoAmount(value);
     }
+    if (payment === 'wechat_native_v3') {
+      return getWechatAmount(value);
+    }
     return getAmount(value);
   };
 
@@ -486,6 +489,36 @@ const TopUp = () => {
       }
     } catch (err) {
       // amount fetch failed silently
+    } finally {
+      setAmountLoading(false);
+    }
+  };
+
+  const getWechatAmount = async (value) => {
+    if (value === undefined) {
+      value = topUpCount;
+    }
+    setAmountLoading(true);
+    try {
+      const res = await API.post('/api/user/wechat/amount', {
+        amount: parseInt(value),
+      });
+      if (res !== undefined) {
+        const { success, message, data } = res.data;
+        if (success || message === 'success') {
+          setAmount(parseFloat(data));
+        } else {
+          setAmount(0);
+          Toast.error({
+            content: getPaymentAmountError(message, data, t('获取金额失败')),
+            id: 'getAmount',
+          });
+        }
+      } else {
+        showError(res);
+      }
+    } catch (err) {
+      // The checkout request performs the same server-side validation.
     } finally {
       setAmountLoading(false);
     }

@@ -51,6 +51,7 @@ type WechatFormValues = {
   WechatPlatformCertificate: string
   WechatNotifyURL: string
   WechatOrderExpireMinutes: number
+  WechatUnitPrice: number
 }
 
 export function WechatSettingsSection() {
@@ -163,6 +164,28 @@ export function WechatSettingsSection() {
               </FormControl>
               <FormDescription>
                 {t('Allowed range: 1 to 120 minutes.')}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name='WechatUnitPrice'
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('Price (local currency / USD)')}</FormLabel>
+              <FormControl>
+                <Input
+                  type='number'
+                  min={0.000001}
+                  max={1_000_000}
+                  step='0.01'
+                  {...safeNumberFieldProps(field)}
+                />
+              </FormControl>
+              <FormDescription>
+                {t('e.g., 8 means 8 local currency per USD')}
               </FormDescription>
               <FormMessage />
             </FormItem>

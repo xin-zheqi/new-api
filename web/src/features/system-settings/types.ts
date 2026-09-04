@@ -57,6 +57,7 @@ export type WechatSettingsUpdateRequest = {
   platform_certificate: string
   notify_url: string
   order_expire_minutes: number
+  unit_price: number
 }
 
 export type InvoiceSettingsUpdateRequest = {
@@ -384,6 +385,7 @@ export type BillingSettings = {
   WechatPlatformCertificate: string
   WechatNotifyURL: string
   WechatOrderExpireMinutes: number
+  WechatUnitPrice: number
   'checkin_setting.enabled': boolean
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number

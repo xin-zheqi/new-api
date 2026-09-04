@@ -332,7 +332,7 @@ func GetEpayClient() *epay.Client {
 	return withUrl
 }
 
-func getPayMoney(amount int64, group string) float64 {
+func getPayMoneyWithUnitPrice(amount int64, group string, unitPrice float64) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	// 充值金额以“展示类型”为准：
 	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
@@ -345,12 +345,12 @@ func getPayMoney(amount int64, group string) float64 {
 	}
 
 	topupGroupRatio, ok := topupPaymentGroupRatio(group)
-	if !ok || !isFinitePaymentValue(operation_setting.Price) || operation_setting.Price < 0 {
+	if !ok || !isFinitePaymentValue(unitPrice) || unitPrice < 0 {
 		return 0
 	}
 
 	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
-	dPrice := decimal.NewFromFloat(operation_setting.Price)
+	dPrice := decimal.NewFromFloat(unitPrice)
 	// apply optional preset discount by the original request amount (if configured), default 1.0
 	discount := topupPaymentDiscount(amount)
 	dDiscount := decimal.NewFromFloat(discount)
@@ -361,6 +361,10 @@ func getPayMoney(amount int64, group string) float64 {
 		return 0
 	}
 	return result
+}
+
+func getPayMoney(amount int64, group string) float64 {
+	return getPayMoneyWithUnitPrice(amount, group, operation_setting.Price)
 }
 
 func getMinTopup() int64 {

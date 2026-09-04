@@ -67,6 +67,7 @@ const PaymentSetting = () => {
     WechatPlatformCertificate: '',
     WechatNotifyURL: '',
     WechatOrderExpireMinutes: 120,
+    WechatUnitPrice: 7.3,
 
     'payment_setting.compliance_confirmed': false,
     'payment_setting.compliance_terms_version': '',
@@ -181,6 +182,9 @@ const PaymentSetting = () => {
             break;
           case 'WechatOrderExpireMinutes':
             newInputs[item.key] = parseInt(item.value) || 120;
+            break;
+          case 'WechatUnitPrice':
+            newInputs[item.key] = parseFloat(item.value) || 7.3;
             break;
           default:
             if (item.key.endsWith('Enabled')) {

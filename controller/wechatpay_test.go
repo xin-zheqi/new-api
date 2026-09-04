@@ -59,6 +59,7 @@ func configureWechatNotifyTest(t *testing.T) *rsa.PrivateKey {
 	originalEnabled := setting.WechatEnabled
 	originalNotifyURL := setting.WechatNotifyURL
 	originalExpireMinutes := setting.WechatOrderExpireMinutes
+	originalUnitPrice := setting.WechatUnitPrice
 
 	merchantPrivate, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
@@ -81,6 +82,9 @@ func configureWechatNotifyTest(t *testing.T) *rsa.PrivateKey {
 	setting.WechatPlatformCertificate = ""
 	setting.WechatNotifyURL = "https://pay.example.com/api/wechat/notify"
 	setting.WechatOrderExpireMinutes = 120
+	// Keep existing request fixtures deterministic; conversion behavior is
+	// covered separately with an explicit non-default rate.
+	setting.WechatUnitPrice = 1
 	resetWechatClientCacheForTest()
 
 	t.Cleanup(func() {
@@ -96,6 +100,7 @@ func configureWechatNotifyTest(t *testing.T) *rsa.PrivateKey {
 		setting.WechatPlatformCertificate = originalConfig.PlatformCertificate
 		setting.WechatNotifyURL = originalNotifyURL
 		setting.WechatOrderExpireMinutes = originalExpireMinutes
+		setting.WechatUnitPrice = originalUnitPrice
 		resetWechatClientCacheForTest()
 	})
 	return platformPrivate
@@ -439,6 +444,88 @@ func TestWechatPaymentSnapshotConvertsCNYMajorUnitsToFenOnce(t *testing.T) {
 			assert.Equal(t, snapshot, fromWechat)
 		})
 	}
+}
+
+func TestWechatSubscriptionPaymentSnapshotUsesConfiguredCNYRate(t *testing.T) {
+	tests := []struct {
+		name       string
+		price      float64
+		currency   string
+		unitPrice  float64
+		wantAmount int64
+		wantFen    int64
+		wantError  bool
+	}{
+		{
+			name:       "USD converted to CNY",
+			price:      9.99,
+			currency:   "USD",
+			unitPrice:  7.3,
+			wantAmount: 72930000,
+			wantFen:    7293,
+		},
+		{
+			name:       "CNY remains CNY",
+			price:      9.99,
+			currency:   "CNY",
+			unitPrice:  7.3,
+			wantAmount: 9990000,
+			wantFen:    999,
+		},
+		{
+			name:      "unsupported currency",
+			price:     9.99,
+			currency:  "EUR",
+			unitPrice: 7.3,
+			wantError: true,
+		},
+		{
+			name:      "invalid rate",
+			price:     9.99,
+			currency:  "USD",
+			unitPrice: 0,
+			wantError: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			snapshot, fen, err := wechatSubscriptionPaymentSnapshot(&model.SubscriptionPlan{
+				Id:          1,
+				Title:       "test plan",
+				PriceAmount: test.price,
+				Currency:    test.currency,
+			}, test.unitPrice)
+			if test.wantError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.wantAmount, snapshot.AmountMicros)
+			assert.Equal(t, "CNY", snapshot.Currency)
+			assert.Equal(t, test.wantFen, fen)
+		})
+	}
+}
+
+func TestWechatTopUpPaymentSnapshotUsesConfiguredCNYRate(t *testing.T) {
+	originalDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+	originalQuotaPerUnit := common.QuotaPerUnit
+	originalEpayPrice := operation_setting.Price
+	t.Cleanup(func() {
+		operation_setting.GetGeneralSetting().QuotaDisplayType = originalDisplayType
+		common.QuotaPerUnit = originalQuotaPerUnit
+		operation_setting.Price = originalEpayPrice
+	})
+
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
+	common.QuotaPerUnit = 500_000
+	operation_setting.Price = 6.5
+	snapshot, fen, err := wechatTopUpPaymentSnapshot(2, "default", 7.3)
+	require.NoError(t, err)
+	assert.Equal(t, int64(14_600_000), snapshot.AmountMicros)
+	assert.Equal(t, int64(1460), fen)
+	assert.Equal(t, 13.0, getPayMoney(2, "default"))
 }
 
 func TestRequestWechatPayPersistsExactExpiryAndPaymentSnapshot(t *testing.T) {
@@ -1099,6 +1186,7 @@ func TestBuildWechatSettingsUpdateRetainsHiddenCredentials(t *testing.T) {
 	configureWechatNotifyTest(t)
 	enabled := true
 	expireMinutes := 90
+	unitPrice := 8.2
 	values, err := buildWechatSettingsUpdate(wechatSettingsUpdateRequest{
 		Enabled:                 &enabled,
 		MchID:                   controllerWechatMchID,
@@ -1107,6 +1195,7 @@ func TestBuildWechatSettingsUpdateRetainsHiddenCredentials(t *testing.T) {
 		PayPublicKeyID:          controllerWechatPublicKeyID,
 		NotifyURL:               "https://pay.example.com/api/wechat/notify/",
 		OrderExpireMinutes:      &expireMinutes,
+		UnitPrice:               &unitPrice,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, controllerWechatAPIv3Key, values["WechatApiV3Key"])
@@ -1115,6 +1204,7 @@ func TestBuildWechatSettingsUpdateRetainsHiddenCredentials(t *testing.T) {
 	assert.Equal(t, "A1B2C3D4", values["WechatCertificateSerialNumber"])
 	assert.Equal(t, "https://pay.example.com/api/wechat/notify", values["WechatNotifyURL"])
 	assert.Equal(t, "90", values["WechatOrderExpireMinutes"])
+	assert.Equal(t, "8.2", values["WechatUnitPrice"])
 }
 
 func TestBuildWechatSettingsUpdateCanDisableInvalidRetainedConfiguration(t *testing.T) {

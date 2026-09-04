@@ -16,18 +16,19 @@ import (
 const wechatSettingsRequestMaxBytes int64 = 512 * 1024
 
 type wechatSettingsUpdateRequest struct {
-	Enabled                 *bool  `json:"enabled"`
-	MchID                   string `json:"mch_id"`
-	AppID                   string `json:"app_id"`
-	ApiV3Key                string `json:"api_v3_key"`
-	CertificateSerialNumber string `json:"certificate_serial_number"`
-	PrivateKey              string `json:"private_key"`
-	MerchantCertificate     string `json:"merchant_certificate"`
-	PayPublicKeyID          string `json:"pay_public_key_id"`
-	PayPublicKey            string `json:"pay_public_key"`
-	PlatformCertificate     string `json:"platform_certificate"`
-	NotifyURL               string `json:"notify_url"`
-	OrderExpireMinutes      *int   `json:"order_expire_minutes"`
+	Enabled                 *bool    `json:"enabled"`
+	MchID                   string   `json:"mch_id"`
+	AppID                   string   `json:"app_id"`
+	ApiV3Key                string   `json:"api_v3_key"`
+	CertificateSerialNumber string   `json:"certificate_serial_number"`
+	PrivateKey              string   `json:"private_key"`
+	MerchantCertificate     string   `json:"merchant_certificate"`
+	PayPublicKeyID          string   `json:"pay_public_key_id"`
+	PayPublicKey            string   `json:"pay_public_key"`
+	PlatformCertificate     string   `json:"platform_certificate"`
+	NotifyURL               string   `json:"notify_url"`
+	OrderExpireMinutes      *int     `json:"order_expire_minutes"`
+	UnitPrice               *float64 `json:"unit_price"`
 }
 
 func isWechatPaymentOptionKey(key string) bool {
@@ -35,7 +36,7 @@ func isWechatPaymentOptionKey(key string) bool {
 	case "WechatEnabled", "WechatMchID", "WechatAppID", "WechatApiV3Key",
 		"WechatCertificateSerialNumber", "WechatPrivateKey", "WechatMerchantCertificate",
 		"WechatPayPublicKeyID", "WechatPayPublicKey", "WechatPlatformCertificate",
-		"WechatNotifyURL", "WechatOrderExpireMinutes":
+		"WechatNotifyURL", "WechatOrderExpireMinutes", "WechatUnitPrice":
 		return true
 	default:
 		return false
@@ -48,11 +49,28 @@ func buildWechatSettingsUpdate(request wechatSettingsUpdateRequest) (map[string]
 	if request.Enabled == nil {
 		return nil, errors.New("wechat enabled state is required")
 	}
+	currentSettings := currentWechatRuntimeSettings()
+	unitPrice := strconv.FormatFloat(currentSettings.UnitPrice, 'f', -1, 64)
+	if request.UnitPrice != nil {
+		var err error
+		unitPrice, err = normalizeOptionUpdateValue(
+			"WechatUnitPrice",
+			strconv.FormatFloat(*request.UnitPrice, 'f', -1, 64),
+			"",
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
 	// Disabling an active gateway must remain possible even when retained
 	// credentials or callback URLs have since expired. Preserve the old values
 	// so in-flight callbacks can still be verified after checkout is hidden.
-	if !*request.Enabled && currentWechatRuntimeSettings().Enabled {
-		return map[string]string{"WechatEnabled": "false"}, nil
+	if !*request.Enabled && currentSettings.Enabled {
+		values := map[string]string{"WechatEnabled": "false"}
+		if request.UnitPrice != nil {
+			values["WechatUnitPrice"] = unitPrice
+		}
+		return values, nil
 	}
 	if request.OrderExpireMinutes == nil {
 		return nil, errors.New("wechat order expiration is required")
@@ -112,7 +130,7 @@ func buildWechatSettingsUpdate(request wechatSettingsUpdateRequest) (map[string]
 		normalizedSensitive[field.key] = normalized
 	}
 
-	config := wechatConfig()
+	config := currentSettings.Config
 	config.MchID = normalizedIdentifiers["WechatMchID"]
 	config.AppID = normalizedIdentifiers["WechatAppID"]
 	config.CertificateSerialNumber = normalizedIdentifiers["WechatCertificateSerialNumber"]
@@ -163,6 +181,7 @@ func buildWechatSettingsUpdate(request wechatSettingsUpdateRequest) (map[string]
 		"WechatPlatformCertificate":     config.PlatformCertificate,
 		"WechatNotifyURL":               notifyURL,
 		"WechatOrderExpireMinutes":      expireMinutes,
+		"WechatUnitPrice":               unitPrice,
 	}, nil
 }
 

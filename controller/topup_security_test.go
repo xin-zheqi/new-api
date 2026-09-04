@@ -346,6 +346,7 @@ func TestTopUpPaymentRequestsLimitJSONBody(t *testing.T) {
 		{name: "creem checkout", handler: RequestCreemPay},
 		{name: "waffo amount", handler: RequestWaffoAmount},
 		{name: "waffo pancake amount", handler: RequestWaffoPancakeAmount},
+		{name: "wechat amount", handler: RequestWechatAmount},
 		{name: "wechat checkout", handler: RequestWechatPay},
 	}
 	body := `{"amount":1,"payment_method":"stripe","product_id":"product","padding":"` +

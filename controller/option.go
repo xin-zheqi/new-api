@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -95,6 +96,13 @@ func normalizeOptionUpdateValue(key, value, applicationHost string) (string, err
 		return normalized, nil
 	case "WechatOrderExpireMinutes":
 		return normalizeBoundedIntegerOption(key, value, 1, 120)
+	case "WechatUnitPrice":
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) ||
+			parsed <= 0 || parsed > setting.MaxWechatUnitPrice {
+			return "", fmt.Errorf("WechatUnitPrice must be a finite positive number no greater than %d", setting.MaxWechatUnitPrice)
+		}
+		return strconv.FormatFloat(parsed, 'f', -1, 64), nil
 	case "WechatNotifyURL":
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {

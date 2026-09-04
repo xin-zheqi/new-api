@@ -35,6 +35,8 @@ func TestTopUpPaymentEndpointsRequireComplianceConfirmation(t *testing.T) {
 		{name: "waffo checkout", handler: RequestWaffoPay, body: `{"amount":10}`},
 		{name: "waffo pancake amount", handler: RequestWaffoPancakeAmount, body: `{"amount":10}`},
 		{name: "waffo pancake checkout", handler: RequestWaffoPancakePay, body: `{"amount":10}`},
+		{name: "wechat amount", handler: RequestWechatAmount, body: `{"amount":10}`},
+		{name: "wechat checkout", handler: RequestWechatPay, body: `{"amount":10}`},
 	}
 
 	for _, test := range handlers {

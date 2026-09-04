@@ -135,6 +135,16 @@ export async function requestWechatPayment(
   return res.data
 }
 
+/** Calculate the exact CNY amount used by a WeChat Native checkout. */
+export async function calculateWechatAmount(
+  request: AmountRequest
+): Promise<AmountResponse> {
+  const res = await api.post('/api/user/wechat/amount', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
 /** Query a WeChat order; the server settles it only after provider verification. */
 export async function queryWechatOrder(
   tradeNo: string

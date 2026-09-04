@@ -41,9 +41,42 @@ describe('payment amount routing', () => {
         calls.push('pancake')
         return { success: true, data: '4' }
       },
+      wechat: async () => {
+        calls.push('wechat')
+        return { success: true, data: '5' }
+      },
     })
 
     expect(amount).toBe(18.75)
     expect(calls).toEqual(['waffo:120'])
+  })
+
+  test('uses the dedicated WeChat amount calculator', async () => {
+    const calls: string[] = []
+    const amount = await requestPaymentAmount(2, 'wechat_native_v3', {
+      regular: async () => {
+        calls.push('regular')
+        return { success: true, data: '1' }
+      },
+      stripe: async () => {
+        calls.push('stripe')
+        return { success: true, data: '2' }
+      },
+      waffo: async () => {
+        calls.push('waffo')
+        return { success: true, data: '3' }
+      },
+      waffoPancake: async () => {
+        calls.push('pancake')
+        return { success: true, data: '4' }
+      },
+      wechat: async (request) => {
+        calls.push(`wechat:${request.amount}`)
+        return { success: true, data: '14.60' }
+      },
+    })
+
+    expect(amount).toBe(14.6)
+    expect(calls).toEqual(['wechat:2'])
   })
 })

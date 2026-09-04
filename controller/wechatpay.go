@@ -8,7 +8,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,6 +50,7 @@ type wechatRuntimeSettings struct {
 	Enabled            bool
 	NotifyURL          string
 	OrderExpireMinutes int
+	UnitPrice          float64
 	Config             service.WechatPayConfig
 }
 
@@ -69,6 +69,7 @@ func currentWechatRuntimeSettings() wechatRuntimeSettings {
 		Enabled:            setting.WechatEnabled,
 		NotifyURL:          setting.WechatNotifyURL,
 		OrderExpireMinutes: setting.WechatOrderExpireMinutes,
+		UnitPrice:          setting.EffectiveWechatUnitPrice(operation_setting.Price),
 		Config: service.WechatPayConfig{
 			MchID:                   setting.WechatMchID,
 			AppID:                   setting.WechatAppID,
@@ -125,23 +126,64 @@ func resolveWechatNotifyURL(configuredURL string) (string, error) {
 	return strings.TrimRight(notifyURL, "/"), nil
 }
 
-// wechatPaymentSnapshot converts the server-calculated checkout amount to the
-// exact fixed-point representation shared by all payment providers. WeChat
-// Native accepts CNY minor units (fen), so no client-supplied money value is
-// trusted here.
+// wechatPaymentSnapshot converts a server-calculated CNY amount to the exact
+// fixed-point representation shared by all payment providers. WeChat Native
+// accepts CNY minor units (fen), so no client-supplied money value is trusted.
 func wechatPaymentSnapshot(money float64) (model.SubscriptionPaymentSnapshot, int64, error) {
 	if math.IsNaN(money) || math.IsInf(money, 0) || money <= 0 {
 		return model.SubscriptionPaymentSnapshot{}, 0, errors.New("invalid payment amount")
 	}
-	snapshot, err := model.NewSubscriptionPaymentFromMajorUnits(strconv.FormatFloat(money, 'f', 2, 64), "CNY")
+	return wechatPaymentSnapshotDecimal(decimal.NewFromFloat(money))
+}
+
+func wechatTopUpPaymentSnapshot(amount int64, group string, unitPrice float64) (model.SubscriptionPaymentSnapshot, int64, error) {
+	return wechatPaymentSnapshot(getPayMoneyWithUnitPrice(amount, group, unitPrice))
+}
+
+func wechatPaymentSnapshotDecimal(amount decimal.Decimal) (model.SubscriptionPaymentSnapshot, int64, error) {
+	if !amount.IsPositive() {
+		return model.SubscriptionPaymentSnapshot{}, 0, errors.New("invalid payment amount")
+	}
+	// Native orders are denominated in fen. Round once at this boundary and use
+	// the resulting integer for both the provider request and local snapshot.
+	rounded := amount.Round(2)
+	minorUnitsDecimal := rounded.Mul(decimal.NewFromInt(100))
+	if !minorUnitsDecimal.IsInteger() ||
+		minorUnitsDecimal.GreaterThan(decimal.NewFromInt(wechatNativeMaxAmountMinor)) {
+		return model.SubscriptionPaymentSnapshot{}, 0, errors.New("payment amount is outside WeChat limits")
+	}
+	minorUnits := minorUnitsDecimal.IntPart()
+	if minorUnits <= 0 {
+		return model.SubscriptionPaymentSnapshot{}, 0, errors.New("invalid payment amount")
+	}
+	snapshot, err := model.NewSubscriptionPaymentFromMajorUnits(rounded.StringFixed(2), "CNY")
 	if err != nil {
 		return model.SubscriptionPaymentSnapshot{}, 0, err
 	}
-	minorUnits := snapshot.AmountMicros / 10_000
-	if minorUnits <= 0 || minorUnits > wechatNativeMaxAmountMinor {
-		return model.SubscriptionPaymentSnapshot{}, 0, errors.New("payment amount is outside WeChat limits")
-	}
 	return snapshot, minorUnits, nil
+}
+
+func wechatSubscriptionPaymentSnapshot(plan *model.SubscriptionPlan, unitPrice float64) (model.SubscriptionPaymentSnapshot, int64, error) {
+	if plan == nil || math.IsNaN(plan.PriceAmount) || math.IsInf(plan.PriceAmount, 0) || plan.PriceAmount <= 0 {
+		return model.SubscriptionPaymentSnapshot{}, 0, errors.New("invalid subscription payment amount")
+	}
+	currency, err := model.NormalizePaymentCurrency(plan.Currency)
+	if err != nil {
+		return model.SubscriptionPaymentSnapshot{}, 0, errors.New("unsupported subscription payment currency")
+	}
+	var amount decimal.Decimal
+	switch currency {
+	case "USD":
+		if !isFinitePaymentValue(unitPrice) || unitPrice <= 0 {
+			return model.SubscriptionPaymentSnapshot{}, 0, errors.New("invalid WeChat exchange rate")
+		}
+		amount = decimal.NewFromFloat(plan.PriceAmount).Mul(decimal.NewFromFloat(unitPrice))
+	case "CNY":
+		amount = decimal.NewFromFloat(plan.PriceAmount)
+	default:
+		return model.SubscriptionPaymentSnapshot{}, 0, errors.New("WeChat Pay supports USD or CNY subscription plans only")
+	}
+	return wechatPaymentSnapshotDecimal(amount)
 }
 
 func wechatOrderExpiry(minutes int) time.Time {
@@ -266,8 +308,7 @@ func RequestWechatPay(c *gin.Context) {
 		common.ApiErrorMsg(c, "获取用户分组失败")
 		return
 	}
-	paymentMoney := getPayMoney(req.Amount, group)
-	snapshot, amountMinor, err := wechatPaymentSnapshot(paymentMoney)
+	snapshot, amountMinor, err := wechatTopUpPaymentSnapshot(req.Amount, group, wechatSettings.UnitPrice)
 	if err != nil {
 		common.ApiErrorMsg(c, "充值金额配置错误")
 		return
@@ -331,6 +372,41 @@ func RequestWechatPay(c *gin.Context) {
 	})
 }
 
+// RequestWechatAmount returns the exact CNY amount that a WeChat Native order
+// would use. Keeping this calculation server-side prevents the confirmation UI
+// from drifting from the amount signed into the eventual payment order.
+func RequestWechatAmount(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
+	var req WechatPayRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if valid, message := validateTopUpAmount(req.Amount, getMinTopup()); !valid {
+		common.ApiErrorMsg(c, message)
+		return
+	}
+	userID := c.GetInt("id")
+	if _, rejected := validateTopUpQuotaForUser(c, userID, req.Amount); rejected {
+		return
+	}
+	group, err := model.GetUserGroup(userID, true)
+	if err != nil {
+		common.ApiErrorMsg(c, "获取用户分组失败")
+		return
+	}
+	settings := currentWechatRuntimeSettings()
+	snapshot, _, err := wechatTopUpPaymentSnapshot(req.Amount, group, settings.UnitPrice)
+	if err != nil {
+		common.ApiErrorMsg(c, "充值金额配置错误")
+		return
+	}
+	common.ApiSuccess(c, decimal.NewFromInt(snapshot.AmountMicros).Shift(-6).StringFixed(2))
+}
+
 func RequestWechatSubscriptionPay(c *gin.Context) {
 	if rejectSubscriptionPurchaseWhenMallEnabled(c) || !requirePaymentCompliance(c) {
 		return
@@ -356,7 +432,7 @@ func RequestWechatSubscriptionPay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
-	snapshot, amountMinor, err := wechatPaymentSnapshot(plan.PriceAmount)
+	snapshot, amountMinor, err := wechatSubscriptionPaymentSnapshot(plan, wechatSettings.UnitPrice)
 	if err != nil {
 		common.ApiErrorMsg(c, "套餐金额配置错误")
 		return

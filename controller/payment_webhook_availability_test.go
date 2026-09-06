@@ -186,6 +186,8 @@ func TestDedicatedPaymentMethodsNeverUseEpayRoutes(t *testing.T) {
 		"stripe",
 		"creem",
 		"waffo",
+		"waffo:0",
+		" waffo:12 ",
 		"waffo_pancake",
 		"wechat_native_v3",
 	} {

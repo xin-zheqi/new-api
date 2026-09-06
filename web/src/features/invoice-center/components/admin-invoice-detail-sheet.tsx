@@ -39,6 +39,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Spinner } from '@/components/ui/spinner'
+import { getPaymentMethodDisplayName } from '@/features/wallet/lib/payment-methods'
 
 import {
   completeInvoiceApplication,
@@ -281,7 +282,13 @@ export function AdminInvoiceDetailSheet(props: {
                       if (item.item_type === 'redemption_recharge') {
                         itemTitle = t('Redemption code balance recharge')
                       } else if (item.item_type === 'top_up') {
-                        itemTitle = item.plan_title || t('Balance recharge')
+                        itemTitle =
+                          getPaymentMethodDisplayName(
+                            item.payment_method ?? '',
+                            item.payment_method_name || item.plan_title,
+                            undefined,
+                            t
+                          ) || t('Balance recharge')
                       }
                       return (
                         <div

@@ -29,46 +29,69 @@ import {
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import { isSafeEmbeddedMallUrl } from '../../../components/topup/mallMode';
+import PaymentMethodSettingsEditor from './PaymentMethodSettingsEditor';
+
+function getGeneralPaymentInputs(options = {}) {
+  return {
+    ServerAddress: options.ServerAddress || '',
+    CustomCallbackAddress: options.CustomCallbackAddress || '',
+    TopupGroupRatio: options.TopupGroupRatio || '',
+    PayMethods: options.PayMethods || '',
+    PaymentMethodSettings: options.PaymentMethodSettings || '[]',
+    AmountOptions: options.AmountOptions || '',
+    AmountDiscount: options.AmountDiscount || '',
+    MallURL: options.MallURL || '',
+    'payment_setting.mall_enabled': toBoolean(
+      options['payment_setting.mall_enabled'],
+    ),
+  };
+}
 
 export default function SettingsGeneralPayment(props) {
   const { t } = useTranslation();
   const sectionTitle = props.hideSectionTitle ? undefined : t('通用设置');
   const [loading, setLoading] = useState(false);
-  const [inputs, setInputs] = useState({
-    ServerAddress: '',
-    CustomCallbackAddress: '',
-    TopupGroupRatio: '',
-    PayMethods: '',
-    AmountOptions: '',
-    AmountDiscount: '',
-    MallURL: '',
-    'payment_setting.mall_enabled': false,
-  });
-  const [originInputs, setOriginInputs] = useState({});
+  const [inputs, setInputs] = useState(() =>
+    getGeneralPaymentInputs(props.options),
+  );
+  const [originInputs, setOriginInputs] = useState(() =>
+    getGeneralPaymentInputs(props.options),
+  );
   const formApiRef = useRef(null);
 
   useEffect(() => {
-    if (props.options && formApiRef.current) {
-      const currentInputs = {
-        ServerAddress: props.options.ServerAddress || '',
-        CustomCallbackAddress: props.options.CustomCallbackAddress || '',
-        TopupGroupRatio: props.options.TopupGroupRatio || '',
-        PayMethods: props.options.PayMethods || '',
-        AmountOptions: props.options.AmountOptions || '',
-        AmountDiscount: props.options.AmountDiscount || '',
-        MallURL: props.options.MallURL || '',
-        'payment_setting.mall_enabled': toBoolean(
-          props.options['payment_setting.mall_enabled'],
-        ),
-      };
-      setInputs(currentInputs);
-      setOriginInputs({ ...currentInputs });
-      formApiRef.current.setValues(currentInputs);
-    }
+    if (!props.options) return;
+
+    // Keep the editor state independent from Semi Form's initialization
+    // timing. Tabs may mount the form before its API callback runs, so the
+    // previous conditional silently discarded values loaded from the server.
+    const currentInputs = getGeneralPaymentInputs(props.options);
+    setInputs(currentInputs);
+    setOriginInputs({ ...currentInputs });
+    formApiRef.current?.setValues(currentInputs);
   }, [props.options]);
 
   const handleFormChange = (values) => {
-    setInputs(values);
+    // PaymentMethodSettings is controlled by the visual editor in a
+    // Form.Slot, so Semi Form does not always include it in this callback.
+    // Ignore that field when it is present as a stale snapshot from Form;
+    // handlePaymentMethodSettingsChange is the only writer for this value.
+    const formValues = { ...values };
+    delete formValues.PaymentMethodSettings;
+    setInputs((current) => ({ ...current, ...formValues }));
+  };
+
+  const handlePaymentMethodSettingsChange = (value) => {
+    setInputs((current) => ({ ...current, PaymentMethodSettings: value }));
+    formApiRef.current?.setValue('PaymentMethodSettings', value);
+  };
+
+  const normalizeJson = (value) => {
+    try {
+      return JSON.stringify(JSON.parse(value || '[]'));
+    } catch {
+      return value;
+    }
   };
 
   const submitGeneralSettings = async () => {
@@ -99,6 +122,15 @@ export default function SettingsGeneralPayment(props) {
       !verifyJSON(inputs.PayMethods)
     ) {
       showError(t('充值方式设置不是合法的 JSON 字符串'));
+      return;
+    }
+
+    if (
+      originInputs.PaymentMethodSettings !== inputs.PaymentMethodSettings &&
+      (!verifyJSON(inputs.PaymentMethodSettings) ||
+        !Array.isArray(JSON.parse(inputs.PaymentMethodSettings || '[]')))
+    ) {
+      showError(t('支付方式设置不是合法的 JSON 数组'));
       return;
     }
 
@@ -140,6 +172,15 @@ export default function SettingsGeneralPayment(props) {
       }
       if (originInputs.PayMethods !== inputs.PayMethods) {
         options.push({ key: 'PayMethods', value: inputs.PayMethods });
+      }
+      if (
+        normalizeJson(originInputs.PaymentMethodSettings) !==
+        normalizeJson(inputs.PaymentMethodSettings)
+      ) {
+        options.push({
+          key: 'payment_setting.method_settings',
+          value: inputs.PaymentMethodSettings.trim() || '[]',
+        });
       }
       if (originInputs.AmountOptions !== inputs.AmountOptions) {
         options.push({
@@ -267,7 +308,7 @@ export default function SettingsGeneralPayment(props) {
             <Col xs={24} sm={24} md={12} lg={12} xl={12}>
               <Form.TextArea
                 field='PayMethods'
-                label={t('充值方式设置')}
+                label={t('易支付设置')}
                 placeholder={t('为一个 JSON 文本')}
                 autosize
               />
@@ -286,6 +327,16 @@ export default function SettingsGeneralPayment(props) {
               />
             </Col>
           </Row>
+          <div style={{ marginTop: 16 }}>
+            <Form.Slot label={t('充值方式设置')}>
+              <PaymentMethodSettingsEditor
+                value={inputs.PaymentMethodSettings}
+                epayMethodsValue={inputs.PayMethods}
+                onChange={handlePaymentMethodSettingsChange}
+                t={t}
+              />
+            </Form.Slot>
+          </div>
           <Row style={{ marginTop: 16 }}>
             <Col span={24}>
               <Form.TextArea

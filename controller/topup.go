@@ -99,6 +99,7 @@ func GetTopUpInfo(c *gin.Context) {
 	// are complete. Dedicated gateways (including WeChat Native) are appended
 	// below and never routed through the legacy Epay endpoint.
 	epayEnabled := isEpayTopUpEnabled()
+	epayMethodCount := 0
 	payMethods := make([]map[string]string, 0, len(operation_setting.PayMethods)+4)
 	if epayEnabled {
 		for _, method := range operation_setting.PayMethods {
@@ -115,12 +116,17 @@ func GetTopUpInfo(c *gin.Context) {
 			if configuredMinimum, err := strconv.ParseInt(strings.TrimSpace(copyMethod["min_topup"]), 10, 64); err != nil || configuredMinimum <= 0 {
 				copyMethod["min_topup"] = strconv.FormatInt(getMinTopup(), 10)
 			}
+			if !applyPaymentMethodSetting(copyMethod) {
+				continue
+			}
 			payMethods = append(payMethods, copyMethod)
+			epayMethodCount++
 		}
 	}
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
-	if complianceConfirmed && isStripeTopUpEnabled() {
+	stripeEnabled := complianceConfirmed && isStripeTopUpEnabled() && paymentMethodEnabled(model.PaymentMethodStripe)
+	if stripeEnabled {
 		// 检查是否已经包含 Stripe
 		hasStripe := false
 		for _, method := range payMethods {
@@ -137,12 +143,14 @@ func GetTopUpInfo(c *gin.Context) {
 				"color":     "rgba(var(--semi-purple-5), 1)",
 				"min_topup": strconv.FormatInt(getStripeMinTopup(), 10),
 			}
-			payMethods = append(payMethods, stripeMethod)
+			if applyPaymentMethodSetting(stripeMethod) {
+				payMethods = append(payMethods, stripeMethod)
+			}
 		}
 	}
 
 	// Waffo Pancake is displayed above the standard Waffo gateway.
-	enableWaffoPancake := isWaffoPancakeTopUpEnabled()
+	enableWaffoPancake := isWaffoPancakeTopUpEnabled() && paymentMethodEnabled(model.PaymentMethodWaffoPancake)
 	if complianceConfirmed && enableWaffoPancake {
 		hasWaffoPancake := false
 		for _, method := range payMethods {
@@ -153,12 +161,15 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 
 		if !hasWaffoPancake {
-			payMethods = append(payMethods, map[string]string{
+			pancakeMethod := map[string]string{
 				"name":      "Waffo Pancake",
 				"type":      model.PaymentMethodWaffoPancake,
 				"color":     "rgba(var(--semi-orange-5), 1)",
 				"min_topup": strconv.FormatInt(getWaffoPancakeMinTopup(), 10),
-			})
+			}
+			if applyPaymentMethodSetting(pancakeMethod) {
+				payMethods = append(payMethods, pancakeMethod)
+			}
 		}
 	}
 
@@ -167,7 +178,7 @@ func GetTopUpInfo(c *gin.Context) {
 	// handler still enforces the provider server-side; this list is only UI
 	// capability metadata.
 	wechatSettings := currentWechatRuntimeSettings()
-	enableWechat := complianceConfirmed && isWechatTopUpEnabledForSettings(wechatSettings)
+	enableWechat := complianceConfirmed && isWechatTopUpEnabledForSettings(wechatSettings) && paymentMethodEnabled(model.PaymentMethodWechat)
 	if enableWechat {
 		hasWechat := false
 		for _, method := range payMethods {
@@ -177,17 +188,20 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 		}
 		if !hasWechat {
-			payMethods = append(payMethods, map[string]string{
+			wechatMethod := map[string]string{
 				"name":      "WeChat Pay",
 				"type":      model.PaymentMethodWechat,
 				"color":     "#07C160",
 				"min_topup": strconv.FormatInt(topUpDisplayLimit(wechatSettings.MinTopUp), 10),
-			})
+			}
+			if applyPaymentMethodSetting(wechatMethod) {
+				payMethods = append(payMethods, wechatMethod)
+			}
 		}
 	}
 
 	// 如果启用了 Waffo 支付，添加到支付方法列表
-	enableWaffo := isWaffoTopUpEnabled()
+	enableWaffo := isWaffoTopUpEnabled() && paymentMethodEnabled(model.PaymentMethodWaffo)
 	if complianceConfirmed && enableWaffo {
 		hasWaffo := false
 		for _, method := range payMethods {
@@ -204,14 +218,17 @@ func GetTopUpInfo(c *gin.Context) {
 				"color":     "rgba(var(--semi-blue-5), 1)",
 				"min_topup": strconv.FormatInt(getWaffoMinTopup(), 10),
 			}
-			payMethods = append(payMethods, waffoMethod)
+			if applyPaymentMethodSetting(waffoMethod) {
+				payMethods = append(payMethods, waffoMethod)
+			}
 		}
 	}
+	creemEnabled := complianceConfirmed && isCreemTopUpEnabled() && paymentMethodEnabled(model.PaymentMethodCreem)
 
 	data := gin.H{
-		"enable_online_topup":              epayEnabled,
-		"enable_stripe_topup":              complianceConfirmed && isStripeTopUpEnabled(),
-		"enable_creem_topup":               complianceConfirmed && isCreemTopUpEnabled(),
+		"enable_online_topup":              epayEnabled && epayMethodCount > 0,
+		"enable_stripe_topup":              stripeEnabled,
+		"enable_creem_topup":               creemEnabled,
 		"enable_waffo_topup":               complianceConfirmed && enableWaffo,
 		"enable_waffo_pancake_topup":       complianceConfirmed && enableWaffoPancake,
 		"enable_wechat_topup":              enableWechat,
@@ -224,8 +241,9 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 			return nil
 		}(),
-		"creem_products": setting.CreemProducts,
-		"pay_methods":    payMethods,
+		"creem_products":          setting.CreemProducts,
+		"pay_methods":             payMethods,
+		"payment_method_settings": operation_setting.ListPaymentMethodSettings(),
 		// Keep the preference explicit instead of making clients infer it from
 		// array order. Official WeChat Native is preferred when available so a
 		// configured WeChat-only checkout is not accidentally routed to Epay.
@@ -564,6 +582,7 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
+	req.PaymentMethod = strings.TrimSpace(req.PaymentMethod)
 	if valid, message := validateTopUpAmount(req.Amount, getMinTopup()); !valid {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": message})
 		return
@@ -585,7 +604,7 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 
-	if !isEpayPaymentMethod(req.PaymentMethod) || !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+	if !isEpayPaymentMethod(req.PaymentMethod) || !operation_setting.ContainsPayMethod(req.PaymentMethod) || !paymentMethodEnabled(req.PaymentMethod) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}
@@ -812,6 +831,13 @@ func RequestAmount(c *gin.Context) {
 	}
 	id := c.GetInt("id")
 	if _, rejected := validateTopUpQuotaForUser(c, id, req.Amount); rejected {
+		return
+	}
+	// Keep the preview endpoint consistent with the checkout endpoint. Perform
+	// normal input and quota validation first so callers still receive useful
+	// validation errors for malformed or over-limit requests.
+	if !isEpayTopUpEnabled() {
+		common.ApiErrorMsg(c, "在线充值暂未配置可用的支付方式")
 		return
 	}
 	group, err := model.GetUserGroup(id, true)

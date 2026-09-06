@@ -354,10 +354,12 @@ func TestInvoiceApplicationSupportsAllConfiguredItemTypes(t *testing.T) {
 	require.NoError(t, DB.Create(&user).Error)
 	systemSubscription := UserSubscription{UserId: user.Id, PlanId: plan.Id, AmountTotal: 1000, Status: "active", Source: "order", PaidAmountMicros: 1_000_000, PaidCurrency: "CNY"}
 	redemptionSubscription := UserSubscription{UserId: user.Id, PlanId: plan.Id, AmountTotal: 1000, Status: "active", Source: "redemption", PaidAmountMicros: 2_000_000, PaidCurrency: "CNY"}
+	legacyBalanceSubscription := UserSubscription{UserId: user.Id, PlanId: plan.Id, AmountTotal: 1000, Status: "active", Source: "balance", PaidAmountMicros: 9_000_000, PaidCurrency: "CNY"}
 	require.NoError(t, DB.Create(&systemSubscription).Error)
 	require.NoError(t, DB.Create(&redemptionSubscription).Error)
+	require.NoError(t, DB.Create(&legacyBalanceSubscription).Error)
 	now := common.GetTimestamp()
-	topUp := TopUp{UserId: user.Id, Amount: 100, Money: 3, PaymentMethod: "支付宝", PaymentProvider: PaymentProviderManual, Source: TopUpSourceRecharge, Status: common.TopUpStatusSuccess, CompleteTime: now, CreateTime: now, InvoiceAmountMicros: 3_000_000, InvoiceCurrency: "CNY"}
+	topUp := TopUp{UserId: user.Id, Amount: 100, Money: 3, PaymentMethod: PaymentMethodWechat, PaymentProvider: PaymentProviderWechat, Source: TopUpSourceRecharge, Status: common.TopUpStatusSuccess, CompleteTime: now, CreateTime: now, InvoiceAmountMicros: 3_000_000, InvoiceCurrency: "CNY"}
 	require.NoError(t, DB.Create(&topUp).Error)
 	redemption := Redemption{Name: "all-source-code", Key: "55555555555555555555555555555555", Status: common.RedemptionCodeStatusUsed, RedeemType: RedemptionTypeQuota, Quota: 100, UsedUserId: user.Id, RedeemedTime: now, InvoiceAmountMicros: 4_000_000, InvoiceCurrency: "CNY"}
 	require.NoError(t, DB.Create(&redemption).Error)
@@ -365,6 +367,22 @@ func TestInvoiceApplicationSupportsAllConfiguredItemTypes(t *testing.T) {
 	eligible, err := GetInvoiceEligibleSubscriptions(user.Id, GetInvoiceSettings())
 	require.NoError(t, err)
 	require.Len(t, eligible, 4)
+	for _, item := range eligible {
+		if item.ItemType == InvoiceItemTypeSubscription {
+			assert.NotEqual(t, legacyBalanceSubscription.Id, item.Id)
+		}
+	}
+	_, err = CreateInvoiceApplication(user.Id, GetInvoiceSettings(), invoiceTestInput("Legacy balance invoice"), []int{legacyBalanceSubscription.Id})
+	require.ErrorContains(t, err, "not eligible")
+	var eligibleTopUp *InvoiceEligibleSubscription
+	for index := range eligible {
+		if eligible[index].ItemType == InvoiceItemTypeTopUp {
+			eligibleTopUp = &eligible[index]
+			break
+		}
+	}
+	require.NotNil(t, eligibleTopUp)
+	assert.Equal(t, PaymentMethodWechat, eligibleTopUp.PaymentMethod)
 	application, err := CreateInvoiceApplication(user.Id, GetInvoiceSettings(), invoiceTestInput("All source invoice"), []int{systemSubscription.Id, redemptionSubscription.Id, -topUp.Id}, []int{redemption.Id})
 	require.NoError(t, err)
 	require.Len(t, application.Items, 4)
@@ -377,7 +395,8 @@ func TestInvoiceApplicationSupportsAllConfiguredItemTypes(t *testing.T) {
 	assert.ElementsMatch(t, []string{InvoiceItemTypeSubscription, InvoiceItemTypeSubscription, InvoiceItemTypeTopUp, InvoiceItemTypeRedemptionRecharge}, itemTypes)
 	var storedTopUp InvoiceApplicationItem
 	require.NoError(t, DB.Where("invoice_application_id = ? AND top_up_id = ?", application.Id, topUp.Id).First(&storedTopUp).Error)
-	assert.Equal(t, "支付宝", storedTopUp.PlanTitle)
+	assert.Equal(t, PaymentMethodWechat, storedTopUp.PaymentMethod)
+	assert.Empty(t, storedTopUp.PlanTitle)
 }
 
 func TestListUserInvoiceApplicationsIsPaginated(t *testing.T) {

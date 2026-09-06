@@ -66,6 +66,7 @@ const defaultBillingSettings: BillingSettings = {
   MinTopUp: 1,
   CustomCallbackAddress: '',
   PayMethods: '',
+  'payment_setting.method_settings': '[]',
   MallURL: '',
   'payment_setting.mall_enabled': false,
   'payment_setting.amount_options': '',

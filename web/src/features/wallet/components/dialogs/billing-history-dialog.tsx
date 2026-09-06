@@ -69,11 +69,13 @@ import {
   formatTimestamp,
 } from '../../lib/billing'
 import { formatPaymentAmount } from '../../lib/format'
+import type { PaymentMethodSetting } from '../../types'
 import { ManualTopupDialog } from './manual-topup-dialog'
 
 interface BillingHistoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  paymentMethodSettings?: PaymentMethodSetting[]
 }
 
 const BILLING_SKELETON_KEYS = [
@@ -87,6 +89,7 @@ const BILLING_SKELETON_KEYS = [
 export function BillingHistoryDialog({
   open,
   onOpenChange,
+  paymentMethodSettings,
 }: BillingHistoryDialogProps) {
   const { t, i18n } = useTranslation()
   const {
@@ -304,7 +307,11 @@ export function BillingHistoryDialog({
                               {t('Payment Method')}
                             </Label>
                             <div className='text-sm font-medium'>
-                              {getPaymentMethodName(record.payment_method, t)}
+                              {getPaymentMethodName(
+                                record.payment_method,
+                                t,
+                                paymentMethodSettings
+                              )}
                             </div>
                           </div>
                           <div className='space-y-1'>

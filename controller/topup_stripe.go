@@ -150,6 +150,9 @@ func RequestStripeAmount(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
 	}
+	if !requirePaymentMethodEnabled(c, model.PaymentMethodStripe) {
+		return
+	}
 
 	var req StripePayRequest
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
@@ -163,6 +166,9 @@ func RequestStripeAmount(c *gin.Context) {
 
 func RequestStripePay(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
+		return
+	}
+	if !requirePaymentMethodEnabled(c, model.PaymentMethodStripe) {
 		return
 	}
 

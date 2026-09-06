@@ -45,6 +45,7 @@ import {
 } from '../../../helpers';
 import { isAdmin, isRoot } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
+import { getPaymentMethodDisplayName } from '../paymentMethodSettings';
 const { Text } = Typography;
 const DEFAULT_MANUAL_CURRENCY = 'CNY';
 
@@ -74,7 +75,12 @@ const toUnixSeconds = (value) => {
   return Math.floor(timestamp / 1000);
 };
 
-const TopupHistoryModal = ({ visible, onCancel, t }) => {
+const TopupHistoryModal = ({
+  visible,
+  onCancel,
+  t,
+  paymentMethodSettings = [],
+}) => {
   const [loading, setLoading] = useState(false);
   const [topups, setTopups] = useState([]);
   const [total, setTotal] = useState(0);
@@ -317,8 +323,17 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   // 渲染支付方式
   const renderPaymentMethod = (pm) => {
-    const displayName = PAYMENT_METHOD_MAP[pm];
-    return <Text>{displayName ? t(displayName) : pm || '-'}</Text>;
+    const fallbackName = PAYMENT_METHOD_MAP[pm] || pm || '-';
+    return (
+      <Text>
+        {getPaymentMethodDisplayName(
+          pm,
+          fallbackName,
+          paymentMethodSettings,
+          t,
+        )}
+      </Text>
+    );
   };
 
   const isSubscriptionTopup = (record) => {
@@ -430,7 +445,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     });
 
     return baseColumns;
-  }, [t, userIsAdmin]);
+  }, [t, userIsAdmin, paymentMethodSettings]);
 
   return (
     <>

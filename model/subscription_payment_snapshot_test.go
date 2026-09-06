@@ -121,39 +121,6 @@ func TestCompleteSubscriptionOrderRejectsUnderpaymentAndSnapshotsVerifiedCharge(
 	assert.Equal(t, verifiedPayment.Currency, subscription.PaidCurrency)
 }
 
-func TestBalancePurchaseDoesNotCreateInvoicePaymentSnapshot(t *testing.T) {
-	setupInvoiceTest(t)
-	previousQuotaPerUnit := common.QuotaPerUnit
-	common.QuotaPerUnit = 500_000
-	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
-	plan := SubscriptionPlan{
-		Title: "Balance invoice plan", PriceAmount: 12.345678, Currency: "USD", DurationUnit: SubscriptionDurationMonth,
-		DurationValue: 1, Enabled: true, TotalAmount: 1000, InvoiceEligible: true,
-	}
-	require.NoError(t, DB.Create(&plan).Error)
-	InvalidateSubscriptionPlanCache(plan.Id)
-	user := User{Username: "balance-invoice-user", Password: "password", AffCode: "balance-invoice-user", Quota: 10_000_000}
-	require.NoError(t, DB.Create(&user).Error)
-
-	require.NoError(t, PurchaseSubscriptionWithBalance(user.Id, plan.Id))
-	var subscription UserSubscription
-	require.NoError(t, DB.Where("user_id = ?", user.Id).First(&subscription).Error)
-	assert.False(t, subscription.InvoiceEligible)
-	assert.Zero(t, subscription.PaidAmountMicros)
-	assert.Empty(t, subscription.PaidCurrency)
-	var order SubscriptionOrder
-	require.NoError(t, DB.Where("user_id = ?", user.Id).First(&order).Error)
-	assert.Zero(t, order.ExpectedAmountMicros)
-	assert.Zero(t, order.PaidAmountMicros)
-	assert.Empty(t, order.ExpectedCurrency)
-	assert.Empty(t, order.PaidCurrency)
-	var topUp TopUp
-	require.NoError(t, DB.Where("trade_no = ?", order.TradeNo).First(&topUp).Error)
-	assert.Equal(t, TopUpSourceSubscription, topUp.Source)
-	assert.Empty(t, topUp.Currency)
-	assert.InDelta(t, plan.PriceAmount, topUp.Money, 0.000001)
-}
-
 func TestCreatePendingSubscriptionOrderAtomicallyReservesPurchaseLimit(t *testing.T) {
 	setupInvoiceTest(t)
 	plan := SubscriptionPlan{
@@ -391,35 +358,4 @@ func TestLegacySubscriptionOrderFallsBackToCurrentPlanOnlyWhenSnapshotIsEmpty(t 
 		SubscriptionPaymentSnapshot{AmountMicros: 9_990_000, Currency: "USD"},
 	)
 	require.ErrorIs(t, err, ErrSubscriptionPlanSnapshotInvalid)
-}
-
-func TestBalanceSubscriptionPurchaseLimitRollsBackChargeAndHistory(t *testing.T) {
-	setupInvoiceTest(t)
-	previousQuotaPerUnit := common.QuotaPerUnit
-	common.QuotaPerUnit = 100
-	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
-
-	plan := SubscriptionPlan{
-		Title: "Balance limit plan", PriceAmount: 1, Currency: "USD", DurationUnit: SubscriptionDurationMonth,
-		DurationValue: 1, Enabled: true, TotalAmount: 1000, MaxPurchasePerUser: 1,
-	}
-	require.NoError(t, DB.Create(&plan).Error)
-	user := User{Username: "balance-limit-user", Password: "password", AffCode: "balance-limit-user", Quota: 300}
-	require.NoError(t, DB.Create(&user).Error)
-
-	require.NoError(t, PurchaseSubscriptionWithBalance(user.Id, plan.Id))
-	require.ErrorIs(t, PurchaseSubscriptionWithBalance(user.Id, plan.Id), ErrSubscriptionPurchaseLimit)
-
-	var storedUser User
-	require.NoError(t, DB.First(&storedUser, user.Id).Error)
-	assert.Equal(t, 200, storedUser.Quota)
-	var subscriptionCount int64
-	require.NoError(t, DB.Model(&UserSubscription{}).Where("user_id = ? AND plan_id = ?", user.Id, plan.Id).Count(&subscriptionCount).Error)
-	assert.Equal(t, int64(1), subscriptionCount)
-	var orderCount int64
-	require.NoError(t, DB.Model(&SubscriptionOrder{}).Where("user_id = ? AND plan_id = ?", user.Id, plan.Id).Count(&orderCount).Error)
-	assert.Equal(t, int64(1), orderCount)
-	var topUpCount int64
-	require.NoError(t, DB.Model(&TopUp{}).Where("user_id = ? AND source = ?", user.Id, TopUpSourceSubscription).Count(&topUpCount).Error)
-	assert.Equal(t, int64(1), topUpCount)
 }

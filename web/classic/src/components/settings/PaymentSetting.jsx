@@ -43,6 +43,7 @@ const PaymentSetting = () => {
     TopupGroupRatio: '',
     CustomCallbackAddress: '',
     PayMethods: '',
+    PaymentMethodSettings: '[]',
     AmountOptions: '',
     AmountDiscount: '',
     MallURL: '',
@@ -162,6 +163,17 @@ const PaymentSetting = () => {
               );
             } catch (error) {
               newInputs['AmountDiscount'] = item.value;
+            }
+            break;
+          case 'payment_setting.method_settings':
+            try {
+              newInputs.PaymentMethodSettings = JSON.stringify(
+                JSON.parse(item.value || '[]'),
+                null,
+                2,
+              );
+            } catch (error) {
+              newInputs.PaymentMethodSettings = '[]';
             }
             break;
           case 'payment_setting.compliance_confirmed':

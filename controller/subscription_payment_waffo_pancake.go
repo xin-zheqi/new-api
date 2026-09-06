@@ -28,6 +28,9 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
 	}
+	if !requirePaymentMethodEnabled(c, model.PaymentMethodWaffoPancake) {
+		return
+	}
 
 	var req SubscriptionWaffoPancakePayRequest
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)

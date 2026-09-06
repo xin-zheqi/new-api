@@ -33,8 +33,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatLocalCurrencyAmount } from '@/lib/currency'
 
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
-import { formatCurrency, getPaymentIcon } from '../../lib'
-import type { PaymentMethod } from '../../types'
+import {
+  formatCurrency,
+  getPaymentIcon,
+  getPaymentMethodDisplayName,
+} from '../../lib'
+import type { PaymentMethod, PaymentMethodSetting } from '../../types'
 
 interface PaymentConfirmDialogProps {
   open: boolean
@@ -47,6 +51,7 @@ interface PaymentConfirmDialogProps {
   processing: boolean
   discountRate?: number
   usdExchangeRate?: number
+  paymentMethodSettings?: PaymentMethodSetting[]
 }
 
 export function PaymentConfirmDialog({
@@ -60,15 +65,20 @@ export function PaymentConfirmDialog({
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
   usdExchangeRate = 1,
+  paymentMethodSettings,
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
   const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
   const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
   const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
-  const paymentMethodName =
-    paymentMethod?.type === 'wechat_native_v3'
-      ? t('WeChat Pay')
-      : paymentMethod?.name
+  const paymentMethodName = paymentMethod
+    ? getPaymentMethodDisplayName(
+        paymentMethod.type,
+        paymentMethod.name,
+        paymentMethodSettings,
+        t
+      )
+    : '-'
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>

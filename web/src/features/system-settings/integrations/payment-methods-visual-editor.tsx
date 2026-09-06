@@ -81,23 +81,6 @@ export function PaymentMethodsVisualEditor({
       },
     },
     {
-      name: t('Stripe'),
-      template: {
-        icon: getDefaultIconName('stripe'),
-        min_topup: '10',
-        name: 'Stripe',
-        type: 'stripe',
-      },
-    },
-    {
-      name: 'Waffo Pancake',
-      template: {
-        icon: getDefaultIconName('waffo_pancake'),
-        name: 'Waffo Pancake',
-        type: 'waffo_pancake',
-      },
-    },
-    {
       name: t('Custom Epay method'),
       template: {
         icon: 'LuCreditCard',

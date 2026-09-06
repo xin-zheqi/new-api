@@ -44,6 +44,7 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { FrontendSwitchSection } from './frontend-switch-section'
 import { isValidTaskPublicAddress } from './task-public-address'
 
 const _systemInfoSchema = z.object({
@@ -235,6 +236,12 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                   </FormItem>
                 )}
               />
+
+              <SettingsFormGridItem span='full'>
+                <FrontendSwitchSection
+                  disabled={isDirty || isSubmitting || updateOption.isPending}
+                />
+              </SettingsFormGridItem>
 
               <FormField
                 control={form.control}

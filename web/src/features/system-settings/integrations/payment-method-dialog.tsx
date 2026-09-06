@@ -97,18 +97,6 @@ export function PaymentMethodDialog({
       name: t('WeChat Pay'),
       value: 'wxpay',
     },
-    {
-      iconName: 'SiStripe',
-      label: `${t('Stripe')} (stripe)`,
-      name: t('Stripe'),
-      value: 'stripe',
-    },
-    {
-      iconName: 'LuCreditCard',
-      label: 'Waffo Pancake (waffo_pancake)',
-      name: 'Waffo Pancake',
-      value: 'waffo_pancake',
-    },
   ]
   const getPaymentTypeOption = (value: string) =>
     paymentTypeOptions.find((option) => option.value === value)
@@ -164,7 +152,9 @@ export function PaymentMethodDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={isEditMode ? t('Edit payment method') : t('Add payment method')}
-      description={t('Configure a payment method for user recharge options.')}
+      description={t(
+        'Configure an Epay payment method. Dedicated gateways are configured in their own sections.'
+      )}
       contentClassName='sm:max-w-[500px]'
       contentHeight='auto'
       bodyClassName='space-y-4'
@@ -249,7 +239,7 @@ export function PaymentMethodDialog({
                 </FormControl>
                 <FormDescription className='leading-relaxed'>
                   {t(
-                    'Used to decide the payment flow. Built-in keys include stripe for Stripe and waffo_pancake for Waffo Pancake; other values are sent to Epay as the type parameter.'
+                    'The type key is sent to Epay. Configure Stripe, Creem, WeChat Pay, Waffo, and Waffo Pancake in their dedicated settings instead.'
                   )}
                 </FormDescription>
                 <FormMessage />

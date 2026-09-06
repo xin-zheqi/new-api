@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -22,10 +21,6 @@ type SubscriptionPlanDTO struct {
 
 type BillingPreferenceRequest struct {
 	BillingPreference string `json:"billing_preference"`
-}
-
-type SubscriptionBalancePayRequest struct {
-	PlanId int `json:"plan_id"`
 }
 
 // ---- User APIs ----
@@ -107,29 +102,6 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"billing_preference": pref})
 }
 
-func SubscriptionRequestBalancePay(c *gin.Context) {
-	if rejectSubscriptionPurchaseWhenMallEnabled(c) {
-		return
-	}
-	if !requirePaymentCompliance(c) {
-		return
-	}
-
-	userId := c.GetInt("id")
-	var req SubscriptionBalancePayRequest
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
-	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
-		common.ApiErrorMsg(c, "参数错误")
-		return
-	}
-
-	if err := model.PurchaseSubscriptionWithBalance(userId, req.PlanId); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, nil)
-}
-
 // ---- Admin APIs ----
 
 func AdminListSubscriptionPlans(c *gin.Context) {
@@ -179,9 +151,6 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		req.Plan.Currency = "USD"
 	}
 	req.Plan.Currency = "USD"
-	if req.Plan.AllowBalancePay == nil {
-		req.Plan.AllowBalancePay = common.GetPointer(true)
-	}
 	if req.Plan.AllowWalletOverflow == nil {
 		req.Plan.AllowWalletOverflow = common.GetPointer(true)
 	}
@@ -318,9 +287,6 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
 			"updated_at":                 common.GetTimestamp(),
-		}
-		if req.Plan.AllowBalancePay != nil {
-			updateMap["allow_balance_pay"] = *req.Plan.AllowBalancePay
 		}
 		if req.Plan.AllowWalletOverflow != nil {
 			updateMap["allow_wallet_overflow"] = *req.Plan.AllowWalletOverflow

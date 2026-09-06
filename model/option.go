@@ -340,6 +340,9 @@ func validateOptionValue(key string, value string) error {
 	if key == "payment_setting.amount_discount" {
 		return operation_setting.ValidatePaymentAmountDiscount(value)
 	}
+	if key == operation_setting.PaymentMethodSettingsOptionKey {
+		return operation_setting.ValidatePaymentMethodSettings(value)
+	}
 	if key == operation_setting.ChannelTestConcurrencyOptionKey {
 		return operation_setting.ValidateChannelTestConcurrency(value)
 	}
@@ -387,6 +390,14 @@ func normalizeOptionValue(key string, value string) string {
 	switch key {
 	case "QuotaPerUnit", "USDExchangeRate", "Price", "StripeUnitPrice", "WaffoUnitPrice", "WaffoPancakeUnitPrice", "WechatUnitPrice", "WechatMinTopUp":
 		return strings.TrimSpace(value)
+	case operation_setting.PaymentMethodSettingsOptionKey:
+		// An empty overlay means "no overrides". Persist a valid empty array so
+		// the config manager and the in-memory option map cannot diverge.
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return "[]"
+		}
+		return trimmed
 	default:
 		return value
 	}

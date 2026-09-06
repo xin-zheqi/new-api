@@ -103,6 +103,8 @@ type InvoiceApplicationItem struct {
 	ItemType             string `json:"item_type" gorm:"type:varchar(16);not null;default:'subscription'"`
 	ActiveSlot           *int   `json:"-"`
 	PlanTitle            string `json:"plan_title" gorm:"type:varchar(255)"`
+	PaymentMethod        string `json:"payment_method,omitempty" gorm:"type:varchar(50)"`
+	PaymentMethodName    string `json:"payment_method_name,omitempty" gorm:"-"`
 	LegacyAmountTotal    int64  `json:"-" gorm:"column:amount_total;type:bigint;not null;default:0"`
 	PaidAmountMicros     int64  `json:"paid_amount_micros" gorm:"type:bigint;not null;default:0"`
 	Currency             string `json:"currency" gorm:"type:varchar(8);not null;default:''"`
@@ -121,6 +123,9 @@ func (item *InvoiceApplicationItem) AfterFind(tx *gorm.DB) error {
 		item.ItemType = InvoiceItemTypeRedemptionRecharge
 	case item.TopUpId > 0:
 		item.ItemType = InvoiceItemTypeTopUp
+		if strings.TrimSpace(item.PaymentMethod) == "" {
+			item.PaymentMethod = strings.TrimSpace(item.PlanTitle)
+		}
 	case item.UserSubscriptionId > 0:
 		item.ItemType = InvoiceItemTypeSubscription
 	}
@@ -142,11 +147,13 @@ func (invoiceApplicationItemIndex) TableName() string {
 
 type InvoiceEligibleSubscription struct {
 	UserSubscription
-	PlanTitle    string `json:"plan_title"`
-	Source       string `json:"source,omitempty"`
-	TopUpId      int    `json:"top_up_id,omitempty"`
-	RedemptionId int    `json:"redemption_id,omitempty"`
-	ItemType     string `json:"item_type,omitempty"`
+	PlanTitle         string `json:"plan_title"`
+	PaymentMethod     string `json:"payment_method,omitempty" gorm:"-"`
+	PaymentMethodName string `json:"payment_method_name,omitempty" gorm:"-"`
+	Source            string `json:"source,omitempty"`
+	TopUpId           int    `json:"top_up_id,omitempty"`
+	RedemptionId      int    `json:"redemption_id,omitempty"`
+	ItemType          string `json:"item_type,omitempty"`
 }
 
 const (
@@ -355,9 +362,9 @@ func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]In
 		Where("us.user_id = ? AND us.paid_amount_micros > 0 AND us.paid_currency <> ? AND us.created_at >= ?", userId, "", cutoff).
 		Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai WHERE iai.user_subscription_id = us.id AND iai.active_slot = ?)", 1)
 	if settings.SystemSubscriptionEnabled && settings.RedemptionSubscriptionEnabled {
-		query = query.Where("us.source IN ?", []string{"order", "balance", "redemption"})
+		query = query.Where("us.source IN ?", []string{"order", "redemption"})
 	} else if settings.SystemSubscriptionEnabled {
-		query = query.Where("us.source IN ?", []string{"order", "balance"})
+		query = query.Where("us.source = ?", "order")
 	} else if settings.RedemptionSubscriptionEnabled {
 		query = query.Where("us.source = ?", "redemption")
 	} else {
@@ -385,10 +392,8 @@ func GetInvoiceEligibleSubscriptions(userId int, settings InvoiceSettings) ([]In
 			}
 			topUpsub := InvoiceEligibleSubscription{
 				UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime},
-				PlanTitle:        topUp.PaymentMethod, Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: InvoiceItemTypeTopUp,
-			}
-			if strings.TrimSpace(topUpsub.PlanTitle) == "" {
-				topUpsub.PlanTitle = "Balance recharge"
+				PaymentMethod:    strings.TrimSpace(topUp.PaymentMethod), Source: TopUpSourceRecharge,
+				TopUpId: topUp.Id, ItemType: InvoiceItemTypeTopUp,
 			}
 			subscriptions = append(subscriptions, topUpsub)
 		}
@@ -542,9 +547,9 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 				Where("us.user_id = ? AND us.id IN ? AND us.paid_amount_micros > 0 AND us.paid_currency <> ? AND us.created_at >= ?", userId, subscriptionIDs, "", common.GetTimestamp()-int64(settings.LookbackDays)*24*60*60).
 				Where("NOT EXISTS (SELECT 1 FROM invoice_application_items iai WHERE iai.user_subscription_id = us.id AND iai.active_slot = ?)", 1)
 			if settings.SystemSubscriptionEnabled && settings.RedemptionSubscriptionEnabled {
-				subscriptionQuery = subscriptionQuery.Where("us.source IN ?", []string{"order", "balance", "redemption"})
+				subscriptionQuery = subscriptionQuery.Where("us.source IN ?", []string{"order", "redemption"})
 			} else if settings.SystemSubscriptionEnabled {
-				subscriptionQuery = subscriptionQuery.Where("us.source IN ?", []string{"order", "balance"})
+				subscriptionQuery = subscriptionQuery.Where("us.source = ?", "order")
 			} else if settings.RedemptionSubscriptionEnabled {
 				subscriptionQuery = subscriptionQuery.Where("us.source = ?", "redemption")
 			} else {
@@ -572,11 +577,11 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 				if !valid {
 					continue
 				}
-				planTitle := strings.TrimSpace(topUp.PaymentMethod)
-				if planTitle == "" {
-					planTitle = "Balance recharge"
-				}
-				subscriptions = append(subscriptions, InvoiceEligibleSubscription{UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime}, PlanTitle: planTitle, Source: TopUpSourceRecharge, TopUpId: topUp.Id, ItemType: InvoiceItemTypeTopUp})
+				subscriptions = append(subscriptions, InvoiceEligibleSubscription{
+					UserSubscription: UserSubscription{Id: -topUp.Id, UserId: userId, PaidAmountMicros: amount, PaidCurrency: currency, CreatedAt: topUp.CompleteTime},
+					PaymentMethod:    strings.TrimSpace(topUp.PaymentMethod), Source: TopUpSourceRecharge,
+					TopUpId: topUp.Id, ItemType: InvoiceItemTypeTopUp,
+				})
 			}
 		}
 		if len(redemptionIDsInput) > 0 {
@@ -632,9 +637,10 @@ func CreateInvoiceApplication(userId int, settings InvoiceSettings, input Invoic
 			application.Items = append(application.Items, InvoiceApplicationItem{
 				UserSubscriptionId: userSubscriptionID, TopUpId: subscription.TopUpId, RedemptionId: subscription.RedemptionId,
 				ItemType: subscription.ItemType, ActiveSlot: activeSlotPointer,
-				PlanTitle: subscription.PlanTitle, PaidAmountMicros: subscription.PaidAmountMicros,
-				Currency:  currency,
-				StartTime: subscription.StartTime, EndTime: subscription.EndTime,
+				PlanTitle: subscription.PlanTitle, PaymentMethod: subscription.PaymentMethod,
+				PaidAmountMicros: subscription.PaidAmountMicros,
+				Currency:         currency,
+				StartTime:        subscription.StartTime, EndTime: subscription.EndTime,
 			})
 		}
 		return tx.Create(application).Error

@@ -29,6 +29,9 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
 	}
+	if !requirePaymentMethodEnabled(c, model.PaymentMethodStripe) {
+		return
+	}
 
 	var req SubscriptionStripePayRequest
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)

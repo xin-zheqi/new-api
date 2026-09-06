@@ -23,6 +23,8 @@ import {
   generatePresetAmounts,
   mergePresetAmounts,
   getMinTopupAmount,
+  isPaymentMethodEnabled,
+  parsePaymentMethodSettings,
 } from '../lib'
 import type {
   TopupInfo,
@@ -56,7 +58,8 @@ function parseJsonArray(data: unknown): unknown[] {
 function parsePaymentMethods(
   data: unknown,
   stripeMinTopup?: number,
-  wechatMinTopup?: number
+  wechatMinTopup?: number,
+  paymentMethodSettings?: ReturnType<typeof parsePaymentMethodSettings>
 ): PaymentMethod[] {
   const fallbackStripeMinimum =
     Number.isFinite(Number(stripeMinTopup)) && Number(stripeMinTopup) > 0
@@ -75,7 +78,7 @@ function parsePaymentMethods(
     .map((item) => {
       const rawMinTopup = Number(item.min_topup)
       const normalizedMinTopup = Number.isFinite(rawMinTopup) ? rawMinTopup : 0
-      const type = typeof item.type === 'string' ? item.type : ''
+      const type = typeof item.type === 'string' ? item.type.trim() : ''
       let minTopup = normalizedMinTopup
       if (minTopup <= 0 && type === 'stripe') {
         minTopup = fallbackStripeMinimum
@@ -83,15 +86,26 @@ function parsePaymentMethods(
         minTopup = fallbackWechatMinimum
       }
 
+      const fallbackName = typeof item.name === 'string' ? item.name.trim() : ''
       return {
-        name: typeof item.name === 'string' ? item.name : '',
+        // Keep the server label untouched here. Rendering resolves built-in
+        // translations with the current locale and applies administrator
+        // overrides without freezing an English label in state.
+        name: fallbackName,
         type,
         color: typeof item.color === 'string' ? item.color : undefined,
         icon: typeof item.icon === 'string' ? item.icon : undefined,
         min_topup: minTopup,
       }
     })
-    .filter((item) => item.name && item.type && item.type !== 'waffo')
+    .filter(
+      (item) =>
+        item.name &&
+        item.type &&
+        item.type !== 'waffo' &&
+        !item.type.startsWith('waffo:') &&
+        isPaymentMethodEnabled(item.type, paymentMethodSettings)
+    )
 }
 
 function parseWaffoPayMethods(data: unknown): WaffoPayMethod[] {
@@ -193,12 +207,17 @@ export function useTopupInfo() {
         return
       }
 
+      const paymentMethodSettings = parsePaymentMethodSettings(
+        response.data.payment_method_settings
+      )
       const processedData: TopupInfo = {
         ...response.data,
+        payment_method_settings: paymentMethodSettings,
         pay_methods: parsePaymentMethods(
           response.data.pay_methods,
           response.data.stripe_min_topup,
-          response.data.wechat_min_topup
+          response.data.wechat_min_topup,
+          paymentMethodSettings
         ),
         amount_options: parseAmountOptions(response.data.amount_options),
         discount: parseDiscountMap(response.data.discount),

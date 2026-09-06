@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Banner, Descriptions, Tag, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import { getPaymentMethodDisplayName } from '../../components/topup/paymentMethodSettings';
 import {
   formatInvoiceMoney,
   formatInvoiceTime,
@@ -126,7 +127,12 @@ const InvoiceDetails = ({ application, admin = false, t }) => {
                 {item.item_type === 'redemption_recharge'
                   ? t('Redemption code balance recharge')
                   : item.item_type === 'top_up'
-                    ? item.plan_title || t('Balance recharge')
+                    ? getPaymentMethodDisplayName(
+                        item.payment_method || '',
+                        item.payment_method_name || item.plan_title,
+                        [],
+                        t,
+                      ) || t('Balance recharge')
                     : item.plan_title || t('Subscription')}
               </span>
               <Text strong>

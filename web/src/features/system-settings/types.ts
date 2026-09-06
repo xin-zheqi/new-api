@@ -333,6 +333,7 @@ export type BillingSettings = {
   MinTopUp: number
   CustomCallbackAddress: string
   PayMethods: string
+  'payment_setting.method_settings': string
   MallURL: string
   'payment_setting.mall_enabled': boolean
   'payment_setting.amount_options': string

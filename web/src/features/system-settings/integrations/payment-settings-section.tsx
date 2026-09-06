@@ -67,6 +67,7 @@ import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
+import { PaymentMethodSettingsVisualEditor } from './payment-method-settings-visual-editor'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
   formatJsonForEditor,
@@ -142,6 +143,15 @@ function createPaymentSchema(t: TFunction) {
         ),
       MallEnabled: z.boolean(),
       MallURL: z.string(),
+      PaymentMethodSettings: z.string().superRefine((value, ctx) => {
+        const error = getJsonError(value, (parsed) => Array.isArray(parsed))
+        if (error) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: error,
+          })
+        }
+      }),
       PayMethods: z.string().superRefine((value, ctx) => {
         const error = getJsonError(value)
         if (error) {
@@ -502,6 +512,9 @@ export function PaymentSettingsSection({
     mode: 'onChange', // Enable real-time validation
     defaultValues: {
       ...initialFormValues,
+      PaymentMethodSettings: formatJsonForEditor(
+        initialFormValues.PaymentMethodSettings ?? '[]'
+      ),
       PayMethods: formatJsonForEditor(initialFormValues.PayMethods),
       AmountOptions: formatJsonForEditor(initialFormValues.AmountOptions),
       AmountDiscount: formatJsonForEditor(initialFormValues.AmountDiscount),
@@ -559,6 +572,9 @@ export function PaymentSettingsSection({
     initialRef.current = parsedDefaults
     form.reset({
       ...parsedDefaults,
+      PaymentMethodSettings: formatJsonForEditor(
+        parsedDefaults.PaymentMethodSettings ?? '[]'
+      ),
       PayMethods: formatJsonForEditor(parsedDefaults.PayMethods),
       AmountOptions: formatJsonForEditor(parsedDefaults.AmountOptions),
       AmountDiscount: formatJsonForEditor(parsedDefaults.AmountDiscount),
@@ -576,6 +592,7 @@ export function PaymentSettingsSection({
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
       MallEnabled: values.MallEnabled,
       MallURL: values.MallURL.trim(),
+      PaymentMethodSettings: (values.PaymentMethodSettings ?? '').trim(),
       PayMethods: values.PayMethods.trim(),
       AmountOptions: values.AmountOptions.trim(),
       AmountDiscount: values.AmountDiscount.trim(),
@@ -637,6 +654,9 @@ export function PaymentSettingsSection({
       ),
       MallEnabled: initialRef.current.MallEnabled,
       MallURL: initialRef.current.MallURL.trim(),
+      PaymentMethodSettings: (
+        initialRef.current.PaymentMethodSettings ?? ''
+      ).trim(),
       PayMethods: initialRef.current.PayMethods.trim(),
       AmountOptions: initialRef.current.AmountOptions.trim(),
       AmountDiscount: initialRef.current.AmountDiscount.trim(),
@@ -726,6 +746,16 @@ export function PaymentSettingsSection({
     const hasMallChanges =
       sanitized.MallEnabled !== initial.MallEnabled ||
       sanitized.MallURL !== initial.MallURL
+
+    if (
+      normalizeJsonForComparison(sanitized.PaymentMethodSettings) !==
+      normalizeJsonForComparison(initial.PaymentMethodSettings)
+    ) {
+      updates.push({
+        key: 'payment_setting.method_settings',
+        value: sanitized.PaymentMethodSettings,
+      })
+    }
 
     if (
       normalizeJsonForComparison(sanitized.PayMethods) !==
@@ -1245,11 +1275,36 @@ export function PaymentSettingsSection({
 
                 <FormField
                   control={form.control}
+                  name='PaymentMethodSettings'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Payment method availability')}</FormLabel>
+                      <FormControl>
+                        <PaymentMethodSettingsVisualEditor
+                          value={field.value}
+                          epayMethodsValue={form.watch('PayMethods')}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'These controls apply to Epay, Stripe, Creem, WeChat Pay, Waffo, and Waffo Pancake together.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name='PayMethods'
                   render={({ field }) => (
                     <FormItem>
                       <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-                        <FormLabel>{t('Payment methods')}</FormLabel>
+                        <FormLabel>
+                          {t('Configuration for Epay payment integration')}
+                        </FormLabel>
                         <Button
                           type='button'
                           variant='outline'

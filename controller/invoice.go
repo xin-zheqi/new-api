@@ -17,6 +17,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -69,7 +70,34 @@ type invoiceApplicationAdminResponse struct {
 	User *invoiceApplicationUserResponse `json:"user,omitempty"`
 }
 
+func decorateInvoiceEligiblePaymentMethods(items []model.InvoiceEligibleSubscription) {
+	for index := range items {
+		if items[index].ItemType != model.InvoiceItemTypeTopUp {
+			continue
+		}
+		items[index].PaymentMethodName = operation_setting.ResolvePaymentMethodDisplayName(items[index].PaymentMethod)
+	}
+}
+
+func decorateInvoiceApplicationPaymentMethods(application *model.InvoiceApplication) {
+	if application == nil {
+		return
+	}
+	for index := range application.Items {
+		item := &application.Items[index]
+		if item.ItemType != model.InvoiceItemTypeTopUp {
+			continue
+		}
+		if strings.TrimSpace(item.PaymentMethod) == "" {
+			item.PaymentMethod = strings.TrimSpace(item.PlanTitle)
+		}
+		item.PaymentMethodName = operation_setting.ResolvePaymentMethodDisplayName(item.PaymentMethod)
+		item.PlanTitle = ""
+	}
+}
+
 func newInvoiceApplicationAdminResponse(application model.InvoiceApplication) invoiceApplicationAdminResponse {
+	decorateInvoiceApplicationPaymentMethods(&application)
 	if (application.User == nil || application.User.Id != application.UserId) && model.DB != nil && application.UserId > 0 {
 		var user model.User
 		if err := model.DB.Unscoped().Select("id", "username", "display_name", "email", "identity").First(&user, application.UserId).Error; err == nil {
@@ -160,10 +188,14 @@ func GetSelfInvoiceCenter(c *gin.Context) {
 		writeInvoiceModelError(c, err)
 		return
 	}
+	decorateInvoiceEligiblePaymentMethods(subscriptions)
 	applications, applicationsTotal, err := model.ListUserInvoiceApplications(userId, (page-1)*pageSize, pageSize)
 	if err != nil {
 		writeInvoiceModelError(c, err)
 		return
+	}
+	for index := range applications {
+		decorateInvoiceApplicationPaymentMethods(&applications[index])
 	}
 	now := time.Now()
 	currentMonth := now.Format("2006-01")
@@ -233,6 +265,7 @@ func CreateInvoiceApplication(c *gin.Context) {
 		}
 		return
 	}
+	decorateInvoiceApplicationPaymentMethods(application)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "invoice application submitted", "data": application})
 }
 

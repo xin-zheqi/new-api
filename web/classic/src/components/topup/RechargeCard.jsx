@@ -56,6 +56,10 @@ import {
   isSafeEmbeddedMallUrl,
 } from './mallMode';
 import SubscriptionPlansCard from './SubscriptionPlansCard';
+import {
+  getPaymentMethodDisplayName,
+  isPaymentMethodEnabled,
+} from './paymentMethodSettings';
 
 const { Text } = Typography;
 
@@ -110,6 +114,7 @@ const RechargeCard = ({
   mallModeKnown = false,
   mallUrl = '',
   reloadUser,
+  paymentMethodSettings = [],
 }) => {
   const onlineFormApiRef = useRef(null);
   const redeemFormApiRef = useRef(null);
@@ -119,7 +124,15 @@ const RechargeCard = ({
   const [activeTab, setActiveTab] = useState('topup');
   const shouldShowSubscription =
     !subscriptionLoading && subscriptionPlans.length > 0;
-  const regularPayMethods = payMethods || [];
+  const regularPayMethods = (payMethods || []).filter(
+    (method) =>
+      method?.type &&
+      method.type !== 'waffo' &&
+      isPaymentMethodEnabled(
+        method.type.startsWith('waffo:') ? 'waffo' : method.type,
+        paymentMethodSettings,
+      ),
+  );
   const allowBuiltInSubscriptionPurchase = canPurchaseBuiltInSubscriptions(
     mallModeKnown,
     mallEnabled,
@@ -367,9 +380,12 @@ const RechargeCard = ({
                             const isStripe = payMethod.type === 'stripe';
                             const isWechat =
                               payMethod.type === 'wechat_native_v3';
-                            const displayName = isWechat
-                              ? t('微信支付')
-                              : payMethod.name;
+                            const displayName = getPaymentMethodDisplayName(
+                              payMethod.type,
+                              payMethod.name,
+                              paymentMethodSettings,
+                              t,
+                            );
                             const isWaffo =
                               typeof payMethod.type === 'string' &&
                               payMethod.type.startsWith('waffo:');
@@ -385,6 +401,10 @@ const RechargeCard = ({
                               (!enableWechatTopUp && isWechat) ||
                               (!enableWaffoTopUp && isWaffo) ||
                               (!enableWaffoPancakeTopUp && isWaffoPancake) ||
+                              !isPaymentMethodEnabled(
+                                isWaffo ? 'waffo' : payMethod.type,
+                                paymentMethodSettings,
+                              ) ||
                               minTopupVal > Number(topUpCount || 0);
 
                             const buttonEl = (
@@ -601,7 +621,14 @@ const RechargeCard = ({
 
               {/* Creem 充值区域 */}
               {enableCreemTopUp && creemProducts.length > 0 && (
-                <Form.Slot label={t('Creem 充值')}>
+                <Form.Slot
+                  label={getPaymentMethodDisplayName(
+                    'creem',
+                    t('Creem 充值'),
+                    paymentMethodSettings,
+                    t,
+                  )}
+                >
                   <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3'>
                     {creemProducts.map((product, index) => (
                       <Card
@@ -745,8 +772,8 @@ const RechargeCard = ({
             reloadSubscriptionSelf={reloadSubscriptionSelf}
             withCard={false}
             mySubscriptionsOnly={!allowBuiltInSubscriptionPurchase}
-            userQuota={userState?.user?.quota}
             onPurchaseSuccess={reloadUser}
+            paymentMethodSettings={paymentMethodSettings}
           />
           {showMall ? (
             <Card
@@ -786,6 +813,7 @@ const RechargeCard = ({
                 allSubscriptions={allSubscriptions}
                 reloadSubscriptionSelf={reloadSubscriptionSelf}
                 withCard={false}
+                paymentMethodSettings={paymentMethodSettings}
               />
             </div>
           </TabPane>

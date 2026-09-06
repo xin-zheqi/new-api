@@ -123,6 +123,9 @@ func RequestWaffoAmount(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
 	}
+	if !requirePaymentMethodEnabled(c, model.PaymentMethodWaffo) {
+		return
+	}
 
 	var req WaffoPayRequest
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, paymentRequestMaxBytes)
@@ -159,6 +162,9 @@ func RequestWaffoAmount(c *gin.Context) {
 // RequestWaffoPay 创建 Waffo 支付订单
 func RequestWaffoPay(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
+		return
+	}
+	if !requirePaymentMethodEnabled(c, model.PaymentMethodWaffo) {
 		return
 	}
 

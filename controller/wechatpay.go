@@ -283,6 +283,9 @@ func RequestWechatPay(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
 	}
+	if !requirePaymentMethodEnabled(c, model.PaymentMethodWechat) {
+		return
+	}
 	wechatSettings := currentWechatRuntimeSettings()
 	client, err := newConfiguredWechatClient(wechatSettings)
 	if err != nil {
@@ -381,6 +384,9 @@ func RequestWechatAmount(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
 	}
+	if !requirePaymentMethodEnabled(c, model.PaymentMethodWechat) {
+		return
+	}
 	settings := currentWechatRuntimeSettings()
 	if _, err := newConfiguredWechatClient(settings); err != nil {
 		common.ApiErrorMsg(c, "微信支付暂未配置完整")
@@ -415,6 +421,9 @@ func RequestWechatAmount(c *gin.Context) {
 
 func RequestWechatSubscriptionPay(c *gin.Context) {
 	if rejectSubscriptionPurchaseWhenMallEnabled(c) || !requirePaymentCompliance(c) {
+		return
+	}
+	if !requirePaymentMethodEnabled(c, model.PaymentMethodWechat) {
 		return
 	}
 	wechatSettings := currentWechatRuntimeSettings()
@@ -475,7 +484,7 @@ func RequestWechatSubscriptionPay(c *gin.Context) {
 	prepay, err := client.CreateNativeOrder(c.Request.Context(), service.WechatNativeOrder{
 		AppID:       wechatSettings.Config.AppID,
 		MchID:       wechatSettings.Config.MchID,
-		Description: "订阅服务购买",
+		Description: "账户余额充值（订阅）",
 		OutTradeNo:  tradeNo,
 		NotifyURL:   notifyURL,
 		AmountTotal: amountMinor,

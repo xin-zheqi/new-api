@@ -383,7 +383,6 @@ export function Wallet(props: WalletProps) {
               <SubscriptionPlansCard
                 topupInfo={topupInfo}
                 onAvailabilityChange={handleSubscriptionAvailabilityChange}
-                userQuota={user?.quota}
                 enableWechat={topupInfo?.enable_wechat_topup}
                 onPurchaseSuccess={fetchUser}
                 mySubscriptionsOnly={
@@ -423,6 +422,7 @@ export function Wallet(props: WalletProps) {
         }
         discountRate={getDiscountRate()}
         usdExchangeRate={effectiveUsdExchangeRate}
+        paymentMethodSettings={topupInfo?.payment_method_settings}
       />
 
       <TransferDialog
@@ -436,6 +436,7 @@ export function Wallet(props: WalletProps) {
       <BillingHistoryDialog
         open={billingDialogOpen}
         onOpenChange={setBillingDialogOpen}
+        paymentMethodSettings={topupInfo?.payment_method_settings}
       />
 
       <CreemConfirmDialog

@@ -45,6 +45,10 @@ import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
 import { getPaymentAmountError } from './paymentError';
 import WechatPayModal from './modals/WechatPayModal';
+import {
+  isPaymentMethodEnabled,
+  parsePaymentMethodSettings,
+} from './paymentMethodSettings';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -96,6 +100,7 @@ const TopUp = () => {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [payMethods, setPayMethods] = useState([]);
+  const [paymentMethodSettings, setPaymentMethodSettings] = useState([]);
 
   const affFetchedRef = useRef(false);
 
@@ -133,12 +138,15 @@ const TopUp = () => {
 
   const confirmPayMethods = [
     ...payMethods,
-    ...waffoPayMethods.map((method, index) => ({
-      ...method,
-      type: `waffo:${index}`,
-      min_topup: waffoMinTopUp,
-      color: method.color || 'rgba(var(--semi-primary-5), 1)',
-    })),
+    ...(enableWaffoTopUp &&
+    isPaymentMethodEnabled('waffo', paymentMethodSettings)
+      ? waffoPayMethods.map((method, index) => ({
+          ...method,
+          type: `waffo:${index}`,
+          min_topup: waffoMinTopUp,
+          color: method.color || 'rgba(var(--semi-primary-5), 1)',
+        }))
+      : []),
   ];
 
   const getPayMethodConfig = (payment) =>
@@ -742,12 +750,28 @@ const TopUp = () => {
         setMallModeKnown(true);
 
         // 处理支付方式
+        const parsedPaymentMethodSettings = parsePaymentMethodSettings(
+          data.payment_method_settings,
+        );
+        setPaymentMethodSettings(parsedPaymentMethodSettings);
+
         let payMethods = parseArray(data.pay_methods);
         try {
           payMethods = payMethods
-            .filter((method) => method && method.name && method.type)
+            .filter(
+              (method) =>
+                method &&
+                method.name &&
+                method.type &&
+                String(method.type).trim() !== 'waffo' &&
+                !String(method.type).trim().startsWith('waffo:') &&
+                isPaymentMethodEnabled(
+                  String(method.type),
+                  parsedPaymentMethodSettings,
+                ),
+            )
             .map((method) => {
-              const type = String(method.type);
+              const type = String(method.type).trim();
               const configuredMinTopup = Number(method.min_topup);
               let minimum =
                 Number.isFinite(configuredMinTopup) && configuredMinTopup > 0
@@ -776,7 +800,16 @@ const TopUp = () => {
                   color = 'rgba(var(--semi-primary-5), 1)';
                 }
               }
-              return { ...method, type, min_topup: minimum, color };
+              return {
+                ...method,
+                type,
+                // Keep the server-provided label intact. Individual views
+                // resolve built-in translations and global overrides when
+                // they render, so a language switch never freezes a label.
+                name: typeof method.name === 'string' ? method.name.trim() : '',
+                min_topup: minimum,
+                color,
+              };
             });
 
           // 如果启用了 Stripe 支付，添加到支付方法列表
@@ -826,7 +859,10 @@ const TopUp = () => {
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
           setEnableWaffoTopUp(enableWaffoTopUp);
-          setWaffoPayMethods(data.waffo_pay_methods || []);
+          const parsedWaffoPayMethods = parseArray(
+            data.waffo_pay_methods,
+          ).filter((method) => method && method.name);
+          setWaffoPayMethods(parsedWaffoPayMethods);
           setWaffoMinTopUp(Number(data.waffo_min_topup) || 1);
           setEnableWaffoPancakeTopUp(enableWaffoPancakeTopUp);
           setEnableWechatTopUp(enableWechatTopUp);
@@ -850,6 +886,7 @@ const TopUp = () => {
             wechat_unit_price: effectiveWechatUnitPrice,
             default_payment_method: defaultPayment,
             pay_methods: payMethods,
+            payment_method_settings: parsedPaymentMethodSettings,
             enable_online_topup: enableOnlineTopUp,
             enable_stripe_topup: enableStripeTopUp,
             enable_creem_topup: enableCreemTopUp,
@@ -1114,6 +1151,7 @@ const TopUp = () => {
         renderAmount={renderAmount}
         payWay={payWay}
         payMethods={confirmPayMethods}
+        paymentMethodSettings={paymentMethodSettings}
         amountNumber={amount}
         discountRate={topupInfo?.discount?.[topUpCount] || 1.0}
       />
@@ -1123,6 +1161,7 @@ const TopUp = () => {
         visible={openHistory}
         onCancel={handleHistoryCancel}
         t={t}
+        paymentMethodSettings={paymentMethodSettings}
       />
 
       {/* Creem 充值确认模态框 */}
@@ -1221,6 +1260,7 @@ const TopUp = () => {
           mallModeKnown={mallModeKnown}
           mallUrl={mallUrl}
           reloadUser={getUserQuota}
+          paymentMethodSettings={paymentMethodSettings}
         />
         <InvitationCard
           t={t}

@@ -673,6 +673,7 @@ func TestRequestWechatSubscriptionPayPersistsExactExpiryAndPaymentSnapshot(t *te
 
 	nativeOrder := <-captured
 	assert.Equal(t, response.Data.TradeNo, nativeOrder.OutTradeNo)
+	assert.Equal(t, "账户余额充值（订阅）", nativeOrder.Description)
 	assert.Equal(t, int64(999), nativeOrder.Amount.Total)
 	assert.Equal(t, "CNY", nativeOrder.Amount.Currency)
 	expiresAt, err := time.Parse(time.RFC3339, nativeOrder.TimeExpire)

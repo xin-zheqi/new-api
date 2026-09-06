@@ -102,8 +102,17 @@ func isEpayTopUpEnabled() bool {
 	if !isEpayWebhookConfigured() {
 		return false
 	}
+	return hasEnabledEpayPaymentMethod()
+}
+
+// hasEnabledEpayPaymentMethod reports whether at least one legacy Epay entry
+// remains available after applying the global payment-method overrides. This
+// keeps the capability flag and the checkout endpoints in sync when an admin
+// disables every Epay method.
+func hasEnabledEpayPaymentMethod() bool {
 	for _, method := range operation_setting.PayMethods {
-		if isEpayPaymentMethod(method["type"]) {
+		paymentType := strings.TrimSpace(method["type"])
+		if isEpayPaymentMethod(paymentType) && paymentMethodEnabled(paymentType) {
 			return true
 		}
 	}
@@ -114,7 +123,14 @@ func isEpayTopUpEnabled() bool {
 // gateway. Dedicated gateways have their own signed request and callback
 // paths, so accepting them through /api/user/pay would mix provider state.
 func isEpayPaymentMethod(paymentType string) bool {
-	switch strings.TrimSpace(paymentType) {
+	paymentType = strings.TrimSpace(paymentType)
+	// Waffo child methods are represented in the browser as waffo:<index>.
+	// They use the dedicated Waffo endpoints and must never be accepted by
+	// the generic Epay handler, even if an old PayMethods value contains one.
+	if strings.HasPrefix(paymentType, model.PaymentMethodWaffo+":") {
+		return false
+	}
+	switch paymentType {
 	case "", model.PaymentMethodStripe, model.PaymentMethodCreem,
 		model.PaymentMethodWaffo, model.PaymentMethodWaffoPancake,
 		model.PaymentMethodWechat:

@@ -48,6 +48,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
+import { getPaymentMethodDisplayName } from '@/features/wallet/lib/payment-methods'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -243,7 +244,13 @@ export function InvoiceApplicationForm(props: {
                         itemTitle = t('Redemption code balance recharge')
                       } else if (subscription.item_type === 'top_up') {
                         itemTitle =
-                          subscription.plan_title || t('Balance recharge')
+                          getPaymentMethodDisplayName(
+                            subscription.payment_method ?? '',
+                            subscription.payment_method_name ||
+                              subscription.plan_title,
+                            undefined,
+                            t
+                          ) || t('Balance recharge')
                       }
                       return (
                         <label

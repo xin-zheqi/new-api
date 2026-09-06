@@ -16,7 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Crown,
+  RefreshCw,
+  Sparkles,
+} from 'lucide-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -59,18 +66,23 @@ import type {
 import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+import { isPaymentMethodEnabled } from '../lib/payment-methods'
 import type { PaymentMethod, TopupInfo } from '../types'
 
 interface SubscriptionPlansCardProps {
   topupInfo: TopupInfo | null
   onAvailabilityChange?: (available: boolean) => void
-  userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
   mySubscriptionsOnly?: boolean
   enableWechat?: boolean
 }
 
-function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
+const SUBSCRIPTION_PAGE_SIZE = 5
+
+function getEpayMethods(
+  payMethods: PaymentMethod[] = [],
+  paymentMethodSettings: TopupInfo['payment_method_settings'] = []
+): PaymentMethod[] {
   const dedicatedPaymentTypes = new Set([
     'stripe',
     'creem',
@@ -79,7 +91,11 @@ function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
     'wechat_native_v3',
   ])
   return payMethods.filter(
-    (method) => method?.type && !dedicatedPaymentTypes.has(method.type)
+    (method) =>
+      method?.type &&
+      !dedicatedPaymentTypes.has(method.type) &&
+      !method.type.startsWith('waffo:') &&
+      isPaymentMethodEnabled(method.type, paymentMethodSettings)
   )
 }
 
@@ -104,7 +120,6 @@ function getBillingPreferenceLabel(
 export function SubscriptionPlansCard({
   topupInfo,
   onAvailabilityChange,
-  userQuota,
   onPurchaseSuccess,
   mySubscriptionsOnly = false,
   enableWechat = false,
@@ -122,6 +137,7 @@ export function SubscriptionPlansCard({
     useState('subscription_first')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [subscriptionPage, setSubscriptionPage] = useState(1)
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
@@ -131,8 +147,12 @@ export function SubscriptionPlansCard({
   const enableWaffoPancake = !!topupInfo?.enable_waffo_pancake_topup
   const enableOnlineTopUp = !!topupInfo?.enable_online_topup
   const epayMethods = useMemo(
-    () => getEpayMethods(topupInfo?.pay_methods),
-    [topupInfo?.pay_methods]
+    () =>
+      getEpayMethods(
+        topupInfo?.pay_methods,
+        topupInfo?.payment_method_settings
+      ),
+    [topupInfo?.pay_methods, topupInfo?.payment_method_settings]
   )
 
   const fetchPlans = useCallback(async () => {
@@ -231,6 +251,19 @@ export function SubscriptionPlansCard({
     }
     return map
   }, [plans])
+
+  const subscriptionPageCount = Math.max(
+    1,
+    Math.ceil(allSubscriptions.length / SUBSCRIPTION_PAGE_SIZE)
+  )
+  const currentSubscriptionPage = Math.min(
+    subscriptionPage,
+    subscriptionPageCount
+  )
+  const visibleSubscriptions = useMemo(() => {
+    const start = (currentSubscriptionPage - 1) * SUBSCRIPTION_PAGE_SIZE
+    return allSubscriptions.slice(start, start + SUBSCRIPTION_PAGE_SIZE)
+  }, [allSubscriptions, currentSubscriptionPage])
 
   const getRemainingDays = (sub: UserSubscriptionRecord) => {
     const endTime = sub?.subscription?.end_time || 0
@@ -413,8 +446,8 @@ export function SubscriptionPlansCard({
           {hasAny && (
             <>
               <Separator className='my-3' />
-              <div className='max-h-64 space-y-3 overflow-y-auto pr-1'>
-                {allSubscriptions.map((sub) => {
+              <div className='space-y-3'>
+                {visibleSubscriptions.map((sub) => {
                   const subscription = sub.subscription
                   const totalAmount = Number(subscription?.amount_total || 0)
                   const usedAmount = Number(subscription?.amount_used || 0)
@@ -528,6 +561,45 @@ export function SubscriptionPlansCard({
                   )
                 })}
               </div>
+              {subscriptionPageCount > 1 && (
+                <div className='mt-3 flex items-center justify-center gap-2 border-t pt-3'>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    className='h-8 w-8'
+                    aria-label={t('Previous page')}
+                    disabled={currentSubscriptionPage === 1}
+                    onClick={() =>
+                      setSubscriptionPage(currentSubscriptionPage - 1)
+                    }
+                  >
+                    <ChevronLeft className='h-4 w-4' />
+                  </Button>
+                  <span
+                    className='text-muted-foreground min-w-24 text-center text-xs'
+                    aria-live='polite'
+                  >
+                    {t('Page {{current}} of {{total}}', {
+                      current: currentSubscriptionPage,
+                      total: subscriptionPageCount,
+                    })}
+                  </span>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    className='h-8 w-8'
+                    aria-label={t('Next page')}
+                    disabled={currentSubscriptionPage === subscriptionPageCount}
+                    onClick={() =>
+                      setSubscriptionPage(currentSubscriptionPage + 1)
+                    }
+                  >
+                    <ChevronRight className='h-4 w-4' />
+                  </Button>
+                </div>
+              )}
             </>
           )}
 
@@ -666,7 +738,7 @@ export function SubscriptionPlansCard({
         enableOnlineTopUp={enableOnlineTopUp}
         enableWechat={enableWechat}
         epayMethods={epayMethods}
-        userQuota={userQuota}
+        paymentMethodSettings={topupInfo?.payment_method_settings}
         onPurchaseSuccess={onPurchaseSuccess}
         purchaseLimit={
           selectedPlan?.plan?.max_purchase_per_user

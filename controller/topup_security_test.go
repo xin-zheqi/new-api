@@ -421,7 +421,6 @@ func TestMallModeHidesPlansAndRejectsEveryBuiltInSubscriptionPurchase(t *testing
 		name    string
 		handler gin.HandlerFunc
 	}{
-		{name: "balance", handler: SubscriptionRequestBalancePay},
 		{name: "epay", handler: SubscriptionRequestEpay},
 		{name: "stripe", handler: SubscriptionRequestStripePay},
 		{name: "creem", handler: SubscriptionRequestCreemPay},

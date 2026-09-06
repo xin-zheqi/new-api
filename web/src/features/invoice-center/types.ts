@@ -29,6 +29,8 @@ export type InvoiceSubscription = {
   source?: string
   top_up_id?: number
   redemption_id?: number
+  payment_method?: string
+  payment_method_name?: string
   item_type?: 'subscription' | 'top_up' | 'redemption_recharge'
 }
 
@@ -40,6 +42,8 @@ export type InvoiceItem = {
   redemption_id?: number
   item_type?: 'subscription' | 'top_up' | 'redemption_recharge'
   plan_title: string
+  payment_method?: string
+  payment_method_name?: string
   paid_amount_micros: number
   currency: string
   start_time: number

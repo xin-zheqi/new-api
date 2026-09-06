@@ -106,7 +106,6 @@ function normalizeSubscriptionPlan(value: unknown): SubscriptionPlan | null {
     ),
     enabled: toBoolean(candidate.enabled, true),
     sort_order: toNumber(candidate.sort_order, 0),
-    allow_balance_pay: toBoolean(candidate.allow_balance_pay, true),
     allow_wallet_overflow: toBoolean(candidate.allow_wallet_overflow, true),
     invoice_eligible: toBoolean(candidate.invoice_eligible, false),
     max_purchase_per_user: toNumber(candidate.max_purchase_per_user, 0),
@@ -272,13 +271,6 @@ export async function paySubscriptionWaffoPancake(
   data: SubscriptionPayRequest
 ): Promise<SubscriptionPayResponse> {
   const res = await api.post('/api/subscription/waffo-pancake/pay', data)
-  return res.data
-}
-
-export async function paySubscriptionBalance(
-  data: SubscriptionPayRequest
-): Promise<SubscriptionPayResponse> {
-  const res = await api.post('/api/subscription/balance/pay', data)
   return res.data
 }
 

@@ -20,6 +20,10 @@ import type { StatusBadgeProps } from '@/components/status-badge'
 import { formatTimestampToDate } from '@/lib/format'
 
 import type { TopupStatus } from '../types'
+import {
+  getPaymentMethodDisplayName,
+  type PaymentMethodSetting,
+} from './payment-methods'
 
 // ============================================================================
 // Billing Utility Functions
@@ -68,6 +72,8 @@ export const PAYMENT_METHOD_NAMES: Record<string, string> = {
   wxpay: 'WeChat Pay',
   wechat_native_v3: 'WeChat Pay',
   waffo: 'Waffo',
+  waffo_pancake: 'Waffo Pancake',
+  creem: 'Creem',
 }
 
 /**
@@ -75,10 +81,15 @@ export const PAYMENT_METHOD_NAMES: Record<string, string> = {
  */
 export function getPaymentMethodName(
   method: string,
-  t?: (key: string) => string
+  t?: (key: string) => string,
+  settings?: PaymentMethodSetting[]
 ): string {
-  const name = PAYMENT_METHOD_NAMES[method] || method
-  return t ? t(name) : name
+  return getPaymentMethodDisplayName(
+    method,
+    PAYMENT_METHOD_NAMES[method] || method,
+    settings,
+    t
+  )
 }
 
 /**

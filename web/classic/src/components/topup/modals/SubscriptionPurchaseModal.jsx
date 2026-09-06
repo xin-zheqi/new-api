@@ -31,12 +31,16 @@ import {
 import { Crown, CalendarClock, Package } from 'lucide-react';
 import { SiStripe, SiWechat } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
-import { getQuotaPerUnit, renderQuota } from '../../../helpers';
+import { renderQuota } from '../../../helpers';
 import { getCurrencyConfig } from '../../../helpers/render';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
 } from '../../../helpers/subscriptionFormat';
+import {
+  getPaymentMethodDisplayName,
+  isPaymentMethodEnabled,
+} from '../paymentMethodSettings';
 
 const { Text } = Typography;
 
@@ -54,12 +58,11 @@ const SubscriptionPurchaseModal = ({
   enableCreemTopUp = false,
   enableWechatTopUp = false,
   purchaseLimitInfo = null,
-  userQuota = 0,
-  onPayBalance,
   onPayStripe,
   onPayCreem,
   onPayEpay,
   onPayWechat,
+  paymentMethodSettings = [],
 }) => {
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
@@ -70,28 +73,42 @@ const SubscriptionPurchaseModal = ({
     Number.isInteger(convertedPrice) ? 0 : 2,
   );
   // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示
-  const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
-  const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
-  const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
-  const hasWechat = enableWechatTopUp;
+  const availableEpayMethods = epayMethods.filter(
+    (method) =>
+      !method.type.startsWith('waffo:') &&
+      isPaymentMethodEnabled(method.type, paymentMethodSettings),
+  );
+  const hasStripe =
+    enableStripeTopUp &&
+    isPaymentMethodEnabled('stripe', paymentMethodSettings) &&
+    !!plan?.stripe_price_id;
+  const hasCreem =
+    enableCreemTopUp &&
+    isPaymentMethodEnabled('creem', paymentMethodSettings) &&
+    !!plan?.creem_product_id;
+  const hasEpay = enableOnlineTopUp && availableEpayMethods.length > 0;
+  const hasWechat =
+    enableWechatTopUp &&
+    isPaymentMethodEnabled('wechat_native_v3', paymentMethodSettings);
+  const stripeName = getPaymentMethodDisplayName(
+    'stripe',
+    'Stripe',
+    paymentMethodSettings,
+    t,
+  );
+  const creemName = getPaymentMethodDisplayName(
+    'creem',
+    'Creem',
+    paymentMethodSettings,
+    t,
+  );
+  const wechatName = getPaymentMethodDisplayName(
+    'wechat_native_v3',
+    t('微信支付'),
+    paymentMethodSettings,
+    t,
+  );
   const hasAnyPayment = hasStripe || hasCreem || hasEpay || hasWechat;
-  const configuredQuotaPerUnit = Number(getQuotaPerUnit());
-  const quotaPerUnit =
-    Number.isFinite(configuredQuotaPerUnit) && configuredQuotaPerUnit > 0
-      ? configuredQuotaPerUnit
-      : 500000;
-  const planPrice = Number(plan?.price_amount || 0);
-  const balanceCost = Math.max(
-    0,
-    Number.isFinite(planPrice) ? Math.ceil(planPrice * quotaPerUnit) : 0,
-  );
-  const numericUserQuota = Number(userQuota || 0);
-  const availableBalance = Math.max(
-    0,
-    Number.isFinite(numericUserQuota) ? numericUserQuota : 0,
-  );
-  const allowBalancePay = plan?.allow_balance_pay !== false;
-  const insufficientBalance = availableBalance < balanceCost;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
@@ -201,42 +218,6 @@ const SubscriptionPurchaseModal = ({
             />
           )}
 
-          <div className='space-y-2 rounded-lg border border-solid border-[var(--semi-color-border)] p-3'>
-            <div className='flex items-center justify-between gap-3 text-sm'>
-              <Text type='tertiary'>{t('Required')}</Text>
-              <Text strong>{renderQuota(balanceCost)}</Text>
-            </div>
-            <div className='flex items-center justify-between gap-3 text-sm'>
-              <Text type='tertiary'>{t('Available')}</Text>
-              <Text strong>{renderQuota(availableBalance)}</Text>
-            </div>
-            {!allowBalancePay ? (
-              <Banner
-                type='warning'
-                description={t('This plan does not allow balance redemption')}
-                closeIcon={null}
-              />
-            ) : insufficientBalance ? (
-              <Banner
-                type='warning'
-                description={t('Insufficient balance')}
-                closeIcon={null}
-              />
-            ) : null}
-            <Button
-              block
-              theme='light'
-              icon={<IconCreditCard />}
-              onClick={onPayBalance}
-              loading={paying}
-              disabled={
-                purchaseLimitReached || !allowBalancePay || insufficientBalance
-              }
-            >
-              {t('Pay with Balance')}
-            </Button>
-          </div>
-
           {hasAnyPayment ? (
             <div className='space-y-3'>
               <Text size='small' type='tertiary'>
@@ -255,7 +236,7 @@ const SubscriptionPurchaseModal = ({
                       loading={paying}
                       disabled={purchaseLimitReached}
                     >
-                      Stripe
+                      {stripeName}
                     </Button>
                   )}
                   {hasCreem && (
@@ -267,7 +248,7 @@ const SubscriptionPurchaseModal = ({
                       loading={paying}
                       disabled={purchaseLimitReached}
                     >
-                      Creem
+                      {creemName}
                     </Button>
                   )}
                 </div>
@@ -282,9 +263,14 @@ const SubscriptionPurchaseModal = ({
                     style={{ flex: 1 }}
                     size='default'
                     placeholder={t('选择支付方式')}
-                    optionList={epayMethods.map((m) => ({
+                    optionList={availableEpayMethods.map((m) => ({
                       value: m.type,
-                      label: m.name || m.type,
+                      label: getPaymentMethodDisplayName(
+                        m.type,
+                        m.name || m.type,
+                        paymentMethodSettings,
+                        t,
+                      ),
                     }))}
                     disabled={purchaseLimitReached}
                   />
@@ -308,7 +294,7 @@ const SubscriptionPurchaseModal = ({
                   loading={paying}
                   disabled={purchaseLimitReached}
                 >
-                  {t('微信支付')}
+                  {wechatName}
                 </Button>
               )}
             </div>

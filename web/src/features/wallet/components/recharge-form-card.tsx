@@ -44,6 +44,7 @@ import {
   getPaymentIcon,
   getPaymentMinTopupAmount,
   calculatePresetPricing,
+  getPaymentMethodDisplayName,
 } from '../lib'
 import type {
   PaymentMethod,
@@ -388,10 +389,12 @@ export function RechargeFormCard({
                         method.type
                       )
                       const disabled = minTopup > topupAmount
-                      const displayName =
-                        method.type === 'wechat_native_v3'
-                          ? t('WeChat Pay')
-                          : method.name
+                      const displayName = getPaymentMethodDisplayName(
+                        method.type,
+                        method.name,
+                        topupInfo?.payment_method_settings,
+                        t
+                      )
                       const disabledReason = disabled
                         ? t('Minimum topup amount: {{amount}}', {
                             amount: minTopup,
@@ -467,7 +470,12 @@ export function RechargeFormCard({
                 onWaffoMethodSelect && (
                   <div className='space-y-2.5 sm:space-y-3'>
                     <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                      {t('Waffo Payment')}
+                      {getPaymentMethodDisplayName(
+                        'waffo',
+                        t('Waffo Payment'),
+                        topupInfo?.payment_method_settings,
+                        t
+                      )}
                     </Label>
                     <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
                       {waffoPayMethods?.map((method, index) => {
@@ -561,7 +569,12 @@ export function RechargeFormCard({
         onCreemProductSelect && (
           <div className='space-y-2.5 border-t pt-4 sm:space-y-3 sm:pt-6'>
             <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-              {t('Creem Payment')}
+              {getPaymentMethodDisplayName(
+                'creem',
+                t('Creem Payment'),
+                topupInfo?.payment_method_settings,
+                t
+              )}
             </Label>
             <CreemProductsSection
               products={creemProducts}

@@ -33,6 +33,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { getPaymentMethodDisplayName } from '../../components/topup/paymentMethodSettings';
 import { API, showError, showSuccess } from '../../helpers';
 import { getUserIdFromLocalStorage } from '../../helpers/utils';
 import InvoiceDetails, { InvoiceStatusTag } from './InvoiceDetails';
@@ -368,7 +369,12 @@ const UserInvoiceCenter = () => {
           record?.item_type === 'redemption_recharge'
             ? t('Redemption code balance recharge')
             : record?.item_type === 'top_up'
-              ? value || t('Balance recharge')
+              ? getPaymentMethodDisplayName(
+                  record?.payment_method || '',
+                  record?.payment_method_name || value,
+                  [],
+                  t,
+                ) || t('Balance recharge')
               : value || t('Subscription');
         return (
           <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 280 }}>
@@ -609,7 +615,7 @@ const UserInvoiceCenter = () => {
               getCheckboxProps: (subscription) => ({
                 disabled: Boolean(
                   selectedCurrency &&
-                    subscription.paid_currency !== selectedCurrency,
+                  subscription.paid_currency !== selectedCurrency,
                 ),
                 title:
                   selectedCurrency &&

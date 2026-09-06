@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Calcium-Ion/go-epay/epay"
@@ -36,6 +37,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
+	req.PaymentMethod = strings.TrimSpace(req.PaymentMethod)
 
 	plan, err := model.GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
@@ -50,7 +52,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐金额过低")
 		return
 	}
-	if !isEpayPaymentMethod(req.PaymentMethod) || !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+	if !isEpayPaymentMethod(req.PaymentMethod) || !operation_setting.ContainsPayMethod(req.PaymentMethod) || !paymentMethodEnabled(req.PaymentMethod) {
 		common.ApiErrorMsg(c, "支付方式不存在")
 		return
 	}

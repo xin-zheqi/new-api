@@ -23,6 +23,7 @@ import {
   Button,
   Card,
   Divider,
+  Pagination,
   Select,
   Skeleton,
   Space,
@@ -46,11 +47,13 @@ import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
 } from '../../helpers/subscriptionFormat';
+import { isPaymentMethodEnabled } from './paymentMethodSettings';
 
 const { Text } = Typography;
+const SUBSCRIPTION_PAGE_SIZE = 5;
 
 // Only legacy Epay method types may use the Epay subscription endpoint.
-function getEpayMethods(payMethods = []) {
+function getEpayMethods(payMethods = [], paymentMethodSettings = []) {
   const dedicatedPaymentTypes = new Set([
     'stripe',
     'creem',
@@ -59,7 +62,11 @@ function getEpayMethods(payMethods = []) {
     'wechat_native_v3',
   ]);
   return (payMethods || []).filter(
-    (method) => method?.type && !dedicatedPaymentTypes.has(method.type),
+    (method) =>
+      method?.type &&
+      !dedicatedPaymentTypes.has(method.type) &&
+      !method.type.startsWith('waffo:') &&
+      isPaymentMethodEnabled(method.type, paymentMethodSettings),
   );
 }
 
@@ -79,18 +86,22 @@ const SubscriptionPlansCard = ({
   reloadSubscriptionSelf,
   withCard = true,
   mySubscriptionsOnly = false,
-  userQuota = 0,
   onPurchaseSuccess,
+  paymentMethodSettings = [],
 }) => {
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [paying, setPaying] = useState(false);
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [subscriptionPage, setSubscriptionPage] = useState(1);
   const [wechatPayment, setWechatPayment] = useState(null);
   const [wechatVisible, setWechatVisible] = useState(false);
 
-  const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
+  const epayMethods = useMemo(
+    () => getEpayMethods(payMethods, paymentMethodSettings),
+    [payMethods, paymentMethodSettings],
+  );
 
   const openBuy = (p) => {
     setSelectedPlan(p);
@@ -241,30 +252,6 @@ const SubscriptionPlansCard = ({
     await Promise.all([reloadSubscriptionSelf?.(), onPurchaseSuccess?.()]);
   }, [onPurchaseSuccess, reloadSubscriptionSelf]);
 
-  const payBalance = async () => {
-    if (selectedPlan?.plan?.allow_balance_pay === false) {
-      showError(t('This plan does not allow balance redemption'));
-      return;
-    }
-    setPaying(true);
-    try {
-      const res = await API.post('/api/subscription/balance/pay', {
-        plan_id: selectedPlan?.plan?.id,
-      });
-      if (res.data?.success) {
-        showSuccess(t('Subscription purchased successfully'));
-        await Promise.all([reloadSubscriptionSelf?.(), onPurchaseSuccess?.()]);
-        closeBuy();
-      } else {
-        showError(res.data?.message || t('Payment request failed'));
-      }
-    } catch {
-      showError(t('Payment request failed'));
-    } finally {
-      setPaying(false);
-    }
-  };
-
   // 当前订阅信息 - 支持多个订阅
   const hasActiveSubscription = activeSubscriptions.length > 0;
   const hasAnySubscription = allSubscriptions.length > 0;
@@ -298,6 +285,19 @@ const SubscriptionPlansCard = ({
     });
     return map;
   }, [plans]);
+
+  const subscriptionPageCount = Math.max(
+    1,
+    Math.ceil(allSubscriptions.length / SUBSCRIPTION_PAGE_SIZE),
+  );
+  const currentSubscriptionPage = Math.min(
+    subscriptionPage,
+    subscriptionPageCount,
+  );
+  const visibleSubscriptions = useMemo(() => {
+    const start = (currentSubscriptionPage - 1) * SUBSCRIPTION_PAGE_SIZE;
+    return allSubscriptions.slice(start, start + SUBSCRIPTION_PAGE_SIZE);
+  }, [allSubscriptions, currentSubscriptionPage]);
 
   const getPlanPurchaseCount = (planId) =>
     planPurchaseCountMap.get(planId) || 0;
@@ -444,9 +444,9 @@ const SubscriptionPlansCard = ({
             {hasAnySubscription ? (
               <>
                 <Divider margin={8} />
-                <div className='max-h-64 overflow-y-auto pr-1 semi-table-body'>
-                  {allSubscriptions.map((sub, subIndex) => {
-                    const isLast = subIndex === allSubscriptions.length - 1;
+                <div className='pr-1 semi-table-body'>
+                  {visibleSubscriptions.map((sub, subIndex) => {
+                    const isLast = subIndex === visibleSubscriptions.length - 1;
                     const subscription = sub.subscription;
                     const totalAmount = Number(subscription?.amount_total || 0);
                     const usedAmount = Number(subscription?.amount_used || 0);
@@ -543,6 +543,18 @@ const SubscriptionPlansCard = ({
                     );
                   })}
                 </div>
+                {subscriptionPageCount > 1 && (
+                  <div className='flex justify-center border-t border-[var(--semi-color-border)] pt-3 mt-3'>
+                    <Pagination
+                      currentPage={currentSubscriptionPage}
+                      pageSize={SUBSCRIPTION_PAGE_SIZE}
+                      total={allSubscriptions.length}
+                      size='small'
+                      showSizeChanger={false}
+                      onPageChange={setSubscriptionPage}
+                    />
+                  </div>
+                )}
               </>
             ) : (
               <div className='text-xs text-gray-500'>
@@ -749,12 +761,11 @@ const SubscriptionPlansCard = ({
               }
             : null
         }
-        userQuota={userQuota}
-        onPayBalance={payBalance}
         onPayStripe={payStripe}
         onPayCreem={payCreem}
         onPayEpay={payEpay}
         onPayWechat={payWechat}
+        paymentMethodSettings={paymentMethodSettings}
       />
       {wechatPayment ? (
         <WechatPayModal

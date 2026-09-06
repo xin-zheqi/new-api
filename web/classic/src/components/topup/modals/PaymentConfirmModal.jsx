@@ -21,6 +21,7 @@ import React from 'react';
 import { Modal, Typography, Card, Skeleton } from '@douyinfe/semi-ui';
 import { SiAlipay, SiWechat, SiStripe } from 'react-icons/si';
 import { CreditCard } from 'lucide-react';
+import { getPaymentMethodDisplayName } from '../paymentMethodSettings';
 
 const { Text } = Typography;
 
@@ -35,15 +36,28 @@ const PaymentConfirmModal = ({
   amountLoading,
   renderAmount,
   payWay,
-  payMethods,
+  payMethods = [],
   // 新增：用于显示折扣明细
   amountNumber,
   discountRate,
+  paymentMethodSettings = [],
 }) => {
   const hasDiscount =
     discountRate && discountRate > 0 && discountRate < 1 && amountNumber > 0;
   const originalAmount = hasDiscount ? amountNumber / discountRate : 0;
   const discountAmount = hasDiscount ? originalAmount - amountNumber : 0;
+  const payMethod = payMethods.find((method) => method.type === payWay);
+  const paymentMethodFallbackNames = {
+    alipay: '支付宝',
+    wxpay: '微信',
+    wechat_native_v3: '微信支付',
+  };
+  const paymentMethodName = getPaymentMethodDisplayName(
+    payMethod?.type || payWay,
+    payMethod?.name || paymentMethodFallbackNames[payWay] || payWay,
+    paymentMethodSettings,
+    t,
+  );
   return (
     <Modal
       title={
@@ -115,105 +129,33 @@ const PaymentConfirmModal = ({
                 {t('支付方式')}：
               </Text>
               <div className='flex items-center'>
-                {(() => {
-                  const payMethod = payMethods.find(
-                    (method) => method.type === payWay,
-                  );
-                  if (payMethod) {
-                    const displayName =
-                      payMethod.type === 'wechat_native_v3'
-                        ? t('微信支付')
-                        : payMethod.name;
-                    return (
-                      <>
-                        {payMethod.type === 'alipay' ? (
-                          <SiAlipay
-                            className='mr-2'
-                            size={16}
-                            color='#1677FF'
-                          />
-                        ) : payMethod.type === 'wxpay' ||
-                          payMethod.type === 'wechat_native_v3' ? (
-                          <SiWechat
-                            className='mr-2'
-                            size={16}
-                            color='#07C160'
-                          />
-                        ) : payMethod.type === 'stripe' ? (
-                          <SiStripe
-                            className='mr-2'
-                            size={16}
-                            color='#635BFF'
-                          />
-                        ) : payMethod.icon ? (
-                          <img
-                            src={payMethod.icon}
-                            alt={displayName}
-                            className='mr-2'
-                            style={{
-                              width: 16,
-                              height: 16,
-                              objectFit: 'contain',
-                            }}
-                          />
-                        ) : (
-                          <CreditCard
-                            className='mr-2'
-                            size={16}
-                            color={
-                              payMethod.color || 'var(--semi-color-text-2)'
-                            }
-                          />
-                        )}
-                        <Text className='text-slate-900 dark:text-slate-100'>
-                          {displayName}
-                        </Text>
-                      </>
-                    );
-                  } else {
-                    // 默认充值方式
-                    if (payWay === 'alipay') {
-                      return (
-                        <>
-                          <SiAlipay
-                            className='mr-2'
-                            size={16}
-                            color='#1677FF'
-                          />
-                          <Text className='text-slate-900 dark:text-slate-100'>
-                            {t('支付宝')}
-                          </Text>
-                        </>
-                      );
-                    } else if (payWay === 'stripe') {
-                      return (
-                        <>
-                          <SiStripe
-                            className='mr-2'
-                            size={16}
-                            color='#635BFF'
-                          />
-                          <Text className='text-slate-900 dark:text-slate-100'>
-                            Stripe
-                          </Text>
-                        </>
-                      );
-                    } else {
-                      return (
-                        <>
-                          <SiWechat
-                            className='mr-2'
-                            size={16}
-                            color='#07C160'
-                          />
-                          <Text className='text-slate-900 dark:text-slate-100'>
-                            {t('微信')}
-                          </Text>
-                        </>
-                      );
-                    }
-                  }
-                })()}
+                {payWay === 'alipay' ? (
+                  <SiAlipay className='mr-2' size={16} color='#1677FF' />
+                ) : payWay === 'wxpay' || payWay === 'wechat_native_v3' ? (
+                  <SiWechat className='mr-2' size={16} color='#07C160' />
+                ) : payWay === 'stripe' ? (
+                  <SiStripe className='mr-2' size={16} color='#635BFF' />
+                ) : payMethod?.icon ? (
+                  <img
+                    src={payMethod.icon}
+                    alt={paymentMethodName}
+                    className='mr-2'
+                    style={{
+                      width: 16,
+                      height: 16,
+                      objectFit: 'contain',
+                    }}
+                  />
+                ) : (
+                  <CreditCard
+                    className='mr-2'
+                    size={16}
+                    color={payMethod?.color || 'var(--semi-color-text-2)'}
+                  />
+                )}
+                <Text className='text-slate-900 dark:text-slate-100'>
+                  {paymentMethodName}
+                </Text>
               </div>
             </div>
           </div>

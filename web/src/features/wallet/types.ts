@@ -101,6 +101,13 @@ export interface PaymentMethod {
   icon?: string
 }
 
+/** Global availability and display-name override for a payment gateway. */
+export interface PaymentMethodSetting {
+  type: string
+  name: string
+  enabled: boolean
+}
+
 /**
  * Waffo payment method configuration
  */
@@ -127,6 +134,8 @@ export interface TopupInfo {
   enable_stripe_topup: boolean
   /** Available payment methods */
   pay_methods: PaymentMethod[]
+  /** Optional global gateway overrides (older servers may omit this field). */
+  payment_method_settings?: PaymentMethodSetting[]
   /** Payment method selected when the wallet first loads */
   default_payment_method?: string
   /** Minimum topup amount for online topup */

@@ -35,21 +35,23 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { WechatPayDialog } from '@/features/wallet/components/dialogs/wechat-pay-dialog'
-import { useSystemConfig } from '@/hooks/use-system-config'
+import {
+  getPaymentMethodDisplayName,
+  isPaymentMethodEnabled,
+} from '@/features/wallet/lib/payment-methods'
+import type { PaymentMethodSetting } from '@/features/wallet/types'
 import { formatQuota } from '@/lib/format'
 import {
   openHttpCheckoutUrl,
   redirectToHttpCheckoutUrl,
   submitHttpCheckoutForm,
 } from '@/lib/payment-redirect'
-import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
 
 import {
   paySubscriptionStripe,
   paySubscriptionCreem,
   paySubscriptionEpay,
   paySubscriptionWaffoPancake,
-  paySubscriptionBalance,
   paySubscriptionWechat,
 } from '../../api'
 import { formatDuration, formatResetPeriod } from '../../lib'
@@ -70,15 +72,14 @@ interface Props {
   enableOnlineTopUp?: boolean
   enableWechat?: boolean
   epayMethods?: PaymentMethod[]
+  paymentMethodSettings?: PaymentMethodSetting[]
   purchaseLimit?: number
   purchaseCount?: number
-  userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
 }
 
 export function SubscriptionPurchaseDialog(props: Props) {
   const { t } = useTranslation()
-  const { currency } = useSystemConfig()
   const [paying, setPaying] = useState(false)
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('')
   const [wechatDialogOpen, setWechatDialogOpen] = useState(false)
@@ -91,43 +92,86 @@ export function SubscriptionPurchaseDialog(props: Props) {
   } | null>(null)
 
   useEffect(() => {
-    if (props.open && props.epayMethods && props.epayMethods.length > 0) {
-      setSelectedEpayMethod(props.epayMethods[0].type)
+    const availableEpayMethods = (props.epayMethods || []).filter(
+      (method) =>
+        !method.type.startsWith('waffo:') &&
+        isPaymentMethodEnabled(method.type, props.paymentMethodSettings)
+    )
+    if (props.open && availableEpayMethods.length > 0) {
+      setSelectedEpayMethod(availableEpayMethods[0].type)
     } else if (!props.open) {
       setSelectedEpayMethod('')
     }
-  }, [props.open, props.epayMethods])
+  }, [props.open, props.epayMethods, props.paymentMethodSettings])
 
   const plan = props.plan?.plan
   if (!plan) return null
 
-  const hasStripe = props.enableStripe && !!plan.stripe_price_id
-  const hasCreem = props.enableCreem && !!plan.creem_product_id
+  const hasStripe =
+    props.enableStripe &&
+    isPaymentMethodEnabled('stripe', props.paymentMethodSettings) &&
+    !!plan.stripe_price_id
+  const hasCreem =
+    props.enableCreem &&
+    isPaymentMethodEnabled('creem', props.paymentMethodSettings) &&
+    !!plan.creem_product_id
   const hasWaffoPancake =
-    props.enableWaffoPancake && !!plan.waffo_pancake_product_id
-  const hasEpay =
-    props.enableOnlineTopUp && (props.epayMethods || []).length > 0
-  const hasWechat = props.enableWechat === true
+    props.enableWaffoPancake &&
+    isPaymentMethodEnabled('waffo_pancake', props.paymentMethodSettings) &&
+    !!plan.waffo_pancake_product_id
+  const availableEpayMethods = (props.epayMethods || []).filter(
+    (method) =>
+      !method.type.startsWith('waffo:') &&
+      isPaymentMethodEnabled(method.type, props.paymentMethodSettings)
+  )
+  const hasEpay = props.enableOnlineTopUp && availableEpayMethods.length > 0
+  const hasWechat =
+    props.enableWechat === true &&
+    isPaymentMethodEnabled('wechat_native_v3', props.paymentMethodSettings)
   const hasAnyPayment =
     hasStripe || hasCreem || hasWaffoPancake || hasEpay || hasWechat
   const selectedEpayMethodLabel =
-    (props.epayMethods || []).find((m) => m.type === selectedEpayMethod)
-      ?.name ||
+    (() => {
+      const method = availableEpayMethods.find(
+        (item) => item.type === selectedEpayMethod
+      )
+      return method
+        ? getPaymentMethodDisplayName(
+            method.type,
+            method.name,
+            props.paymentMethodSettings,
+            t
+          )
+        : undefined
+    })() ||
     selectedEpayMethod ||
     t('Select payment method')
+  const stripeName = getPaymentMethodDisplayName(
+    'stripe',
+    'Stripe',
+    props.paymentMethodSettings,
+    t
+  )
+  const creemName = getPaymentMethodDisplayName(
+    'creem',
+    'Creem',
+    props.paymentMethodSettings,
+    t
+  )
+  const pancakeName = getPaymentMethodDisplayName(
+    'waffo_pancake',
+    'Waffo Pancake',
+    props.paymentMethodSettings,
+    t
+  )
+  const wechatName = getPaymentMethodDisplayName(
+    'wechat_native_v3',
+    'WeChat Pay',
+    props.paymentMethodSettings,
+    t
+  )
   const totalAmount = Number(plan.total_amount || 0)
   const price = Number(plan.price_amount || 0).toFixed(2)
-  const quotaPerUnit =
-    currency?.quotaPerUnit && currency.quotaPerUnit > 0
-      ? currency.quotaPerUnit
-      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
-  const balanceCost = Math.max(
-    0,
-    Math.ceil(Number(plan.price_amount || 0) * quotaPerUnit)
-  )
-  const userQuota = Math.max(0, Number(props.userQuota || 0))
-  const allowBalancePay = plan.allow_balance_pay !== false
-  const insufficientBalance = userQuota < balanceCost
   const limitReached =
     (props.purchaseLimit || 0) > 0 &&
     (props.purchaseCount || 0) >= (props.purchaseLimit || 0)
@@ -271,32 +315,6 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }
 
-  const handlePayBalance = async () => {
-    if (!allowBalancePay) {
-      toast.error(t('This plan does not allow balance redemption'))
-      return
-    }
-    setPaying(true)
-    try {
-      const res = await paySubscriptionBalance({ plan_id: plan.id })
-      if (res.success) {
-        toast.success(t('Subscription purchased successfully'))
-        void props.onPurchaseSuccess?.()
-        props.onOpenChange(false)
-      } else {
-        toast.error(
-          res.message && res.message !== 'success'
-            ? res.message
-            : t('Payment request failed')
-        )
-      }
-    } catch {
-      toast.error(t('Payment request failed'))
-    } finally {
-      setPaying(false)
-    }
-  }
-
   const purchaseDialog = (
     <Dialog
       open={props.open}
@@ -372,39 +390,6 @@ export function SubscriptionPurchaseDialog(props: Props) {
           </Alert>
         )}
 
-        <div className='flex flex-col gap-2 rounded-md border p-3'>
-          <div className='flex items-center justify-between gap-2 text-xs'>
-            <span className='text-muted-foreground'>{t('Required')}</span>
-            <span>{formatQuota(balanceCost)}</span>
-          </div>
-          <div className='flex items-center justify-between gap-2 text-xs'>
-            <span className='text-muted-foreground'>{t('Available')}</span>
-            <span>{formatQuota(userQuota)}</span>
-          </div>
-          {!allowBalancePay ? (
-            <Alert variant='destructive'>
-              <AlertDescription>
-                {t('This plan does not allow balance redemption')}
-              </AlertDescription>
-            </Alert>
-          ) : (
-            insufficientBalance && (
-              <Alert variant='destructive'>
-                <AlertDescription>{t('Insufficient balance')}</AlertDescription>
-              </Alert>
-            )
-          )}
-          <Button
-            variant='outline'
-            onClick={handlePayBalance}
-            disabled={
-              paying || limitReached || !allowBalancePay || insufficientBalance
-            }
-          >
-            {t('Pay with Balance')}
-          </Button>
-        </div>
-
         {hasAnyPayment && (
           <div className='space-y-3'>
             <p className='text-muted-foreground text-xs'>
@@ -419,7 +404,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                     onClick={handlePayStripe}
                     disabled={paying || limitReached}
                   >
-                    Stripe
+                    {stripeName}
                   </Button>
                 )}
                 {hasCreem && (
@@ -429,7 +414,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                     onClick={handlePayCreem}
                     disabled={paying || limitReached}
                   >
-                    Creem
+                    {creemName}
                   </Button>
                 )}
                 {hasWaffoPancake && (
@@ -439,7 +424,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                     onClick={handlePayWaffoPancake}
                     disabled={paying || limitReached}
                   >
-                    Waffo Pancake
+                    {pancakeName}
                   </Button>
                 )}
               </div>
@@ -447,9 +432,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
             {hasEpay && (
               <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
                 <Select
-                  items={(props.epayMethods || []).map((m) => ({
+                  items={availableEpayMethods.map((m) => ({
                     value: m.type,
-                    label: m.name || m.type,
+                    label: getPaymentMethodDisplayName(
+                      m.type,
+                      m.name,
+                      props.paymentMethodSettings,
+                      t
+                    ),
                   }))}
                   value={selectedEpayMethod}
                   onValueChange={(v) => v !== null && setSelectedEpayMethod(v)}
@@ -460,9 +450,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
                     <SelectGroup>
-                      {(props.epayMethods || []).map((m) => (
+                      {availableEpayMethods.map((m) => (
                         <SelectItem key={m.type} value={m.type}>
-                          {m.name || m.type}
+                          {getPaymentMethodDisplayName(
+                            m.type,
+                            m.name,
+                            props.paymentMethodSettings,
+                            t
+                          )}
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -483,7 +478,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                 onClick={handlePayWechat}
                 disabled={paying || limitReached}
               >
-                {t('WeChat Pay')}
+                {wechatName}
               </Button>
             )}
           </div>

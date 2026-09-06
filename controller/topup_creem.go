@@ -178,6 +178,9 @@ func RequestCreemPay(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
 	}
+	if !requirePaymentMethodEnabled(c, model.PaymentMethodCreem) {
+		return
+	}
 
 	var req CreemPayRequest
 

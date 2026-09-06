@@ -227,6 +227,7 @@ func GetTopUpInfo(c *gin.Context) {
 
 	data := gin.H{
 		"enable_online_topup":              epayEnabled && epayMethodCount > 0,
+		"enable_balance_subscription":      operation_setting.GetPaymentSetting().BalanceSubscriptionEnabled,
 		"enable_stripe_topup":              stripeEnabled,
 		"enable_creem_topup":               creemEnabled,
 		"enable_waffo_topup":               complianceConfirmed && enableWaffo,

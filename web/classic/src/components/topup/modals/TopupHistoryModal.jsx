@@ -65,6 +65,7 @@ const PAYMENT_METHOD_MAP = {
   alipay: '支付宝',
   wxpay: '微信',
   wechat_native_v3: '微信支付',
+  balance: 'Balance Purchase',
 };
 
 const toUnixSeconds = (value) => {

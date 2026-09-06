@@ -69,6 +69,7 @@ const defaultBillingSettings: BillingSettings = {
   'payment_setting.method_settings': '[]',
   MallURL: '',
   'payment_setting.mall_enabled': false,
+  'payment_setting.balance_subscription_enabled': false,
   'payment_setting.amount_options': '',
   'payment_setting.amount_discount': '',
   'payment_setting.compliance_confirmed': false,

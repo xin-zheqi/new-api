@@ -79,6 +79,7 @@ const SubscriptionPlansCard = ({
   enableStripeTopUp = false,
   enableCreemTopUp = false,
   enableWechatTopUp = false,
+  enableBalanceSubscription = false,
   billingPreference,
   onChangeBillingPreference,
   activeSubscriptions = [],
@@ -86,6 +87,7 @@ const SubscriptionPlansCard = ({
   reloadSubscriptionSelf,
   withCard = true,
   mySubscriptionsOnly = false,
+  userQuota = 0,
   onPurchaseSuccess,
   paymentMethodSettings = [],
 }) => {
@@ -251,6 +253,31 @@ const SubscriptionPlansCard = ({
   const handleWechatSuccess = useCallback(async () => {
     await Promise.all([reloadSubscriptionSelf?.(), onPurchaseSuccess?.()]);
   }, [onPurchaseSuccess, reloadSubscriptionSelf]);
+
+  const payBalance = async () => {
+    if (enableBalanceSubscription !== true || !selectedPlan?.plan?.id) return;
+
+    setPaying(true);
+    try {
+      const res = await API.post('/api/subscription/balance/pay', {
+        plan_id: selectedPlan.plan.id,
+      });
+      if (res.data?.success) {
+        showSuccess(t('Subscription purchased successfully'));
+        closeBuy();
+        void Promise.allSettled([
+          Promise.resolve().then(() => reloadSubscriptionSelf?.()),
+          Promise.resolve().then(() => onPurchaseSuccess?.()),
+        ]);
+      } else {
+        showError(res.data?.message || t('Payment request failed'));
+      }
+    } catch {
+      showError(t('Payment request failed'));
+    } finally {
+      setPaying(false);
+    }
+  };
 
   // 当前订阅信息 - 支持多个订阅
   const hasActiveSubscription = activeSubscriptions.length > 0;
@@ -753,6 +780,8 @@ const SubscriptionPlansCard = ({
         enableStripeTopUp={enableStripeTopUp}
         enableCreemTopUp={enableCreemTopUp}
         enableWechatTopUp={enableWechatTopUp}
+        enableBalanceSubscription={enableBalanceSubscription === true}
+        userQuota={userQuota}
         purchaseLimitInfo={
           selectedPlan?.plan?.id
             ? {
@@ -765,6 +794,7 @@ const SubscriptionPlansCard = ({
         onPayCreem={payCreem}
         onPayEpay={payEpay}
         onPayWechat={payWechat}
+        onPayBalance={payBalance}
         paymentMethodSettings={paymentMethodSettings}
       />
       {wechatPayment ? (

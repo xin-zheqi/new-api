@@ -40,14 +40,17 @@ import {
   isPaymentMethodEnabled,
 } from '@/features/wallet/lib/payment-methods'
 import type { PaymentMethodSetting } from '@/features/wallet/types'
+import { useSystemConfig } from '@/hooks/use-system-config'
 import { formatQuota } from '@/lib/format'
 import {
   openHttpCheckoutUrl,
   redirectToHttpCheckoutUrl,
   submitHttpCheckoutForm,
 } from '@/lib/payment-redirect'
+import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
 
 import {
+  paySubscriptionBalance,
   paySubscriptionStripe,
   paySubscriptionCreem,
   paySubscriptionEpay,
@@ -70,16 +73,19 @@ interface Props {
   enableCreem?: boolean
   enableWaffoPancake?: boolean
   enableOnlineTopUp?: boolean
+  enableBalanceSubscription?: boolean
   enableWechat?: boolean
   epayMethods?: PaymentMethod[]
   paymentMethodSettings?: PaymentMethodSetting[]
   purchaseLimit?: number
   purchaseCount?: number
+  userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
 }
 
 export function SubscriptionPurchaseDialog(props: Props) {
   const { t } = useTranslation()
+  const { currency } = useSystemConfig()
   const [paying, setPaying] = useState(false)
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('')
   const [wechatDialogOpen, setWechatDialogOpen] = useState(false)
@@ -172,6 +178,26 @@ export function SubscriptionPurchaseDialog(props: Props) {
   )
   const totalAmount = Number(plan.total_amount || 0)
   const price = Number(plan.price_amount || 0).toFixed(2)
+  const configuredQuotaPerUnit = Number(currency?.quotaPerUnit)
+  const quotaPerUnit =
+    Number.isFinite(configuredQuotaPerUnit) && configuredQuotaPerUnit > 0
+      ? configuredQuotaPerUnit
+      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
+  const rawBalanceCost = Number(plan.price_amount || 0) * quotaPerUnit
+  const validBalanceCost =
+    Number.isFinite(rawBalanceCost) &&
+    rawBalanceCost >= 0 &&
+    rawBalanceCost <= Number.MAX_SAFE_INTEGER
+  const balanceCost = validBalanceCost
+    ? Math.ceil(rawBalanceCost)
+    : Number.MAX_SAFE_INTEGER
+  const rawUserQuota = Number(props.userQuota || 0)
+  const userQuota =
+    Number.isFinite(rawUserQuota) && rawUserQuota > 0
+      ? Math.min(Math.floor(rawUserQuota), Number.MAX_SAFE_INTEGER)
+      : 0
+  const balanceEnabled = props.enableBalanceSubscription === true
+  const insufficientBalance = !validBalanceCost || userQuota < balanceCost
   const limitReached =
     (props.purchaseLimit || 0) > 0 &&
     (props.purchaseCount || 0) >= (props.purchaseLimit || 0)
@@ -315,6 +341,28 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }
 
+  const handlePayBalance = async () => {
+    if (!balanceEnabled) return
+
+    setPaying(true)
+    try {
+      const res = await paySubscriptionBalance({ plan_id: plan.id })
+      if (res.success) {
+        toast.success(t('Subscription purchased successfully'))
+        props.onOpenChange(false)
+        void Promise.resolve()
+          .then(() => props.onPurchaseSuccess?.())
+          .catch(() => undefined)
+      } else {
+        toast.error(res.message || t('Payment request failed'))
+      }
+    } catch {
+      toast.error(t('Payment request failed'))
+    } finally {
+      setPaying(false)
+    }
+  }
+
   const purchaseDialog = (
     <Dialog
       open={props.open}
@@ -388,6 +436,35 @@ export function SubscriptionPurchaseDialog(props: Props) {
               {props.purchaseLimit})
             </AlertDescription>
           </Alert>
+        )}
+
+        {balanceEnabled && (
+          <div className='flex flex-col gap-2 rounded-md border p-3'>
+            <div className='flex items-center justify-between gap-2 text-xs'>
+              <span className='text-muted-foreground'>
+                {t('Required balance')}
+              </span>
+              <span>{formatQuota(balanceCost)}</span>
+            </div>
+            <div className='flex items-center justify-between gap-2 text-xs'>
+              <span className='text-muted-foreground'>
+                {t('Available balance')}
+              </span>
+              <span>{formatQuota(userQuota)}</span>
+            </div>
+            {insufficientBalance && (
+              <Alert variant='destructive'>
+                <AlertDescription>{t('Insufficient balance')}</AlertDescription>
+              </Alert>
+            )}
+            <Button
+              variant='outline'
+              onClick={handlePayBalance}
+              disabled={paying || limitReached || insufficientBalance}
+            >
+              {t('Pay with Balance')}
+            </Button>
+          </div>
         )}
 
         {hasAnyPayment && (

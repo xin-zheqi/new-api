@@ -212,6 +212,8 @@ export function useTopupInfo() {
       )
       const processedData: TopupInfo = {
         ...response.data,
+        enable_balance_subscription:
+          response.data.enable_balance_subscription === true,
         payment_method_settings: paymentMethodSettings,
         pay_methods: parsePaymentMethods(
           response.data.pay_methods,

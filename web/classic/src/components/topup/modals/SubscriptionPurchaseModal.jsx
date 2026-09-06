@@ -31,7 +31,7 @@ import {
 import { Crown, CalendarClock, Package } from 'lucide-react';
 import { SiStripe, SiWechat } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
-import { renderQuota } from '../../../helpers';
+import { getQuotaPerUnit, renderQuota } from '../../../helpers';
 import { getCurrencyConfig } from '../../../helpers/render';
 import {
   formatSubscriptionDuration,
@@ -57,7 +57,10 @@ const SubscriptionPurchaseModal = ({
   enableStripeTopUp = false,
   enableCreemTopUp = false,
   enableWechatTopUp = false,
+  enableBalanceSubscription = false,
   purchaseLimitInfo = null,
+  userQuota = 0,
+  onPayBalance,
   onPayStripe,
   onPayCreem,
   onPayEpay,
@@ -109,6 +112,28 @@ const SubscriptionPurchaseModal = ({
     t,
   );
   const hasAnyPayment = hasStripe || hasCreem || hasEpay || hasWechat;
+  const configuredQuotaPerUnit = Number(getQuotaPerUnit());
+  const quotaPerUnit =
+    Number.isFinite(configuredQuotaPerUnit) && configuredQuotaPerUnit > 0
+      ? configuredQuotaPerUnit
+      : 500000;
+  const planPrice = Number(plan?.price_amount || 0);
+  const rawBalanceCost = planPrice * quotaPerUnit;
+  const validBalanceCost =
+    Number.isFinite(rawBalanceCost) &&
+    rawBalanceCost >= 0 &&
+    rawBalanceCost <= Number.MAX_SAFE_INTEGER;
+  const balanceCost = validBalanceCost
+    ? Math.ceil(rawBalanceCost)
+    : Number.MAX_SAFE_INTEGER;
+  const numericUserQuota = Number(userQuota || 0);
+  const availableBalance =
+    Number.isFinite(numericUserQuota) && numericUserQuota > 0
+      ? Math.min(Math.floor(numericUserQuota), Number.MAX_SAFE_INTEGER)
+      : 0;
+  const balanceEnabled = enableBalanceSubscription === true;
+  const insufficientBalance =
+    !validBalanceCost || availableBalance < balanceCost;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
@@ -216,6 +241,41 @@ const SubscriptionPurchaseModal = ({
               className='!rounded-xl'
               closeIcon={null}
             />
+          )}
+
+          {balanceEnabled && (
+            <div className='space-y-2 rounded-lg border border-solid border-[var(--semi-color-border)] p-3'>
+              <div className='flex items-center justify-between gap-3 text-sm'>
+                <Text type='tertiary'>{t('Required balance')}</Text>
+                <Text strong>{renderQuota(balanceCost)}</Text>
+              </div>
+              <div className='flex items-center justify-between gap-3 text-sm'>
+                <Text type='tertiary'>{t('Available balance')}</Text>
+                <Text strong>{renderQuota(availableBalance)}</Text>
+              </div>
+              {insufficientBalance ? (
+                <Banner
+                  type='warning'
+                  description={t('Insufficient balance')}
+                  closeIcon={null}
+                />
+              ) : null}
+              <Button
+                block
+                theme='light'
+                icon={<IconCreditCard />}
+                onClick={onPayBalance}
+                loading={paying}
+                disabled={
+                  paying ||
+                  purchaseLimitReached ||
+                  insufficientBalance ||
+                  !onPayBalance
+                }
+              >
+                {t('Pay with Balance')}
+              </Button>
+            </div>
           )}
 
           {hasAnyPayment ? (

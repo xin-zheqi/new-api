@@ -134,6 +134,8 @@ subscription.purchase_max: "Purchase limit for this plan has been reached"
 subscription.mall_mode_enabled: "The card-store mall is enabled. Purchase subscriptions through the mall."
 subscription.invalid_id: "Invalid subscription ID"
 subscription.invalid_user_id: "Invalid user ID"
+subscription.balance_payment_disabled: "Balance subscription purchases are disabled"
+subscription.insufficient_balance: "Insufficient balance"
 
 # Payment messages
 payment.not_configured: "Payment information has not been configured by administrator"

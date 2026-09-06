@@ -44,6 +44,9 @@ function getGeneralPaymentInputs(options = {}) {
     'payment_setting.mall_enabled': toBoolean(
       options['payment_setting.mall_enabled'],
     ),
+    'payment_setting.balance_subscription_enabled': toBoolean(
+      options['payment_setting.balance_subscription_enabled'],
+    ),
   };
 }
 
@@ -194,6 +197,15 @@ export default function SettingsGeneralPayment(props) {
           value: inputs.AmountDiscount,
         });
       }
+      if (
+        originInputs['payment_setting.balance_subscription_enabled'] !==
+        inputs['payment_setting.balance_subscription_enabled']
+      ) {
+        options.push({
+          key: 'payment_setting.balance_subscription_enabled',
+          value: inputs['payment_setting.balance_subscription_enabled'],
+        });
+      }
       const mallSettingsChanged =
         originInputs['payment_setting.mall_enabled'] !==
           inputs['payment_setting.mall_enabled'] ||
@@ -248,6 +260,20 @@ export default function SettingsGeneralPayment(props) {
               '该服务器地址将影响支付回调地址以及默认首页展示的地址，请确保正确配置',
             )}
           />
+          <Row style={{ marginTop: 16 }}>
+            <Col span={24}>
+              <Form.Switch
+                field='payment_setting.balance_subscription_enabled'
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+                label={t('Enable balance subscription purchases')}
+                extraText={t(
+                  'Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.',
+                )}
+              />
+            </Col>
+          </Row>
           <Row
             gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
             style={{ marginTop: 16 }}

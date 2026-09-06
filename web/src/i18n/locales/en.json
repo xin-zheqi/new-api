@@ -132,8 +132,6 @@
     "7 Days": "7 Days",
     "7 days ago": "7 days ago",
     "80,443,8080": "80,443,8080",
-    "统一控制所有支付方式的启用状态和显示名称": "Control the enabled state and display name of all payment methods",
-    "支付方式设置不是合法的 JSON 数组": "Payment method settings must be a valid JSON array",
     "A billing multiplier. Lower ratios mean lower API call costs.": "A billing multiplier. Lower ratios mean lower API call costs.",
     "A focused home for keys, balance, routing, and service health.": "A focused home for keys, balance, routing, and service health.",
     "A gateway is shown only when its own credentials are configured. Disabling it here also blocks direct checkout requests.": "A gateway is shown only when its own credentials are configured. Disabling it here also blocks direct checkout requests.",
@@ -375,6 +373,7 @@
     "Allow users to check in daily for random quota rewards": "Allow users to check in daily for random quota rewards",
     "Allow users to enter promo codes": "Allow users to enter promo codes",
     "Allow users to log in with password": "Allow users to log in with password",
+    "Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.": "Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.",
     "Allow users to register and sign in with Passkey (WebAuthn)": "Allow users to register and sign in with Passkey (WebAuthn)",
     "Allow users to sign in with Discord": "Allow users to sign in with Discord",
     "Allow users to sign in with GitHub": "Allow users to sign in with GitHub",
@@ -610,6 +609,7 @@
     "Automatically sync model list when upstream changes are detected": "Automatically sync model list when upstream changes are detected",
     "Availability (last 24h)": "Availability (last 24h)",
     "Available": "Available",
+    "Available balance": "Available balance",
     "Available credits are ordered by soonest expiration.": "Available credits are ordered by soonest expiration.",
     "Available disk space": "Available disk space",
     "Available Models": "Available Models",
@@ -1785,6 +1785,7 @@
     "Enable {{parameter}}": "Enable {{parameter}}",
     "Enable 2FA": "Enable 2FA",
     "Enable All": "Enable All",
+    "Enable balance subscription purchases": "Enable balance subscription purchases",
     "Enable check-in feature": "Enable check-in feature",
     "Enable custom task plugins": "Enable custom task plugins",
     "Enable Data Dashboard": "Enable Data Dashboard",
@@ -4433,6 +4434,7 @@
     "required": "required",
     "Required": "Required",
     "Required amount": "Required amount",
+    "Required balance": "Required balance",
     "Required events:": "Required events:",
     "Required provider, authentication, model, and group settings": "Required provider, authentication, model, and group settings",
     "Required to expose MjProxy-style image generation to end users.": "Required to expose MjProxy-style image generation to end users.",
@@ -6136,6 +6138,8 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "支付方式设置不是合法的 JSON 数组": "Payment method settings must be a valid JSON array",
+    "统一控制所有支付方式的启用状态和显示名称": "Control the enabled state and display name of all payment methods"
   }
 }

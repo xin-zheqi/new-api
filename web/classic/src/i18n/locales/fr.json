@@ -4133,6 +4133,11 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Clé de signature Webhook whsec_xxx, les informations sensibles ne sont pas affichées",
     "Worker地址": "Adresse du Worker",
     "Worker密钥": "Clé du Worker",
-    "You have reached this month's invoice application limit.": "Vous avez atteint la limite mensuelle de demandes de facture."
+    "You have reached this month's invoice application limit.": "Vous avez atteint la limite mensuelle de demandes de facture.",
+    "Enable balance subscription purchases": "Activer l'achat d'abonnements avec le solde",
+    "Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.": "Autoriser l'achat d'abonnements avec le solde du portefeuille. Ces achats ne sont pas facturables.",
+    "Balance Purchase": "Achat avec le solde",
+    "Available balance": "Solde disponible",
+    "Required balance": "Solde requis"
   }
 }

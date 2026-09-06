@@ -82,7 +82,7 @@ func normalizeOptionUpdateValue(key, value, applicationHost string) (string, err
 			return "", fmt.Errorf("MallURL must be an external HTTPS URL without credentials and no longer than %d characters", maxMallURLLength)
 		}
 		return normalized, nil
-	case "payment_setting.mall_enabled", "InvoiceEnabled":
+	case "payment_setting.mall_enabled", "payment_setting.balance_subscription_enabled", "InvoiceEnabled":
 		normalized := strings.ToLower(strings.TrimSpace(value))
 		if normalized != "true" && normalized != "false" {
 			return "", fmt.Errorf("%s must be true or false", key)

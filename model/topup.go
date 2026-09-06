@@ -42,6 +42,7 @@ const (
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodWechat       = "wechat_native_v3"
+	PaymentMethodBalance      = "balance"
 	PaymentMethodManual       = "manual"
 )
 
@@ -57,6 +58,7 @@ const (
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderWechat       = "wechat"
+	PaymentProviderBalance      = "balance"
 	PaymentProviderManual       = "manual"
 )
 

@@ -336,6 +336,7 @@ export type BillingSettings = {
   'payment_setting.method_settings': string
   MallURL: string
   'payment_setting.mall_enabled': boolean
+  'payment_setting.balance_subscription_enabled': boolean
   'payment_setting.amount_options': string
   'payment_setting.amount_discount': string
   'payment_setting.compliance_confirmed': boolean

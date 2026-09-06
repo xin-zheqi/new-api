@@ -17,7 +17,7 @@ func TestSetApiRouterRegistersLotteryRoutesWithoutConflict(t *testing.T) {
 	})
 }
 
-func TestSetApiRouterDoesNotRegisterSubscriptionBalancePayment(t *testing.T) {
+func TestSetApiRouterRegistersSubscriptionBalancePayment(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	server := gin.New()
 	require.NotPanics(t, func() { SetApiRouter(server) })
@@ -26,5 +26,5 @@ func TestSetApiRouterDoesNotRegisterSubscriptionBalancePayment(t *testing.T) {
 	for _, route := range server.Routes() {
 		routes[route.Method+" "+route.Path] = struct{}{}
 	}
-	require.NotContains(t, routes, http.MethodPost+" /api/subscription/balance/pay")
+	require.Contains(t, routes, http.MethodPost+" /api/subscription/balance/pay")
 }

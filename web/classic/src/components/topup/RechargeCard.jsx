@@ -765,6 +765,9 @@ const RechargeCard = ({
             enableStripeTopUp={enableStripeTopUp}
             enableCreemTopUp={enableCreemTopUp}
             enableWechatTopUp={enableWechatTopUp}
+            enableBalanceSubscription={
+              topupInfo?.enable_balance_subscription === true
+            }
             billingPreference={billingPreference}
             onChangeBillingPreference={onChangeBillingPreference}
             activeSubscriptions={activeSubscriptions}
@@ -772,6 +775,7 @@ const RechargeCard = ({
             reloadSubscriptionSelf={reloadSubscriptionSelf}
             withCard={false}
             mySubscriptionsOnly={!allowBuiltInSubscriptionPurchase}
+            userQuota={userState?.user?.quota}
             onPurchaseSuccess={reloadUser}
             paymentMethodSettings={paymentMethodSettings}
           />
@@ -807,12 +811,17 @@ const RechargeCard = ({
                 enableStripeTopUp={enableStripeTopUp}
                 enableCreemTopUp={enableCreemTopUp}
                 enableWechatTopUp={enableWechatTopUp}
+                enableBalanceSubscription={
+                  topupInfo?.enable_balance_subscription === true
+                }
                 billingPreference={billingPreference}
                 onChangeBillingPreference={onChangeBillingPreference}
                 activeSubscriptions={activeSubscriptions}
                 allSubscriptions={allSubscriptions}
                 reloadSubscriptionSelf={reloadSubscriptionSelf}
                 withCard={false}
+                userQuota={userState?.user?.quota}
+                onPurchaseSuccess={reloadUser}
                 paymentMethodSettings={paymentMethodSettings}
               />
             </div>

@@ -145,6 +145,8 @@ const BILLING_SECTIONS = [
             settings['payment_setting.method_settings'] ?? '[]',
           MallURL: settings.MallURL,
           MallEnabled: settings['payment_setting.mall_enabled'],
+          BalanceSubscriptionEnabled:
+            settings['payment_setting.balance_subscription_enabled'],
           AmountOptions: settings['payment_setting.amount_options'],
           AmountDiscount: settings['payment_setting.amount_discount'],
           StripeApiSecret: settings.StripeApiSecret,

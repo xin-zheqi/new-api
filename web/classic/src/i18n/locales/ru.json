@@ -4163,6 +4163,11 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Ключ подписи Webhook whsec_xxx, конфиденциальная информация не отображается",
     "Worker地址": "Адрес Worker",
     "Worker密钥": "Ключ Worker",
-    "You have reached this month's invoice application limit.": "Достигнут месячный лимит заявок на счет."
+    "You have reached this month's invoice application limit.": "Достигнут месячный лимит заявок на счет.",
+    "Enable balance subscription purchases": "Разрешить покупку подписок с баланса",
+    "Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.": "Разрешить пользователям покупать подписки с баланса кошелька. Для таких покупок счета-фактуры не оформляются.",
+    "Balance Purchase": "Покупка с баланса",
+    "Available balance": "Доступный баланс",
+    "Required balance": "Требуемый баланс"
   }
 }

@@ -185,6 +185,45 @@ func TestGetTopUpInfoPreservesMallModeAndExposesOnlyValidURL(t *testing.T) {
 	}
 }
 
+func TestGetTopUpInfoExposesBalanceSubscriptionSwitch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	originalDB := model.DB
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "balance-subscription-info.db")), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	require.NoError(t, db.Create([]model.Option{
+		{Key: "payment_setting.mall_enabled", Value: "false"},
+		{Key: "MallURL", Value: ""},
+	}).Error)
+	model.DB = db
+	payment := operation_setting.GetPaymentSetting()
+	originalEnabled := payment.BalanceSubscriptionEnabled
+	payment.BalanceSubscriptionEnabled = true
+	t.Cleanup(func() {
+		payment.BalanceSubscriptionEnabled = originalEnabled
+		model.DB = originalDB
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "https://api.example.com/api/user/topup/info", nil)
+	GetTopUpInfo(context)
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			EnableBalanceSubscription bool `json:"enable_balance_subscription"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	assert.True(t, response.Data.EnableBalanceSubscription)
+}
+
 func TestGetTopUpInfoKeepsEpayAndWechatIndependent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	confirmPaymentComplianceForTest(t)

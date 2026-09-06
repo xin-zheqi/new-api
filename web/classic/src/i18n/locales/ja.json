@@ -4104,6 +4104,11 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "whsec_xxx のWebhook署名シークレット。機密情報は表示されません",
     "Worker地址": "Workerアドレス",
     "Worker密钥": "WorkerAPIキー",
-    "You have reached this month's invoice application limit.": "今月の請求書申請上限に達しました。"
+    "You have reached this month's invoice application limit.": "今月の請求書申請上限に達しました。",
+    "Enable balance subscription purchases": "残高でのサブスクリプション購入を有効化",
+    "Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.": "ウォレット残高でサブスクリプションプランを購入できるようにします。残高での購入は請求書を発行できません。",
+    "Balance Purchase": "残高で購入",
+    "Available balance": "利用可能残高",
+    "Required balance": "必要残高"
   }
 }

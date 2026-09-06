@@ -167,12 +167,14 @@ func TestSubscriptionPaymentRequestsLimitJSONBody(t *testing.T) {
 	originalPaymentSetting := *paymentSetting
 	paymentSetting.ComplianceConfirmed = true
 	paymentSetting.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+	paymentSetting.BalanceSubscriptionEnabled = true
 	t.Cleanup(func() { *paymentSetting = originalPaymentSetting })
 
 	handlers := []struct {
 		name    string
 		handler gin.HandlerFunc
 	}{
+		{name: "balance", handler: SubscriptionRequestBalancePay},
 		{name: "epay", handler: SubscriptionRequestEpay},
 		{name: "stripe", handler: SubscriptionRequestStripePay},
 		{name: "creem", handler: SubscriptionRequestCreemPay},

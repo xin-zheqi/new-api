@@ -72,6 +72,7 @@ import type { PaymentMethod, TopupInfo } from '../types'
 interface SubscriptionPlansCardProps {
   topupInfo: TopupInfo | null
   onAvailabilityChange?: (available: boolean) => void
+  userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
   mySubscriptionsOnly?: boolean
   enableWechat?: boolean
@@ -120,6 +121,7 @@ function getBillingPreferenceLabel(
 export function SubscriptionPlansCard({
   topupInfo,
   onAvailabilityChange,
+  userQuota,
   onPurchaseSuccess,
   mySubscriptionsOnly = false,
   enableWechat = false,
@@ -736,9 +738,13 @@ export function SubscriptionPlansCard({
         enableCreem={enableCreem}
         enableWaffoPancake={enableWaffoPancake}
         enableOnlineTopUp={enableOnlineTopUp}
+        enableBalanceSubscription={
+          topupInfo?.enable_balance_subscription === true
+        }
         enableWechat={enableWechat}
         epayMethods={epayMethods}
         paymentMethodSettings={topupInfo?.payment_method_settings}
+        userQuota={userQuota}
         onPurchaseSuccess={onPurchaseSuccess}
         purchaseLimit={
           selectedPlan?.plan?.max_purchase_per_user

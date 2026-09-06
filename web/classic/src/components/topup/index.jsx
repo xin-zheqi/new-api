@@ -133,6 +133,7 @@ const TopUp = () => {
     default_payment_method: '',
     enable_redemption: true,
     enable_wechat_topup: false,
+    enable_balance_subscription: false,
     payment_compliance_confirmed: true,
   });
 
@@ -877,6 +878,8 @@ const TopUp = () => {
               data.enable_redemption === false ||
               data.enable_redemption === 'false'
             ),
+            enable_balance_subscription:
+              data.enable_balance_subscription === true,
             payment_compliance_confirmed:
               data.payment_compliance_confirmed !== false,
             payment_compliance_terms_version:

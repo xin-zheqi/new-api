@@ -128,6 +128,8 @@ export interface WaffoPayMethod {
 export interface TopupInfo {
   /** Whether online topup is enabled */
   enable_online_topup: boolean
+  /** Whether wallet balance may be exchanged for a subscription */
+  enable_balance_subscription?: boolean
   /** Whether official WeChat Pay API v3 Native is enabled */
   enable_wechat_topup?: boolean
   /** Whether Stripe topup is enabled */

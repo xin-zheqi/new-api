@@ -13,9 +13,10 @@ import (
 )
 
 type PaymentSetting struct {
-	AmountOptions  []int           `json:"amount_options"`
-	AmountDiscount map[int]float64 `json:"amount_discount"` // 充值金额对应的折扣，例如 100 元 0.9 表示 100 元充值享受 9 折优惠
-	MallEnabled    bool            `json:"mall_enabled"`
+	AmountOptions              []int           `json:"amount_options"`
+	AmountDiscount             map[int]float64 `json:"amount_discount"` // 充值金额对应的折扣，例如 100 元 0.9 表示 100 元充值享受 9 折优惠
+	MallEnabled                bool            `json:"mall_enabled"`
+	BalanceSubscriptionEnabled bool            `json:"balance_subscription_enabled"`
 	// MethodSettings is an optional overlay for all payment gateways. The
 	// legacy PayMethods option remains the source of Epay-specific entries.
 	MethodSettings []PaymentMethodSetting `json:"method_settings"`
@@ -48,10 +49,11 @@ const CurrentComplianceTermsVersion = "v1"
 
 // 默认配置
 var paymentSetting = PaymentSetting{
-	AmountOptions:  []int{10, 20, 50, 100, 200, 500},
-	AmountDiscount: map[int]float64{},
-	MallEnabled:    false,
-	MethodSettings: []PaymentMethodSetting{},
+	AmountOptions:              []int{10, 20, 50, 100, 200, 500},
+	AmountDiscount:             map[int]float64{},
+	MallEnabled:                false,
+	BalanceSubscriptionEnabled: false,
+	MethodSettings:             []PaymentMethodSetting{},
 }
 
 func init() {

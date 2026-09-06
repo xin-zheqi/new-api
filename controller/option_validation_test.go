@@ -31,6 +31,8 @@ func TestNormalizeOptionUpdateValueValidatesManagedSettings(t *testing.T) {
 	}{
 		{name: "mall enabled", key: "payment_setting.mall_enabled", value: " TRUE ", expected: "true"},
 		{name: "mall enabled invalid", key: "payment_setting.mall_enabled", value: "1", shouldErr: true},
+		{name: "balance subscription enabled", key: "payment_setting.balance_subscription_enabled", value: " TRUE ", expected: "true"},
+		{name: "balance subscription enabled invalid", key: "payment_setting.balance_subscription_enabled", value: "1", shouldErr: true},
 		{name: "external mall URL", key: "MallURL", value: " https://shop.example.com/buy ", expected: "https://shop.example.com/buy"},
 		{name: "same-host mall URL", key: "MallURL", value: "https://api.example.com/shop", shouldErr: true},
 		{name: "same-host mall URL with multiple trailing dots", key: "MallURL", value: "https://API.EXAMPLE.COM../shop", shouldErr: true},

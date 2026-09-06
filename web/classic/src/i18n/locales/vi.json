@@ -4666,6 +4666,11 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Khóa chữ ký Webhook cho whsec_xxx, thông tin nhạy cảm không được hiển thị",
     "Worker地址": "Địa chỉ Worker",
     "Worker密钥": "Khóa Worker",
-    "You have reached this month's invoice application limit.": "Bạn đã đạt giới hạn yêu cầu hóa đơn trong tháng này."
+    "You have reached this month's invoice application limit.": "Bạn đã đạt giới hạn yêu cầu hóa đơn trong tháng này.",
+    "Enable balance subscription purchases": "Cho phép mua gói bằng số dư",
+    "Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.": "Cho phép người dùng mua gói đăng ký bằng số dư ví. Các giao dịch này không được xuất hóa đơn.",
+    "Balance Purchase": "Mua bằng số dư",
+    "Available balance": "Số dư khả dụng",
+    "Required balance": "Số dư cần thiết"
   }
 }

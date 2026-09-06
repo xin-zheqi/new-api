@@ -142,6 +142,7 @@ function createPaymentSchema(t: TFunction) {
           )
         ),
       MallEnabled: z.boolean(),
+      BalanceSubscriptionEnabled: z.boolean(),
       MallURL: z.string(),
       PaymentMethodSettings: z.string().superRefine((value, ctx) => {
         const error = getJsonError(value, (parsed) => Array.isArray(parsed))
@@ -591,6 +592,7 @@ export function PaymentSettingsSection({
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
       MallEnabled: values.MallEnabled,
+      BalanceSubscriptionEnabled: values.BalanceSubscriptionEnabled,
       MallURL: values.MallURL.trim(),
       PaymentMethodSettings: (values.PaymentMethodSettings ?? '').trim(),
       PayMethods: values.PayMethods.trim(),
@@ -653,6 +655,7 @@ export function PaymentSettingsSection({
         initialRef.current.CustomCallbackAddress
       ),
       MallEnabled: initialRef.current.MallEnabled,
+      BalanceSubscriptionEnabled: initialRef.current.BalanceSubscriptionEnabled,
       MallURL: initialRef.current.MallURL.trim(),
       PaymentMethodSettings: (
         initialRef.current.PaymentMethodSettings ?? ''
@@ -746,6 +749,16 @@ export function PaymentSettingsSection({
     const hasMallChanges =
       sanitized.MallEnabled !== initial.MallEnabled ||
       sanitized.MallURL !== initial.MallURL
+
+    if (
+      sanitized.BalanceSubscriptionEnabled !==
+      initial.BalanceSubscriptionEnabled
+    ) {
+      updates.push({
+        key: 'payment_setting.balance_subscription_enabled',
+        value: sanitized.BalanceSubscriptionEnabled,
+      })
+    }
 
     if (
       normalizeJsonForComparison(sanitized.PaymentMethodSettings) !==
@@ -1172,6 +1185,31 @@ export function PaymentSettingsSection({
                 </div>
 
                 <div className='space-y-4 rounded-md border p-4'>
+                  <FormField
+                    control={form.control}
+                    name='BalanceSubscriptionEnabled'
+                    render={({ field }) => (
+                      <SettingsSwitchItem className='border-0 p-0'>
+                        <SettingsSwitchContent>
+                          <FormLabel>
+                            {t('Enable balance subscription purchases')}
+                          </FormLabel>
+                          <FormDescription>
+                            {t(
+                              'Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.'
+                            )}
+                          </FormDescription>
+                        </SettingsSwitchContent>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </SettingsSwitchItem>
+                    )}
+                  />
+
                   <FormField
                     control={form.control}
                     name='MallEnabled'

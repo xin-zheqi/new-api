@@ -383,6 +383,7 @@ export function Wallet(props: WalletProps) {
               <SubscriptionPlansCard
                 topupInfo={topupInfo}
                 onAvailabilityChange={handleSubscriptionAvailabilityChange}
+                userQuota={user?.quota}
                 enableWechat={topupInfo?.enable_wechat_topup}
                 onPurchaseSuccess={fetchUser}
                 mySubscriptionsOnly={

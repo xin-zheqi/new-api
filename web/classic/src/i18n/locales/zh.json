@@ -3111,6 +3111,11 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示",
     "Worker地址": "Worker地址",
     "Worker密钥": "Worker密钥",
-    "You have reached this month's invoice application limit.": "您本月的开票申请次数已达上限。"
+    "You have reached this month's invoice application limit.": "您本月的开票申请次数已达上限。",
+    "Enable balance subscription purchases": "启用余额购买订阅",
+    "Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.": "允许用户使用钱包余额购买订阅套餐。余额购买不可开票。",
+    "Balance Purchase": "余额购买",
+    "Available balance": "可用余额",
+    "Required balance": "所需余额"
   }
 }

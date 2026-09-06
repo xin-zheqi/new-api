@@ -48,6 +48,7 @@ const PaymentSetting = () => {
     AmountDiscount: '',
     MallURL: '',
     'payment_setting.mall_enabled': false,
+    'payment_setting.balance_subscription_enabled': false,
 
     StripeApiSecret: '',
     StripeWebhookSecret: '',
@@ -178,6 +179,7 @@ const PaymentSetting = () => {
             break;
           case 'payment_setting.compliance_confirmed':
           case 'payment_setting.mall_enabled':
+          case 'payment_setting.balance_subscription_enabled':
             newInputs[item.key] = toBoolean(item.value);
             break;
           case 'payment_setting.compliance_confirmed_at':

@@ -150,6 +150,8 @@ const (
 	MsgSubscriptionMallModeEnabled  = "subscription.mall_mode_enabled"
 	MsgSubscriptionInvalidId        = "subscription.invalid_id"
 	MsgSubscriptionInvalidUserId    = "subscription.invalid_user_id"
+	MsgSubscriptionBalanceDisabled  = "subscription.balance_payment_disabled"
+	MsgSubscriptionBalanceLow       = "subscription.insufficient_balance"
 )
 
 // Payment related messages

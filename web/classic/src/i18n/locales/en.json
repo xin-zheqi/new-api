@@ -4295,6 +4295,11 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "Webhook signature key for whsec_xxx, sensitive information not displayed",
     "Worker地址": "Worker Address",
     "Worker密钥": "Worker Key",
-    "You have reached this month's invoice application limit.": "You have reached this month's invoice application limit."
+    "You have reached this month's invoice application limit.": "You have reached this month's invoice application limit.",
+    "Enable balance subscription purchases": "Enable balance subscription purchases",
+    "Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.": "Allow users to purchase subscription plans with wallet balance. Balance purchases are not invoiceable.",
+    "Balance Purchase": "Balance Purchase",
+    "Available balance": "Available balance",
+    "Required balance": "Required balance"
   }
 }

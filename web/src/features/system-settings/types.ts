@@ -454,6 +454,15 @@ export type OperationsSettings = {
 }
 
 export type SecuritySettings = {
+  GlobalApiRateLimitEnabled: boolean
+  GlobalApiRateLimitCount: number
+  GlobalApiRateLimitDuration: number
+  GlobalWebRateLimitEnabled: boolean
+  GlobalWebRateLimitCount: number
+  GlobalWebRateLimitDuration: number
+  CriticalRateLimitEnabled: boolean
+  CriticalRateLimitCount: number
+  CriticalRateLimitDuration: number
   ModelRequestRateLimitEnabled: boolean
   ModelRequestRateLimitCount: number
   ModelRequestRateLimitSuccessCount: number

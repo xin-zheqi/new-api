@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Code2, Palette } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch, type Control } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
@@ -68,6 +68,15 @@ const isValidJSON = (value: string | undefined) => {
 
 const createRateLimitSchema = (t: (key: string) => string) =>
   z.object({
+    GlobalApiRateLimitEnabled: z.boolean(),
+    GlobalApiRateLimitCount: z.number().int().min(1).max(100000000),
+    GlobalApiRateLimitDuration: z.number().int().min(1).max(1200),
+    GlobalWebRateLimitEnabled: z.boolean(),
+    GlobalWebRateLimitCount: z.number().int().min(1).max(100000000),
+    GlobalWebRateLimitDuration: z.number().int().min(1).max(1200),
+    CriticalRateLimitEnabled: z.boolean(),
+    CriticalRateLimitCount: z.number().int().min(1).max(100000000),
+    CriticalRateLimitDuration: z.number().int().min(1).max(1200),
     ModelRequestRateLimitEnabled: z.boolean(),
     ModelRequestRateLimitDurationMinutes: z.number().min(0),
     ModelRequestRateLimitCount: z.number().min(0).max(100000000),
@@ -86,7 +95,110 @@ type RateLimitSectionProps = {
   defaultValues: RateLimitFormValues
 }
 
-export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
+type RouteRateLimitEnabledField =
+  | 'GlobalApiRateLimitEnabled'
+  | 'GlobalWebRateLimitEnabled'
+  | 'CriticalRateLimitEnabled'
+
+type RouteRateLimitNumberField =
+  | 'GlobalApiRateLimitCount'
+  | 'GlobalApiRateLimitDuration'
+  | 'GlobalWebRateLimitCount'
+  | 'GlobalWebRateLimitDuration'
+  | 'CriticalRateLimitCount'
+  | 'CriticalRateLimitDuration'
+
+type RouteRateLimitControlsProps = {
+  control: Control<RateLimitFormValues>
+  enabledName: RouteRateLimitEnabledField
+  countName: RouteRateLimitNumberField
+  durationName: RouteRateLimitNumberField
+  label: string
+  description: string
+}
+
+function RouteRateLimitControls(props: RouteRateLimitControlsProps) {
+  const { t } = useTranslation()
+  const enabled = useWatch({
+    control: props.control,
+    name: props.enabledName,
+  })
+
+  return (
+    <section
+      data-settings-form-span='full'
+      className='border-border space-y-4 border-b pb-6 last:border-b-0 last:pb-0'
+    >
+      <FormField
+        control={props.control}
+        name={props.enabledName}
+        render={({ field }) => (
+          <SettingsSwitchItem className='py-0'>
+            <SettingsSwitchContent>
+              <FormLabel>{props.label}</FormLabel>
+              <FormDescription>{props.description}</FormDescription>
+            </SettingsSwitchContent>
+            <FormControl>
+              <Switch checked={field.value} onCheckedChange={field.onChange} />
+            </FormControl>
+          </SettingsSwitchItem>
+        )}
+      />
+      <div className='grid gap-4 md:grid-cols-2'>
+        <FormField
+          control={props.control}
+          name={props.countName}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('Max requests per period')}</FormLabel>
+              <FormControl>
+                <Input
+                  type='number'
+                  min={1}
+                  max={100000000}
+                  step={1}
+                  disabled={!enabled}
+                  {...field}
+                  onChange={(event) =>
+                    field.onChange(Number.parseInt(event.target.value, 10) || 0)
+                  }
+                />
+              </FormControl>
+              <FormDescription>{t('times')}</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={props.control}
+          name={props.durationName}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('Limit period')}</FormLabel>
+              <FormControl>
+                <Input
+                  type='number'
+                  min={1}
+                  max={1200}
+                  step={1}
+                  disabled={!enabled}
+                  {...field}
+                  onChange={(event) =>
+                    field.onChange(Number.parseInt(event.target.value, 10) || 0)
+                  }
+                />
+              </FormControl>
+              <FormDescription>{t('seconds')}</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+    </section>
+  )
+}
+
+export function RateLimitSection(props: RateLimitSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const [useVisualEditor, setUseVisualEditor] = useState(true)
@@ -96,17 +208,17 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
   const form = useForm<RateLimitFormValues>({
     resolver: zodResolver(rateLimitSchema),
     mode: 'onChange', // Enable real-time validation
-    defaultValues,
+    defaultValues: props.defaultValues,
   })
 
   useEffect(() => {
-    form.reset(defaultValues)
-  }, [defaultValues, form])
+    form.reset(props.defaultValues)
+  }, [form, props.defaultValues])
 
   const onSubmit = async (values: RateLimitFormValues) => {
     const updates = Object.entries(values).filter(
       ([key, value]) =>
-        value !== defaultValues[key as keyof RateLimitFormValues]
+        value !== props.defaultValues[key as keyof RateLimitFormValues]
     )
 
     for (const [key, value] of updates) {
@@ -123,6 +235,46 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
             isSaving={updateOption.isPending}
             saveLabel='Save rate limits'
           />
+          <div data-settings-form-span='full' className='space-y-1'>
+            <h3 className='text-sm font-semibold'>{t('Route rate limits')}</h3>
+            <p className='text-muted-foreground text-sm'>
+              {t(
+                'Route limits are applied by client IP and update immediately.'
+              )}
+            </p>
+          </div>
+          <RouteRateLimitControls
+            control={form.control}
+            enabledName='GlobalApiRateLimitEnabled'
+            countName='GlobalApiRateLimitCount'
+            durationName='GlobalApiRateLimitDuration'
+            label={t('API route rate limit')}
+            description={t('Controls requests to API endpoints.')}
+          />
+          <RouteRateLimitControls
+            control={form.control}
+            enabledName='GlobalWebRateLimitEnabled'
+            countName='GlobalWebRateLimitCount'
+            durationName='GlobalWebRateLimitDuration'
+            label={t('Web route rate limit')}
+            description={t('Controls frontend page and asset requests.')}
+          />
+          <RouteRateLimitControls
+            control={form.control}
+            enabledName='CriticalRateLimitEnabled'
+            countName='CriticalRateLimitCount'
+            durationName='CriticalRateLimitDuration'
+            label={t('Login and sensitive action rate limit')}
+            description={t(
+              'Controls login, session refresh, password reset, and other sensitive actions.'
+            )}
+          />
+
+          <div data-settings-form-span='full' className='pt-2'>
+            <h3 className='text-sm font-semibold'>
+              {t('Model request rate limits')}
+            </h3>
+          </div>
           <FormField
             control={form.control}
             name='ModelRequestRateLimitEnabled'
@@ -131,9 +283,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                 <SettingsSwitchContent>
                   <FormLabel>{t('Enable rate limiting')}</FormLabel>
                   <FormDescription>
-                    {t(
-                      'This controls model request rate limiting. Web/API route throttling is configured by environment variables and may still return 429.'
-                    )}
+                    {t('Controls model requests separately from route limits.')}
                   </FormDescription>
                 </SettingsSwitchContent>
                 <FormControl>
@@ -161,7 +311,9 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                         step={1}
                         {...field}
                         onChange={(e) =>
-                          field.onChange(parseInt(e.target.value) || 0)
+                          field.onChange(
+                            Number.parseInt(e.target.value, 10) || 0
+                          )
                         }
                       />
                       <span className='text-muted-foreground text-sm'>
@@ -192,7 +344,9 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                         step={1}
                         {...field}
                         onChange={(e) =>
-                          field.onChange(parseInt(e.target.value) || 0)
+                          field.onChange(
+                            Number.parseInt(e.target.value, 10) || 0
+                          )
                         }
                       />
                       <span className='text-muted-foreground text-sm'>
@@ -223,7 +377,9 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                         step={1}
                         {...field}
                         onChange={(e) =>
-                          field.onChange(parseInt(e.target.value) || 1)
+                          field.onChange(
+                            Number.parseInt(e.target.value, 10) || 1
+                          )
                         }
                       />
                       <span className='text-muted-foreground text-sm'>

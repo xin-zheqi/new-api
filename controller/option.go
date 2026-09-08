@@ -143,6 +143,9 @@ func normalizeOptionUpdateValue(key, value, applicationHost string) (string, err
 	case "InvoiceMonthlyLimit":
 		return normalizeBoundedIntegerOption(key, value, 1, 31)
 	default:
+		if normalized, recognized, err := common.NormalizeRouteRateLimitSetting(key, value); recognized {
+			return normalized, err
+		}
 		return value, nil
 	}
 }

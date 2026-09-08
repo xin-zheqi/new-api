@@ -158,35 +158,54 @@ func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gi
 }
 
 func GlobalWebRateLimit() func(c *gin.Context) {
-	if common.GlobalWebRateLimitEnable {
-		return rateLimitFactory(common.GlobalWebRateLimitNum, common.GlobalWebRateLimitDuration, "GW")
-	}
-	return defNext
+	return dynamicIPRateLimitFactory(common.RouteRateLimitGlobalWeb, "GW")
 }
 
 func GlobalAPIRateLimit() func(c *gin.Context) {
-	if common.GlobalApiRateLimitEnable {
-		return rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
-	}
-	return defNext
+	return dynamicIPRateLimitFactory(common.RouteRateLimitGlobalAPI, "GA")
 }
 
 func CriticalRateLimit() func(c *gin.Context) {
-	if common.CriticalRateLimitEnable {
-		return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")
-	}
-	return defNext
+	return dynamicIPRateLimitFactory(common.RouteRateLimitCritical, "CT")
 }
 
 func UserCriticalRateLimit(scope string) func(c *gin.Context) {
-	if !common.CriticalRateLimitEnable {
-		return defNext
+	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
+	return func(c *gin.Context) {
+		config := common.GetRouteRateLimitConfig(common.RouteRateLimitCritical)
+		if !config.Enabled {
+			return
+		}
+		userID := c.GetInt("id")
+		if userID == 0 {
+			c.Status(http.StatusUnauthorized)
+			c.Abort()
+			return
+		}
+		if common.RedisEnabled {
+			userRedisRateLimiter(c, config.MaxRequests, config.DurationSeconds, redisUserRateLimitKey("UC:"+scope, userID))
+			return
+		}
+		key := fmt.Sprintf("UC:%s:user:%d", scope, userID)
+		if !inMemoryRateLimiter.Request(key, config.MaxRequests, config.DurationSeconds) {
+			writeRateLimited(c, config.DurationSeconds)
+		}
 	}
-	return userRateLimitFactory(
-		common.CriticalRateLimitNum,
-		common.CriticalRateLimitDuration,
-		"UC:"+scope,
-	)
+}
+
+func dynamicIPRateLimitFactory(kind common.RouteRateLimitKind, mark string) func(c *gin.Context) {
+	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
+	return func(c *gin.Context) {
+		config := common.GetRouteRateLimitConfig(kind)
+		if !config.Enabled {
+			return
+		}
+		if common.RedisEnabled {
+			redisRateLimiter(c, config.MaxRequests, config.DurationSeconds, mark)
+			return
+		}
+		memoryRateLimiter(c, config.MaxRequests, config.DurationSeconds, mark)
+	}
 }
 
 func DownloadRateLimit() func(c *gin.Context) {

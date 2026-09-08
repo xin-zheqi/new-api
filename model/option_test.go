@@ -3,6 +3,7 @@ package model
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -145,6 +146,85 @@ func TestValidatedNumericOptionsAreNormalizedBeforePersistence(t *testing.T) {
 	assert.Equal(t, 8.5, common.QuotaPerUnit)
 	require.NoError(t, db.Where(commonKeyCol+" = ?", "QuotaPerUnit").First(&option).Error)
 	assert.Equal(t, "8.5", option.Value)
+}
+
+func TestUpdateRouteRateLimitOptionsPersistsAndUpdatesRuntime(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "route-rate-limit.db")), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, sqlDB.Close())
+	})
+	require.NoError(t, db.AutoMigrate(&Option{}))
+	useOptionTestDB(t, db, common.DatabaseTypeSQLite)
+
+	originalConfig := common.GetRouteRateLimitConfig(common.RouteRateLimitCritical)
+	common.OptionMapRWMutex.Lock()
+	originalOptionMap := common.OptionMap
+	common.OptionMap = make(map[string]string)
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = originalOptionMap
+		common.OptionMapRWMutex.Unlock()
+		_, restoreErr := common.ApplyRouteRateLimitSetting(common.CriticalRateLimitEnabledOption, strconv.FormatBool(originalConfig.Enabled))
+		require.NoError(t, restoreErr)
+		_, restoreErr = common.ApplyRouteRateLimitSetting(common.CriticalRateLimitCountOption, strconv.Itoa(originalConfig.MaxRequests))
+		require.NoError(t, restoreErr)
+		_, restoreErr = common.ApplyRouteRateLimitSetting(common.CriticalRateLimitDurationOption, strconv.FormatInt(originalConfig.DurationSeconds, 10))
+		require.NoError(t, restoreErr)
+	})
+
+	require.NoError(t, UpdateOption(common.CriticalRateLimitEnabledOption, "false"))
+	require.NoError(t, UpdateOption(common.CriticalRateLimitCountOption, "0040"))
+	require.NoError(t, UpdateOption(common.CriticalRateLimitDurationOption, " 600 "))
+
+	config := common.GetRouteRateLimitConfig(common.RouteRateLimitCritical)
+	assert.False(t, config.Enabled)
+	assert.Equal(t, 40, config.MaxRequests)
+	assert.Equal(t, int64(600), config.DurationSeconds)
+
+	var options []Option
+	require.NoError(t, db.Order("key").Find(&options).Error)
+	require.Len(t, options, 3)
+	values := make(map[string]string, len(options))
+	for _, option := range options {
+		values[option.Key] = option.Value
+	}
+	assert.Equal(t, "false", values[common.CriticalRateLimitEnabledOption])
+	assert.Equal(t, "40", values[common.CriticalRateLimitCountOption])
+	assert.Equal(t, "600", values[common.CriticalRateLimitDurationOption])
+}
+
+func TestUpdateRouteRateLimitOptionsRejectsInvalidValuesBeforePersistence(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "invalid-route-rate-limit.db")), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, sqlDB.Close())
+	})
+	require.NoError(t, db.AutoMigrate(&Option{}))
+	useOptionTestDB(t, db, common.DatabaseTypeSQLite)
+
+	tests := []struct {
+		key   string
+		value string
+	}{
+		{key: common.GlobalApiRateLimitEnabledOption, value: "yes"},
+		{key: common.GlobalApiRateLimitCountOption, value: "0"},
+		{key: common.GlobalWebRateLimitCountOption, value: "100000001"},
+		{key: common.CriticalRateLimitDurationOption, value: "0"},
+		{key: common.CriticalRateLimitDurationOption, value: "1201"},
+	}
+	for _, test := range tests {
+		require.Error(t, UpdateOption(test.key, test.value), "%s=%s", test.key, test.value)
+	}
+
+	var count int64
+	require.NoError(t, db.Model(&Option{}).Count(&count).Error)
+	assert.Zero(t, count)
 }
 
 func TestGetOptionValueReadsCurrentDatabaseState(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -71,6 +72,54 @@ func TestRedisIPRateLimiterThresholdTTLAndNamespace(t *testing.T) {
 	assert.Equal(t, "3", count)
 	assert.Equal(t, 37*time.Second, redisServer.TTL(key))
 	assert.True(t, redisServer.Exists(legacyKey), "the v2 counter must not touch an old list key")
+}
+
+func TestGlobalAPIRateLimiterReadsSettingsAfterRouterInitialization(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	redisServer, _ := useRateLimitMiniRedis(t)
+	original := common.GetRouteRateLimitConfig(common.RouteRateLimitGlobalAPI)
+	if original.MaxRequests < 1 {
+		original.MaxRequests = 360
+	}
+	if original.DurationSeconds < 1 {
+		original.DurationSeconds = 180
+	}
+	t.Cleanup(func() {
+		_, err := common.ApplyRouteRateLimitSetting(common.GlobalApiRateLimitEnabledOption, strconv.FormatBool(original.Enabled))
+		require.NoError(t, err)
+		_, err = common.ApplyRouteRateLimitSetting(common.GlobalApiRateLimitCountOption, strconv.Itoa(original.MaxRequests))
+		require.NoError(t, err)
+		_, err = common.ApplyRouteRateLimitSetting(common.GlobalApiRateLimitDurationOption, strconv.FormatInt(original.DurationSeconds, 10))
+		require.NoError(t, err)
+	})
+	_, err := common.ApplyRouteRateLimitSetting(common.GlobalApiRateLimitEnabledOption, "true")
+	require.NoError(t, err)
+	_, err = common.ApplyRouteRateLimitSetting(common.GlobalApiRateLimitCountOption, "1")
+	require.NoError(t, err)
+	_, err = common.ApplyRouteRateLimitSetting(common.GlobalApiRateLimitDurationOption, "10")
+	require.NoError(t, err)
+
+	router := gin.New()
+	require.NoError(t, router.SetTrustedProxies(nil))
+	router.GET("/api/test", GlobalAPIRateLimit(), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	_, err = common.ApplyRouteRateLimitSetting(common.GlobalApiRateLimitCountOption, "2")
+	require.NoError(t, err)
+	_, err = common.ApplyRouteRateLimitSetting(common.GlobalApiRateLimitDurationOption, "37")
+	require.NoError(t, err)
+	remoteAddr := "192.0.2.70:12345"
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/api/test", remoteAddr).Code)
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/api/test", remoteAddr).Code)
+	limitedResponse := performRateLimitRequest(router, "/api/test", remoteAddr)
+	assert.Equal(t, http.StatusTooManyRequests, limitedResponse.Code)
+	assert.Equal(t, "37", limitedResponse.Header().Get("Retry-After"))
+	assert.Equal(t, 37*time.Second, redisServer.TTL(redisIPRateLimitKey("GA", "192.0.2.70")))
+
+	_, err = common.ApplyRouteRateLimitSetting(common.GlobalApiRateLimitEnabledOption, "false")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/api/test", remoteAddr).Code)
 }
 
 func TestRedisUserRateLimiterUsesSharedFixedWindow(t *testing.T) {

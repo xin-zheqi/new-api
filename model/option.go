@@ -225,6 +225,18 @@ func InitOptionMap() {
 	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(setting.ModelRequestRateLimitDurationMinutes)
 	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(setting.ModelRequestRateLimitSuccessCount)
 	common.OptionMap["ModelRequestRateLimitGroup"] = setting.ModelRequestRateLimitGroup2JSONString()
+	globalAPIRateLimit := common.GetRouteRateLimitConfig(common.RouteRateLimitGlobalAPI)
+	common.OptionMap[common.GlobalApiRateLimitEnabledOption] = strconv.FormatBool(globalAPIRateLimit.Enabled)
+	common.OptionMap[common.GlobalApiRateLimitCountOption] = strconv.Itoa(globalAPIRateLimit.MaxRequests)
+	common.OptionMap[common.GlobalApiRateLimitDurationOption] = strconv.FormatInt(globalAPIRateLimit.DurationSeconds, 10)
+	globalWebRateLimit := common.GetRouteRateLimitConfig(common.RouteRateLimitGlobalWeb)
+	common.OptionMap[common.GlobalWebRateLimitEnabledOption] = strconv.FormatBool(globalWebRateLimit.Enabled)
+	common.OptionMap[common.GlobalWebRateLimitCountOption] = strconv.Itoa(globalWebRateLimit.MaxRequests)
+	common.OptionMap[common.GlobalWebRateLimitDurationOption] = strconv.FormatInt(globalWebRateLimit.DurationSeconds, 10)
+	criticalRateLimit := common.GetRouteRateLimitConfig(common.RouteRateLimitCritical)
+	common.OptionMap[common.CriticalRateLimitEnabledOption] = strconv.FormatBool(criticalRateLimit.Enabled)
+	common.OptionMap[common.CriticalRateLimitCountOption] = strconv.Itoa(criticalRateLimit.MaxRequests)
+	common.OptionMap[common.CriticalRateLimitDurationOption] = strconv.FormatInt(criticalRateLimit.DurationSeconds, 10)
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
 	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
@@ -331,6 +343,9 @@ func SyncOptions(frequency int) {
 
 func validateOptionValue(key string, value string) error {
 	value = normalizeOptionValue(key, value)
+	if _, recognized, err := common.NormalizeRouteRateLimitSetting(key, value); recognized {
+		return err
+	}
 	if key == operation_setting.ToolPriceOptionKey {
 		return operation_setting.ValidateToolPricesJSON(value)
 	}
@@ -387,6 +402,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func normalizeOptionValue(key string, value string) string {
+	if normalized, recognized, err := common.NormalizeRouteRateLimitSetting(key, value); recognized && err == nil {
+		return normalized
+	}
 	switch key {
 	case "QuotaPerUnit", "USDExchangeRate", "Price", "StripeUnitPrice", "WaffoUnitPrice", "WaffoPancakeUnitPrice", "WechatUnitPrice", "WechatMinTopUp":
 		return strings.TrimSpace(value)
@@ -480,6 +498,9 @@ func updateOptionMap(key string, value string) (err error) {
 func updateOptionMapLocked(key string, value string) (err error) {
 	value = normalizeOptionValue(key, value)
 	common.OptionMap[key] = value
+	if handled, applyErr := common.ApplyRouteRateLimitSetting(key, value); handled {
+		return applyErr
+	}
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
 	if handleConfigUpdate(key, value) {

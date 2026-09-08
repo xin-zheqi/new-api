@@ -30,6 +30,15 @@ const SECURITY_SECTIONS = [
     build: (settings: SecuritySettings) => (
       <RateLimitSection
         defaultValues={{
+          GlobalApiRateLimitEnabled: settings.GlobalApiRateLimitEnabled,
+          GlobalApiRateLimitCount: settings.GlobalApiRateLimitCount,
+          GlobalApiRateLimitDuration: settings.GlobalApiRateLimitDuration,
+          GlobalWebRateLimitEnabled: settings.GlobalWebRateLimitEnabled,
+          GlobalWebRateLimitCount: settings.GlobalWebRateLimitCount,
+          GlobalWebRateLimitDuration: settings.GlobalWebRateLimitDuration,
+          CriticalRateLimitEnabled: settings.CriticalRateLimitEnabled,
+          CriticalRateLimitCount: settings.CriticalRateLimitCount,
+          CriticalRateLimitDuration: settings.CriticalRateLimitDuration,
           ModelRequestRateLimitEnabled: settings.ModelRequestRateLimitEnabled,
           ModelRequestRateLimitCount: settings.ModelRequestRateLimitCount,
           ModelRequestRateLimitSuccessCount:

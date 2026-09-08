@@ -39,6 +39,15 @@ export default function RequestRateLimit(props) {
     ModelRequestRateLimitSuccessCount: 1000,
     ModelRequestRateLimitDurationMinutes: 1,
     ModelRequestRateLimitGroup: '',
+    GlobalApiRateLimitEnabled: true,
+    GlobalApiRateLimitCount: 360,
+    GlobalApiRateLimitDuration: 180,
+    GlobalWebRateLimitEnabled: true,
+    GlobalWebRateLimitCount: 120,
+    GlobalWebRateLimitDuration: 180,
+    CriticalRateLimitEnabled: true,
+    CriticalRateLimitCount: 20,
+    CriticalRateLimitDuration: 1200,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -96,6 +105,27 @@ export default function RequestRateLimit(props) {
     setInputsRow(structuredClone(currentInputs));
     refForm.current.setValues(currentInputs);
   }, [props.options]);
+
+  const routeRateLimits = [
+    {
+      label: t('API 路由速率限制'),
+      enabledField: 'GlobalApiRateLimitEnabled',
+      countField: 'GlobalApiRateLimitCount',
+      durationField: 'GlobalApiRateLimitDuration',
+    },
+    {
+      label: t('Web 路由速率限制'),
+      enabledField: 'GlobalWebRateLimitEnabled',
+      countField: 'GlobalWebRateLimitCount',
+      durationField: 'GlobalWebRateLimitDuration',
+    },
+    {
+      label: t('登录和敏感操作速率限制'),
+      enabledField: 'CriticalRateLimitEnabled',
+      countField: 'CriticalRateLimitCount',
+      durationField: 'CriticalRateLimitDuration',
+    },
+  ];
 
   return (
     <>
@@ -229,9 +259,64 @@ export default function RequestRateLimit(props) {
                 />
               </Col>
             </Row>
+          </Form.Section>
+          <Form.Section text={t('路由速率限制')}>
+            {routeRateLimits.map((rateLimit) => (
+              <Row gutter={16} key={rateLimit.enabledField}>
+                <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                  <Form.Switch
+                    field={rateLimit.enabledField}
+                    label={rateLimit.label}
+                    size='default'
+                    checkedText='｜'
+                    uncheckedText='〇'
+                    onChange={(value) => {
+                      setInputs({
+                        ...inputs,
+                        [rateLimit.enabledField]: value,
+                      });
+                    }}
+                  />
+                </Col>
+                <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                  <Form.InputNumber
+                    field={rateLimit.countField}
+                    label={t('每周期最多请求次数')}
+                    step={1}
+                    min={1}
+                    max={100000000}
+                    suffix={t('次')}
+                    disabled={!inputs[rateLimit.enabledField]}
+                    onChange={(value) => {
+                      setInputs({
+                        ...inputs,
+                        [rateLimit.countField]: String(value),
+                      });
+                    }}
+                  />
+                </Col>
+                <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                  <Form.InputNumber
+                    field={rateLimit.durationField}
+                    label={t('限制周期')}
+                    step={1}
+                    min={1}
+                    max={1200}
+                    suffix={t('秒')}
+                    disabled={!inputs[rateLimit.enabledField]}
+                    onChange={(value) => {
+                      setInputs({
+                        ...inputs,
+                        [rateLimit.durationField]: String(value),
+                      });
+                    }}
+                  />
+                </Col>
+              </Row>
+            ))}
             <Row>
               <Button size='default' onClick={onSubmit}>
-                {t('保存模型速率限制')}
+                {t('保存速率限制设置')}
               </Button>
             </Row>
           </Form.Section>

@@ -215,7 +215,12 @@ function buildTimeConditionExpr(cond) {
     const s = normalized.rangeStart.trim();
     const e = normalized.rangeEnd.trim();
     if (!NUMERIC_LITERAL_REGEX.test(s) || !NUMERIC_LITERAL_REGEX.test(e)) return '';
-    return `${fn} >= ${s} || ${fn} < ${e}`;
+    // A range within the same day needs both bounds. Using `||` for 9-12
+    // makes the condition a tautology because every hour is either >= 9 or
+    // < 12. Keep `||` only for ranges that cross midnight, such as 21-6.
+    return Number(s) > Number(e)
+      ? `${fn} >= ${s} || ${fn} < ${e}`
+      : `${fn} >= ${s} && ${fn} < ${e}`;
   }
   const v = normalized.value.trim();
   if (!NUMERIC_LITERAL_REGEX.test(v)) return '';

@@ -1,0 +1,401 @@
+﻿web/classic/src\components\topup\SubscriptionPlansCard.jsx:49:import { isPaymentMethodEnabled } from './paymentMethodSettings';
+web/classic/src\components\topup\SubscriptionPlansCard.jsx:67:      isPaymentMethodEnabled(method.type, paymentMethodSettings),
+web/classic/src\components\topup\SubscriptionPlansCard.jsx:196:        payment_method: selectedEpayMethod,
+web/classic/src\components\topup\RechargeCard.jsx:60:  getPaymentMethodDisplayName,
+web/classic/src\components\topup\RechargeCard.jsx:61:  isPaymentMethodEnabled,
+web/classic/src\components\topup\RechargeCard.jsx:131:      isPaymentMethodEnabled(
+web/classic/src\components\topup\RechargeCard.jsx:383:                            const displayName = getPaymentMethodDisplayName(
+web/classic/src\components\topup\RechargeCard.jsx:404:                              !isPaymentMethodEnabled(
+web/classic/src\components\topup\RechargeCard.jsx:625:                  label={getPaymentMethodDisplayName(
+web/classic/src\components\topup\paymentMethodSettings.js:84:export function parsePaymentMethodSettings(value) {
+web/classic/src\components\topup\paymentMethodSettings.js:119:          normalizePaymentMethodType(entry.type) ===
+web/classic/src\components\topup\paymentMethodSettings.js:120:          normalizePaymentMethodType(type),
+web/classic/src\components\topup\paymentMethodSettings.js:134:export function getPaymentMethodSetting(type, settings = []) {
+web/classic/src\components\topup\paymentMethodSettings.js:135:  const normalizedType = normalizePaymentMethodType(type);
+web/classic/src\components\topup\paymentMethodSettings.js:139:    (setting) => normalizePaymentMethodType(setting.type) === normalizedType,
+web/classic/src\components\topup\paymentMethodSettings.js:143:function normalizePaymentMethodType(type) {
+web/classic/src\components\topup\paymentMethodSettings.js:148:export function isPaymentMethodEnabled(type, settings = []) {
+web/classic/src\components\topup\paymentMethodSettings.js:149:  return getPaymentMethodSetting(type, settings)?.enabled !== false;
+web/classic/src\components\topup\paymentMethodSettings.js:152:export function isPaymentMethodDefaultName(type, name, t) {
+web/classic/src\components\topup\paymentMethodSettings.js:153:  const normalizedType = normalizePaymentMethodType(type);
+web/classic/src\components\topup\paymentMethodSettings.js:169:export function getPaymentMethodDisplayName(
+web/classic/src\components\topup\paymentMethodSettings.js:176:  const gatewayType = normalizePaymentMethodType(normalizedType);
+web/classic/src\components\topup\paymentMethodSettings.js:177:  const override = getPaymentMethodSetting(gatewayType, settings);
+web/classic/src\components\topup\paymentMethodSettings.js:190:      if (isPaymentMethodDefaultName(gatewayType, override.name, t)) {
+web/classic/src\components\topup\paymentMethodSettings.js:195:    if (fallback && !isPaymentMethodDefaultName(gatewayType, fallback, t)) {
+web/classic/src\components\topup\paymentMethodSettings.js:241:export function getPaymentMethodDefinitions(epayMethodsValue) {
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:48:import { getPaymentMethodDisplayName } from '../paymentMethodSettings';
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:99:    payment_method: 'bank_transfer',
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:197:      payment_method: 'bank_transfer',
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:252:      payment_method: String(manualForm.payment_method || '').trim(),
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:267:      !payload.payment_method ||
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:279:    if (payload.payment_method.length > 50) {
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:325:  const renderPaymentMethod = (pm) => {
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:329:        {getPaymentMethodDisplayName(
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:373:        dataIndex: 'payment_method',
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:374:        key: 'payment_method',
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:375:        render: renderPaymentMethod,
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:567:                value={manualForm.payment_method}
+web/classic/src\components\topup\modals\TopupHistoryModal.jsx:569:                  setManualForm({ ...manualForm, payment_method: value })
+web/classic/src\components\topup\modals\SubscriptionPurchaseModal.jsx:41:  getPaymentMethodDisplayName,
+web/classic/src\components\topup\modals\SubscriptionPurchaseModal.jsx:42:  isPaymentMethodEnabled,
+web/classic/src\components\topup\modals\SubscriptionPurchaseModal.jsx:81:      isPaymentMethodEnabled(method.type, paymentMethodSettings),
+web/classic/src\components\topup\modals\SubscriptionPurchaseModal.jsx:85:    isPaymentMethodEnabled('stripe', paymentMethodSettings) &&
+web/classic/src\components\topup\modals\SubscriptionPurchaseModal.jsx:89:    isPaymentMethodEnabled('creem', paymentMethodSettings) &&
+web/classic/src\components\topup\modals\SubscriptionPurchaseModal.jsx:94:    isPaymentMethodEnabled('wechat_native_v3', paymentMethodSettings);
+web/classic/src\components\topup\modals\SubscriptionPurchaseModal.jsx:95:  const stripeName = getPaymentMethodDisplayName(
+web/classic/src\components\topup\modals\SubscriptionPurchaseModal.jsx:101:  const creemName = getPaymentMethodDisplayName(
+web/classic/src\components\topup\modals\SubscriptionPurchaseModal.jsx:107:  const wechatName = getPaymentMethodDisplayName(
+web/classic/src\components\topup\modals\SubscriptionPurchaseModal.jsx:323:                      label: getPaymentMethodDisplayName(
+web/classic/src\components\topup\modals\PaymentConfirmModal.jsx:24:import { getPaymentMethodDisplayName } from '../paymentMethodSettings';
+web/classic/src\components\topup\modals\PaymentConfirmModal.jsx:55:  const paymentMethodName = getPaymentMethodDisplayName(
+web/classic/src\components\topup\index.jsx:49:  isPaymentMethodEnabled,
+web/classic/src\components\topup\index.jsx:50:  parsePaymentMethodSettings,
+web/classic/src\components\topup\index.jsx:70:    statusState?.status?.enable_online_topup || false,
+web/classic/src\components\topup\index.jsx:75:    statusState?.status?.enable_stripe_topup || false,
+web/classic/src\components\topup\index.jsx:103:  const [paymentMethodSettings, setPaymentMethodSettings] = useState([]);
+web/classic/src\components\topup\index.jsx:133:    default_payment_method: '',
+web/classic/src\components\topup\index.jsx:135:    enable_wechat_topup: false,
+web/classic/src\components\topup\index.jsx:142:    isPaymentMethodEnabled('waffo', paymentMethodSettings)
+web/classic/src\components\topup\index.jsx:373:          payment_method: 'stripe',
+web/classic/src\components\topup\index.jsx:379:          payment_method: payWay,
+web/classic/src\components\topup\index.jsx:438:        payment_method: 'creem',
+web/classic/src\components\topup\index.jsx:740:        const enableStripeTopUp = toBoolean(data.enable_stripe_topup);
+web/classic/src\components\topup\index.jsx:741:        const enableOnlineTopUp = toBoolean(data.enable_online_topup);
+web/classic/src\components\topup\index.jsx:742:        const enableCreemTopUp = toBoolean(data.enable_creem_topup);
+web/classic/src\components\topup\index.jsx:743:        const enableWaffoTopUp = toBoolean(data.enable_waffo_topup);
+web/classic/src\components\topup\index.jsx:745:          data.enable_waffo_pancake_topup,
+web/classic/src\components\topup\index.jsx:747:        const enableWechatTopUp = toBoolean(data.enable_wechat_topup);
+web/classic/src\components\topup\index.jsx:753:        const parsedPaymentMethodSettings = parsePaymentMethodSettings(
+web/classic/src\components\topup\index.jsx:754:          data.payment_method_settings,
+web/classic/src\components\topup\index.jsx:756:        setPaymentMethodSettings(parsedPaymentMethodSettings);
+web/classic/src\components\topup\index.jsx:758:        let payMethods = parseArray(data.pay_methods);
+web/classic/src\components\topup\index.jsx:768:                isPaymentMethodEnabled(
+web/classic/src\components\topup\index.jsx:770:                  parsedPaymentMethodSettings,
+web/classic/src\components\topup\index.jsx:816:          // 这个逻辑现在由后端处理，如果 Stripe 启用，后端会在 pay_methods 中包含它
+web/classic/src\components\topup\index.jsx:820:            data.default_payment_method || '',
+web/classic/src\components\topup\index.jsx:863:            data.waffo_pay_methods,
+web/classic/src\components\topup\index.jsx:884:            enable_wechat_topup: enableWechatTopUp,
+web/classic/src\components\topup\index.jsx:887:            default_payment_method: defaultPayment,
+web/classic/src\components\topup\index.jsx:888:            pay_methods: payMethods,
+web/classic/src\components\topup\index.jsx:889:            payment_method_settings: parsedPaymentMethodSettings,
+web/classic/src\components\topup\index.jsx:890:            enable_online_topup: enableOnlineTopUp,
+web/classic/src\components\topup\index.jsx:891:            enable_stripe_topup: enableStripeTopUp,
+web/classic/src\components\topup\index.jsx:892:            enable_creem_topup: enableCreemTopUp,
+web/classic/src\components\topup\index.jsx:893:            enable_waffo_topup: enableWaffoTopUp,
+web/classic/src\components\topup\index.jsx:894:            enable_waffo_pancake_topup: enableWaffoPancakeTopUp,
+web/classic/src\hooks\usage-logs\useUsageLogsData.jsx:805:          if (adminInfo.payment_method) {
+web/classic/src\hooks\usage-logs\useUsageLogsData.jsx:808:              value: adminInfo.payment_method,
+web/classic/src\hooks\usage-logs\useUsageLogsData.jsx:811:          if (adminInfo.callback_payment_method) {
+web/classic/src\hooks\usage-logs\useUsageLogsData.jsx:814:              value: adminInfo.callback_payment_method,
+web/src\features\wallet\types.ts:85:  payment_method: 'creem'
+web/src\features\wallet\types.ts:91:export interface PaymentMethod {
+web/src\features\wallet\types.ts:105:export interface PaymentMethodSetting {
+web/src\features\wallet\types.ts:130:  enable_online_topup: boolean
+web/src\features\wallet\types.ts:132:  enable_wechat_topup?: boolean
+web/src\features\wallet\types.ts:134:  enable_stripe_topup: boolean
+web/src\features\wallet\types.ts:136:  pay_methods: PaymentMethod[]
+web/src\features\wallet\types.ts:138:  payment_method_settings?: PaymentMethodSetting[]
+web/src\features\wallet\types.ts:140:  default_payment_method?: string
+web/src\features\wallet\types.ts:159:  enable_creem_topup?: boolean
+web/src\features\wallet\types.ts:163:  enable_waffo_topup?: boolean
+web/src\features\wallet\types.ts:165:  waffo_pay_methods?: WaffoPayMethod[]
+web/src\features\wallet\types.ts:169:  enable_waffo_pancake_topup?: boolean
+web/src\features\wallet\types.ts:219:  payment_method: string
+web/src\features\wallet\types.ts:328:  payment_method: string
+web/src\features\wallet\types.ts:361:  payment_method: string
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:24:  getPaymentMethodDisplayName,
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:25:  getPaymentMethodDefinitions,
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:26:  getPaymentMethodSetting,
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:27:  isPaymentMethodDefaultName,
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:28:  parsePaymentMethodSettings,
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:33:export default function PaymentMethodSettingsEditor({
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:39:  const overrides = useMemo(() => parsePaymentMethodSettings(value), [value]);
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:41:    () => getPaymentMethodDefinitions(epayMethodsValue),
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:48:      !isPaymentMethodDefaultName(definition.type, definition.configuredName, t)
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:70:      nextDraftNames[definition.type] = getPaymentMethodDisplayName(
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:81:    const current = getPaymentMethodSetting(definition.type, overrides);
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:112:    const usesDefaultName = isPaymentMethodDefaultName(
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:158:          const override = getPaymentMethodSetting(definition.type, overrides);
+web/classic/src\pages\Setting\Payment\PaymentMethodSettingsEditor.jsx:160:          const name = getPaymentMethodDisplayName(
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:32:import PaymentMethodSettingsEditor from './PaymentMethodSettingsEditor';
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:40:    PaymentMethodSettings: options.PaymentMethodSettings || '[]',
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:75:    // PaymentMethodSettings is controlled by the visual editor in a
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:78:    // handlePaymentMethodSettingsChange is the only writer for this value.
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:80:    delete formValues.PaymentMethodSettings;
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:84:  const handlePaymentMethodSettingsChange = (value) => {
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:85:    setInputs((current) => ({ ...current, PaymentMethodSettings: value }));
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:86:    formApiRef.current?.setValue('PaymentMethodSettings', value);
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:129:      originInputs.PaymentMethodSettings !== inputs.PaymentMethodSettings &&
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:130:      (!verifyJSON(inputs.PaymentMethodSettings) ||
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:131:        !Array.isArray(JSON.parse(inputs.PaymentMethodSettings || '[]')))
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:177:        normalizeJson(originInputs.PaymentMethodSettings) !==
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:178:        normalizeJson(inputs.PaymentMethodSettings)
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:182:          value: inputs.PaymentMethodSettings.trim() || '[]',
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:332:              <PaymentMethodSettingsEditor
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:333:                value={inputs.PaymentMethodSettings}
+web/classic/src\pages\Setting\Payment\SettingsGeneralPayment.jsx:335:                onChange={handlePaymentMethodSettingsChange}
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:4:  getPaymentMethodDisplayName,
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:5:  isPaymentMethodEnabled,
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:6:  parsePaymentMethodSettings,
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:12:      parsePaymentMethodSettings([
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:24:      parsePaymentMethodSettings([
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:37:      parsePaymentMethodSettings('[{"type":"creem","name":"Creem"}]')
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:39:    expect(parsePaymentMethodSettings('{"type":"stripe"}')).toEqual([])
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:40:    expect(parsePaymentMethodSettings('{bad json')).toEqual([])
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:48:      getPaymentMethodDisplayName('alipay', '支付宝扫码', [], translate)
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:51:      getPaymentMethodDisplayName(
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:59:      getPaymentMethodDisplayName(
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:67:      getPaymentMethodDisplayName('alipay', '支付宝', [], translate)
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:70:      getPaymentMethodDisplayName('wxpay', '微信', [], translate)
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:75:    expect(isPaymentMethodEnabled('stripe', undefined)).toBe(true)
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:77:      isPaymentMethodEnabled('stripe', [
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:82:      isPaymentMethodEnabled('stripe', [
+web/src\features\wallet\lib\__tests__\payment-methods.test.ts:90:      getPaymentMethodDisplayName(
+web/src\features\wallet\lib\payment.ts:25:import type { PaymentMethod, PresetAmount, TopupInfo } from '../types'
+web/src\features\wallet\lib\payment.ts:74:  paymentMethod: PaymentMethod,
+web/src\features\wallet\lib\payment.ts:102:    topupInfo.pay_methods?.map((method) => method.type) ?? []
+web/src\features\wallet\lib\payment.ts:104:  const configuredDefault = topupInfo.default_payment_method?.trim()
+web/src\features\wallet\lib\payment.ts:112:    topupInfo.enable_wechat_topup &&
+web/src\features\wallet\lib\payment.ts:118:  if (topupInfo.pay_methods?.length > 0) {
+web/src\features\wallet\lib\payment.ts:119:    return topupInfo.pay_methods[0].type
+web/src\features\wallet\lib\payment.ts:122:  if (topupInfo.enable_stripe_topup) {
+web/src\features\wallet\lib\payment.ts:126:  if (topupInfo.enable_waffo_topup) {
+web/src\features\wallet\lib\payment.ts:130:  if (topupInfo.enable_waffo_pancake_topup) {
+web/src\features\wallet\lib\payment.ts:134:  if (topupInfo.enable_wechat_topup) {
+web/src\features\wallet\lib\payment.ts:178:    topupInfo.pay_methods?.find((method) => method.type === type)?.min_topup
+web/src\features\wallet\lib\payment.test.ts:37:    enable_online_topup: false,
+web/src\features\wallet\lib\payment.test.ts:38:    enable_stripe_topup: false,
+web/src\features\wallet\lib\payment.test.ts:39:    enable_creem_topup: false,
+web/src\features\wallet\lib\payment.test.ts:40:    enable_waffo_topup: false,
+web/src\features\wallet\lib\payment.test.ts:41:    enable_waffo_pancake_topup: false,
+web/src\features\wallet\lib\payment.test.ts:42:    enable_wechat_topup: false,
+web/src\features\wallet\lib\payment.test.ts:44:    pay_methods: [],
+web/src\features\wallet\lib\payment.test.ts:50:    waffo_pay_methods: [],
+web/src\features\wallet\lib\payment.test.ts:83:      enable_wechat_topup: true,
+web/src\features\wallet\lib\payment.test.ts:86:      pay_methods: [
+web/src\features\wallet\lib\payment.test.ts:101:      enable_online_topup: true,
+web/src\features\wallet\lib\payment.test.ts:102:      enable_wechat_topup: true,
+web/src\features\wallet\lib\payment.test.ts:105:      pay_methods: [
+web/src\features\wallet\lib\payment.test.ts:121:      enable_online_topup: true,
+web/src\features\wallet\lib\payment.test.ts:122:      enable_wechat_topup: true,
+web/src\features\wallet\lib\payment.test.ts:123:      default_payment_method: PAYMENT_TYPES.WECHAT_NATIVE,
+web/src\features\wallet\lib\payment.test.ts:124:      pay_methods: [
+web/src\features\wallet\lib\payment-methods.ts:20:import type { PaymentMethodSetting } from "../types";
+web/src\features\wallet\lib\payment-methods.ts:22:export type { PaymentMethodSetting } from "../types";
+web/src\features\wallet\lib\payment-methods.ts:30:export function parsePaymentMethodSettings(
+web/src\features\wallet\lib\payment-methods.ts:32:): PaymentMethodSetting[] {
+web/src\features\wallet\lib\payment-methods.ts:49:  const settings: PaymentMethodSetting[] = [];
+web/src\features\wallet\lib\payment-methods.ts:79:          normalizePaymentMethodType(entry.type) ===
+web/src\features\wallet\lib\payment-methods.ts:80:          normalizePaymentMethodType(type),
+web/src\features\wallet\lib\payment-methods.ts:95:export function getPaymentMethodSetting(
+web/src\features\wallet\lib\payment-methods.ts:97:  settings: PaymentMethodSetting[] | undefined,
+web/src\features\wallet\lib\payment-methods.ts:98:): PaymentMethodSetting | undefined {
+web/src\features\wallet\lib\payment-methods.ts:99:  const normalizedType = normalizePaymentMethodType(type);
+web/src\features\wallet\lib\payment-methods.ts:103:    (setting) => normalizePaymentMethodType(setting.type) === normalizedType,
+web/src\features\wallet\lib\payment-methods.ts:107:function normalizePaymentMethodType(type: string): string {
+web/src\features\wallet\lib\payment-methods.ts:112:export function isPaymentMethodEnabled(
+web/src\features\wallet\lib\payment-methods.ts:114:  settings: PaymentMethodSetting[] | undefined,
+web/src\features\wallet\lib\payment-methods.ts:116:  return getPaymentMethodSetting(type, settings)?.enabled !== false;
+web/src\features\wallet\lib\payment-methods.ts:143:export function isPaymentMethodDefaultName(
+web/src\features\wallet\lib\payment-methods.ts:148:  const gatewayType = normalizePaymentMethodType(type);
+web/src\features\wallet\lib\payment-methods.ts:160:export function getPaymentMethodDisplayName(
+web/src\features\wallet\lib\payment-methods.ts:163:  settings: PaymentMethodSetting[] | undefined,
+web/src\features\wallet\lib\payment-methods.ts:167:  const gatewayType = normalizePaymentMethodType(normalizedType);
+web/src\features\wallet\lib\payment-methods.ts:168:  const override = getPaymentMethodSetting(gatewayType, settings);
+web/src\features\wallet\lib\payment-methods.ts:183:    if (isPaymentMethodDefaultName(gatewayType, override.name, translate)) {
+web/src\features\wallet\lib\payment-methods.ts:192:      !isPaymentMethodDefaultName(gatewayType, fallback, translate))
+web/src\features\wallet\lib\billing.ts:24:  getPaymentMethodDisplayName,
+web/src\features\wallet\lib\billing.ts:25:  type PaymentMethodSetting,
+web/src\features\wallet\lib\billing.ts:82:export function getPaymentMethodName(
+web/src\features\wallet\lib\billing.ts:85:  settings?: PaymentMethodSetting[]
+web/src\features\wallet\lib\billing.ts:87:  return getPaymentMethodDisplayName(
+web/src\features\wallet\index.tsx:60:  PaymentMethod,
+web/src\features\wallet\index.tsx:77:  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+web/src\features\wallet\index.tsx:78:    useState<PaymentMethod>()
+web/src\features\wallet\index.tsx:169:    return selectedPaymentMethod?.type || getDefaultPaymentType(topupInfo)
+web/src\features\wallet\index.tsx:170:  }, [selectedPaymentMethod, topupInfo])
+web/src\features\wallet\index.tsx:193:  const handlePaymentMethodSelect = async (method: PaymentMethod) => {
+web/src\features\wallet\index.tsx:194:    setSelectedPaymentMethod(method)
+web/src\features\wallet\index.tsx:215:    if (!selectedPaymentMethod) return
+web/src\features\wallet\index.tsx:217:    if (isWechatNativePayment(selectedPaymentMethod.type)) {
+web/src\features\wallet\index.tsx:237:      selectedPaymentMethod,
+web/src\features\wallet\index.tsx:296:    setSelectedPaymentMethod({
+web/src\features\wallet\index.tsx:357:                  onPaymentMethodSelect={handlePaymentMethodSelect}
+web/src\features\wallet\index.tsx:369:                  enableCreemTopup={topupInfo?.enable_creem_topup}
+web/src\features\wallet\index.tsx:371:                  enableWaffoTopup={topupInfo?.enable_waffo_topup}
+web/src\features\wallet\index.tsx:372:                  waffoPayMethods={topupInfo?.waffo_pay_methods}
+web/src\features\wallet\index.tsx:376:                    topupInfo?.enable_waffo_pancake_topup
+web/src\features\wallet\index.tsx:378:                  enableWechatTopup={topupInfo?.enable_wechat_topup}
+web/src\features\wallet\index.tsx:387:                enableWechat={topupInfo?.enable_wechat_topup}
+web/src\features\wallet\index.tsx:419:        paymentMethod={selectedPaymentMethod}
+web/src\features\wallet\index.tsx:426:        paymentMethodSettings={topupInfo?.payment_method_settings}
+web/src\features\wallet\index.tsx:440:        paymentMethodSettings={topupInfo?.payment_method_settings}
+web/src\features\wallet\hooks\use-topup-info.ts:26:  isPaymentMethodEnabled,
+web/src\features\wallet\hooks\use-topup-info.ts:27:  parsePaymentMethodSettings,
+web/src\features\wallet\hooks\use-topup-info.ts:33:  PaymentMethod,
+web/src\features\wallet\hooks\use-topup-info.ts:58:function parsePaymentMethods(
+web/src\features\wallet\hooks\use-topup-info.ts:62:  paymentMethodSettings?: ReturnType<typeof parsePaymentMethodSettings>
+web/src\features\wallet\hooks\use-topup-info.ts:63:): PaymentMethod[] {
+web/src\features\wallet\hooks\use-topup-info.ts:107:        isPaymentMethodEnabled(item.type, paymentMethodSettings)
+web/src\features\wallet\hooks\use-topup-info.ts:210:      const paymentMethodSettings = parsePaymentMethodSettings(
+web/src\features\wallet\hooks\use-topup-info.ts:211:        response.data.payment_method_settings
+web/src\features\wallet\hooks\use-topup-info.ts:215:        payment_method_settings: paymentMethodSettings,
+web/src\features\wallet\hooks\use-topup-info.ts:216:        pay_methods: parsePaymentMethods(
+web/src\features\wallet\hooks\use-topup-info.ts:217:          response.data.pay_methods,
+web/src\features\wallet\hooks\use-topup-info.ts:225:        waffo_pay_methods: parseWaffoPayMethods(
+web/src\features\wallet\hooks\use-topup-info.ts:226:          response.data.waffo_pay_methods
+web/src\features\wallet\hooks\use-topup-info.ts:239:      if (typeof response.data.default_payment_method === 'string') {
+web/src\features\wallet\hooks\use-topup-info.ts:240:        processedData.default_payment_method =
+web/src\features\wallet\hooks\use-topup-info.ts:241:          response.data.default_payment_method.trim() || undefined
+web/src\features\wallet\hooks\use-payment.ts:130:              payment_method: 'stripe',
+web/src\features\wallet\hooks\use-payment.ts:134:              payment_method: paymentType,
+web/src\features\wallet\hooks\use-creem-payment.ts:38:        payment_method: 'creem',
+web/src\features\wallet\components\subscription-plans-card.tsx:62:import type { PaymentMethod, TopupInfo } from '../types'
+web/src\features\wallet\components\subscription-plans-card.tsx:63:import { isPaymentMethodEnabled } from '../lib/payment-methods'
+web/src\features\wallet\components\subscription-plans-card.tsx:75:  payMethods: PaymentMethod[] = [],
+web/src\features\wallet\components\subscription-plans-card.tsx:76:  paymentMethodSettings: TopupInfo['payment_method_settings'] = []
+web/src\features\wallet\components\subscription-plans-card.tsx:77:): PaymentMethod[] {
+web/src\features\wallet\components\subscription-plans-card.tsx:90:      isPaymentMethodEnabled(method.type, paymentMethodSettings)
+web/src\features\wallet\components\subscription-plans-card.tsx:137:  const enableStripe = !!topupInfo?.enable_stripe_topup
+web/src\features\wallet\components\subscription-plans-card.tsx:138:  const enableCreem = !!topupInfo?.enable_creem_topup
+web/src\features\wallet\components\subscription-plans-card.tsx:139:  const enableWaffoPancake = !!topupInfo?.enable_waffo_pancake_topup
+web/src\features\wallet\components\subscription-plans-card.tsx:140:  const enableOnlineTopUp = !!topupInfo?.enable_online_topup
+web/src\features\wallet\components\subscription-plans-card.tsx:144:        topupInfo?.pay_methods,
+web/src\features\wallet\components\subscription-plans-card.tsx:145:        topupInfo?.payment_method_settings
+web/src\features\wallet\components\subscription-plans-card.tsx:147:    [topupInfo?.pay_methods, topupInfo?.payment_method_settings]
+web/src\features\wallet\components\subscription-plans-card.tsx:681:        paymentMethodSettings={topupInfo?.payment_method_settings}
+web/src\features\wallet\components\recharge-form-card.tsx:47:  getPaymentMethodDisplayName,
+web/src\features\wallet\components\recharge-form-card.tsx:50:  PaymentMethod,
+web/src\features\wallet\components\recharge-form-card.tsx:67:  onPaymentMethodSelect: (method: PaymentMethod) => void
+web/src\features\wallet\components\recharge-form-card.tsx:100:  onPaymentMethodSelect,
+web/src\features\wallet\components\recharge-form-card.tsx:142:    topupInfo?.enable_online_topup ||
+web/src\features\wallet\components\recharge-form-card.tsx:143:    topupInfo?.enable_stripe_topup ||
+web/src\features\wallet\components\recharge-form-card.tsx:148:  const hasStandardPaymentMethods =
+web/src\features\wallet\components\recharge-form-card.tsx:149:    Array.isArray(topupInfo?.pay_methods) && topupInfo.pay_methods.length > 0
+web/src\features\wallet\components\recharge-form-card.tsx:150:  const hasWaffoPaymentMethods =
+web/src\features\wallet\components\recharge-form-card.tsx:384:                {hasStandardPaymentMethods ? (
+web/src\features\wallet\components\recharge-form-card.tsx:386:                    {topupInfo?.pay_methods?.map((method) => {
+web/src\features\wallet\components\recharge-form-card.tsx:392:                      const displayName = getPaymentMethodDisplayName(
+web/src\features\wallet\components\recharge-form-card.tsx:395:                        topupInfo?.payment_method_settings,
+web/src\features\wallet\components\recharge-form-card.tsx:411:                          onClick={() => onPaymentMethodSelect(method)}
+web/src\features\wallet\components\recharge-form-card.tsx:457:                {!hasStandardPaymentMethods && !hasWaffoPaymentMethods && (
+web/src\features\wallet\components\recharge-form-card.tsx:469:                hasWaffoPaymentMethods &&
+web/src\features\wallet\components\recharge-form-card.tsx:473:                      {getPaymentMethodDisplayName(
+web/src\features\wallet\components\recharge-form-card.tsx:476:                        topupInfo?.payment_method_settings,
+web/src\features\wallet\components\recharge-form-card.tsx:572:              {getPaymentMethodDisplayName(
+web/src\features\wallet\components\recharge-form-card.tsx:575:                topupInfo?.payment_method_settings,
+web/classic/src\components\table\subscriptions\index.jsx:37:  const enableEpay = !!statusState?.status?.enable_online_topup;
+web/src\features\wallet\components\dialogs\__tests__\manual-topup-dialog.test.tsx:132:        payment_method: 'wire_transfer',
+web/src\features\wallet\components\dialogs\payment-confirm-dialog.tsx:39:  getPaymentMethodDisplayName,
+web/src\features\wallet\components\dialogs\payment-confirm-dialog.tsx:41:import type { PaymentMethod, PaymentMethodSetting } from '../../types'
+web/src\features\wallet\components\dialogs\payment-confirm-dialog.tsx:49:  paymentMethod: PaymentMethod | undefined
+web/src\features\wallet\components\dialogs\payment-confirm-dialog.tsx:54:  paymentMethodSettings?: PaymentMethodSetting[]
+web/src\features\wallet\components\dialogs\payment-confirm-dialog.tsx:75:    ? getPaymentMethodDisplayName(
+web/src\features\wallet\components\dialogs\manual-topup-dialog.tsx:64:      payment_method: z
+web/src\features\wallet\components\dialogs\manual-topup-dialog.tsx:151:      payment_method: 'bank_transfer',
+web/src\features\wallet\components\dialogs\manual-topup-dialog.tsx:166:      payment_method: 'bank_transfer',
+web/src\features\wallet\components\dialogs\manual-topup-dialog.tsx:222:        payment_method: values.payment_method.trim(),
+web/src\features\wallet\components\dialogs\manual-topup-dialog.tsx:319:              name='payment_method'
+web/src\features\wallet\components\dialogs\billing-history-dialog.tsx:68:  getPaymentMethodName,
+web/src\features\wallet\components\dialogs\billing-history-dialog.tsx:72:import type { PaymentMethodSetting } from '../../types'
+web/src\features\wallet\components\dialogs\billing-history-dialog.tsx:78:  paymentMethodSettings?: PaymentMethodSetting[]
+web/src\features\wallet\components\dialogs\billing-history-dialog.tsx:310:                              {getPaymentMethodName(
+web/src\features\wallet\components\dialogs\billing-history-dialog.tsx:311:                                record.payment_method,
+web/src\features\usage-logs\types.ts:137:    payment_method?: string
+web/src\features\usage-logs\types.ts:138:    callback_payment_method?: string
+web/classic/src\components\settings\PaymentSetting.jsx:46:    PaymentMethodSettings: '[]',
+web/classic/src\components\settings\PaymentSetting.jsx:170:              newInputs.PaymentMethodSettings = JSON.stringify(
+web/classic/src\components\settings\PaymentSetting.jsx:176:              newInputs.PaymentMethodSettings = '[]';
+web/src\features\usage-logs\components\dialogs\details-dialog.tsx:516:          adminInfo.payment_method && {
+web/src\features\usage-logs\components\dialogs\details-dialog.tsx:518:            value: adminInfo.payment_method,
+web/src\features\usage-logs\components\dialogs\details-dialog.tsx:520:          adminInfo.callback_payment_method && {
+web/src\features\usage-logs\components\dialogs\details-dialog.tsx:522:            value: adminInfo.callback_payment_method,
+web/src\features\subscriptions\api.ts:324:  data: SubscriptionPayRequest & { payment_method: string }
+web/src\features\subscriptions\types.ts:95:  payment_method?: string
+web/src\features\system-settings\billing\section-registry.tsx:144:          PaymentMethodSettings:
+web/src\features\system-settings\integrations\payment-settings-section.tsx:70:import { PaymentMethodSettingsVisualEditor } from './payment-method-settings-visual-editor'
+web/src\features\system-settings\integrations\payment-settings-section.tsx:71:import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
+web/src\features\system-settings\integrations\payment-settings-section.tsx:146:      PaymentMethodSettings: z.string().superRefine((value, ctx) => {
+web/src\features\system-settings\integrations\payment-settings-section.tsx:515:      PaymentMethodSettings: formatJsonForEditor(
+web/src\features\system-settings\integrations\payment-settings-section.tsx:516:        initialFormValues.PaymentMethodSettings ?? '[]'
+web/src\features\system-settings\integrations\payment-settings-section.tsx:575:      PaymentMethodSettings: formatJsonForEditor(
+web/src\features\system-settings\integrations\payment-settings-section.tsx:576:        parsedDefaults.PaymentMethodSettings ?? '[]'
+web/src\features\system-settings\integrations\payment-settings-section.tsx:595:      PaymentMethodSettings: (values.PaymentMethodSettings ?? '').trim(),
+web/src\features\system-settings\integrations\payment-settings-section.tsx:657:      PaymentMethodSettings: (
+web/src\features\system-settings\integrations\payment-settings-section.tsx:658:        initialRef.current.PaymentMethodSettings ?? ''
+web/src\features\system-settings\integrations\payment-settings-section.tsx:751:      normalizeJsonForComparison(sanitized.PaymentMethodSettings) !==
+web/src\features\system-settings\integrations\payment-settings-section.tsx:752:      normalizeJsonForComparison(initial.PaymentMethodSettings)
+web/src\features\system-settings\integrations\payment-settings-section.tsx:756:        value: sanitized.PaymentMethodSettings,
+web/src\features\system-settings\integrations\payment-settings-section.tsx:1278:                  name='PaymentMethodSettings'
+web/src\features\system-settings\integrations\payment-settings-section.tsx:1283:                        <PaymentMethodSettingsVisualEditor
+web/src\features\system-settings\integrations\payment-settings-section.tsx:1332:                          <PaymentMethodsVisualEditor
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:37:  PaymentMethodDialog,
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:38:  type PaymentMethodData,
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:41:type PaymentMethodsVisualEditorProps = {
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:57:function getEffectiveIconName(method: PaymentMethodData) {
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:61:export function PaymentMethodsVisualEditor({
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:64:}: PaymentMethodsVisualEditorProps) {
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:112:  const [editData, setEditData] = useState<PaymentMethodData | null>(null)
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:123:      (item): item is PaymentMethodData =>
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:147:  const handleSave = (data: PaymentMethodData) => {
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:158:        (item): item is PaymentMethodData =>
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:178:  const handleDelete = (method: PaymentMethodData) => {
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:200:  const handleEdit = (method: PaymentMethodData) => {
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:210:  const handleInsertTemplate = (template: PaymentMethodData) => {
+web/src\features\system-settings\integrations\payment-methods-visual-editor.tsx:466:      <PaymentMethodDialog
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:26:  getPaymentMethodDisplayName,
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:27:  getPaymentMethodSetting,
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:28:  isPaymentMethodDefaultName,
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:29:  parsePaymentMethodSettings,
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:32:type PaymentMethodSettingsVisualEditorProps = {
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:38:type PaymentMethodSettingEntry = {
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:44:type PaymentMethodDefinition = {
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:52:const PAYMENT_METHOD_DEFINITIONS: PaymentMethodDefinition[] = [
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:81:function parseEntries(value: string): PaymentMethodSettingEntry[] {
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:82:  return parsePaymentMethodSettings(value);
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:85:function parseEpayDefinitions(value: string): PaymentMethodDefinition[] {
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:123:export function PaymentMethodSettingsVisualEditor({
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:127:}: PaymentMethodSettingsVisualEditorProps) {
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:157:    (definition: PaymentMethodDefinition) => {
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:160:        !isPaymentMethodDefaultName(
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:186:      nextDrafts[definition.type] = getPaymentMethodDisplayName(
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:197:    definition: PaymentMethodDefinition,
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:198:    patch: Partial<PaymentMethodSettingEntry>,
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:200:    const current = getPaymentMethodSetting(definition.type, overrides);
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:245:    const usesDefaultName = isPaymentMethodDefaultName(
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:277:          const override = getPaymentMethodSetting(definition.type, overrides);
+web/src\features\system-settings\integrations\payment-method-settings-visual-editor.tsx:279:          const resolvedName = getPaymentMethodDisplayName(
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:40:const createPaymentMethodDialogSchema = (t: (key: string) => string) =>
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:48:type PaymentMethodDialogFormValues = z.infer<
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:49:  ReturnType<typeof createPaymentMethodDialogSchema>
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:54:export type PaymentMethodData = {
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:62:type PaymentMethodDialogProps = {
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:65:  onSave: (data: PaymentMethodData) => void
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:66:  editData?: PaymentMethodData | null
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:78:export function PaymentMethodDialog({
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:83:}: PaymentMethodDialogProps) {
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:86:  const paymentMethodDialogSchema = createPaymentMethodDialogSchema(t)
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:116:  const form = useForm<PaymentMethodDialogFormValues>({
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:146:  const handleSubmit = (values: PaymentMethodDialogFormValues) => {
+web/src\features\system-settings\integrations\payment-method-dialog.tsx:147:    const data: PaymentMethodData = {
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:47:  getPaymentMethodDisplayName,
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:48:  isPaymentMethodEnabled,
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:50:import type { PaymentMethodSetting } from '@/features/wallet/types'
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:63:interface PaymentMethod {
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:77:  epayMethods?: PaymentMethod[]
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:78:  paymentMethodSettings?: PaymentMethodSetting[]
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:103:        isPaymentMethodEnabled(method.type, props.paymentMethodSettings)
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:117:    isPaymentMethodEnabled('stripe', props.paymentMethodSettings) &&
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:121:    isPaymentMethodEnabled('creem', props.paymentMethodSettings) &&
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:125:    isPaymentMethodEnabled('waffo_pancake', props.paymentMethodSettings) &&
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:130:      isPaymentMethodEnabled(method.type, props.paymentMethodSettings)
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:136:    isPaymentMethodEnabled('wechat_native_v3', props.paymentMethodSettings)
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:145:        ? getPaymentMethodDisplayName(
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:155:  const stripeName = getPaymentMethodDisplayName(
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:161:  const creemName = getPaymentMethodDisplayName(
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:167:  const pancakeName = getPaymentMethodDisplayName(
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:173:  const wechatName = getPaymentMethodDisplayName(
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:281:        payment_method: selectedEpayMethod,
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:513:                    label: getPaymentMethodDisplayName(
+web/src\features\subscriptions\components\dialogs\subscription-purchase-dialog.tsx:531:                          {getPaymentMethodDisplayName(

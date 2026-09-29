@@ -80,7 +80,11 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
-	updateOpenAIImageCount(info, gjson.GetBytes(responseBody, "data.#").Int())
+	// Count actual image payloads rather than the number of entries under data.
+	// Some providers return one object, split one image across url/b64_json
+	// entries, or include revised_prompt-only entries; charging data.# would
+	// overcharge or undercharge those responses.
+	updateOpenAIImageCount(info, openaiImageResponseCount(responseBody))
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)

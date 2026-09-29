@@ -165,7 +165,7 @@ func wechatPaymentSnapshotDecimal(amount decimal.Decimal) (model.SubscriptionPay
 	return snapshot, minorUnits, nil
 }
 
-func wechatSubscriptionPaymentSnapshot(plan *model.SubscriptionPlan, unitPrice float64) (model.SubscriptionPaymentSnapshot, int64, error) {
+func wechatSubscriptionPaymentSnapshot(plan *model.SubscriptionPlan, usdExchangeRate float64) (model.SubscriptionPaymentSnapshot, int64, error) {
 	if plan == nil || math.IsNaN(plan.PriceAmount) || math.IsInf(plan.PriceAmount, 0) || plan.PriceAmount <= 0 {
 		return model.SubscriptionPaymentSnapshot{}, 0, errors.New("invalid subscription payment amount")
 	}
@@ -176,10 +176,10 @@ func wechatSubscriptionPaymentSnapshot(plan *model.SubscriptionPlan, unitPrice f
 	var amount decimal.Decimal
 	switch currency {
 	case "USD":
-		if !isFinitePaymentValue(unitPrice) || unitPrice <= 0 {
+		if !isFinitePaymentValue(usdExchangeRate) || usdExchangeRate <= 0 {
 			return model.SubscriptionPaymentSnapshot{}, 0, errors.New("invalid WeChat exchange rate")
 		}
-		amount = decimal.NewFromFloat(plan.PriceAmount).Mul(decimal.NewFromFloat(unitPrice))
+		amount = decimal.NewFromFloat(plan.PriceAmount).Mul(decimal.NewFromFloat(usdExchangeRate))
 	case "CNY":
 		amount = decimal.NewFromFloat(plan.PriceAmount)
 	default:
@@ -447,7 +447,10 @@ func RequestWechatSubscriptionPay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
-	snapshot, amountMinor, err := wechatSubscriptionPaymentSnapshot(plan, wechatSettings.UnitPrice)
+	// WechatUnitPrice is deliberately limited to wallet top-ups. Subscription
+	// plans use the site's USD-to-CNY exchange rate, so changing the recharge
+	// ratio cannot silently change the price of an existing subscription plan.
+	snapshot, amountMinor, err := wechatSubscriptionPaymentSnapshot(plan, operation_setting.USDExchangeRate)
 	if err != nil {
 		common.ApiErrorMsg(c, "套餐金额配置错误")
 		return

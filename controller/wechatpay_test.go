@@ -494,45 +494,45 @@ func TestWechatPaymentSnapshotConvertsCNYMajorUnitsToFenOnce(t *testing.T) {
 	}
 }
 
-func TestWechatSubscriptionPaymentSnapshotUsesConfiguredCNYRate(t *testing.T) {
+func TestWechatSubscriptionPaymentSnapshotUsesProvidedUSDToCNYRate(t *testing.T) {
 	tests := []struct {
-		name       string
-		price      float64
-		currency   string
-		unitPrice  float64
-		wantAmount int64
-		wantFen    int64
-		wantError  bool
+		name            string
+		price           float64
+		currency        string
+		usdExchangeRate float64
+		wantAmount      int64
+		wantFen         int64
+		wantError       bool
 	}{
 		{
-			name:       "USD converted to CNY",
-			price:      9.99,
-			currency:   "USD",
-			unitPrice:  7.3,
-			wantAmount: 72930000,
-			wantFen:    7293,
+			name:            "USD converted to CNY",
+			price:           9.99,
+			currency:        "USD",
+			usdExchangeRate: 7.3,
+			wantAmount:      72930000,
+			wantFen:         7293,
 		},
 		{
-			name:       "CNY remains CNY",
-			price:      9.99,
-			currency:   "CNY",
-			unitPrice:  7.3,
-			wantAmount: 9990000,
-			wantFen:    999,
+			name:            "CNY remains CNY",
+			price:           9.99,
+			currency:        "CNY",
+			usdExchangeRate: 7.3,
+			wantAmount:      9990000,
+			wantFen:         999,
 		},
 		{
-			name:      "unsupported currency",
-			price:     9.99,
-			currency:  "EUR",
-			unitPrice: 7.3,
-			wantError: true,
+			name:            "unsupported currency",
+			price:           9.99,
+			currency:        "EUR",
+			usdExchangeRate: 7.3,
+			wantError:       true,
 		},
 		{
-			name:      "invalid rate",
-			price:     9.99,
-			currency:  "USD",
-			unitPrice: 0,
-			wantError: true,
+			name:            "invalid rate",
+			price:           9.99,
+			currency:        "USD",
+			usdExchangeRate: 0,
+			wantError:       true,
 		},
 	}
 
@@ -543,7 +543,7 @@ func TestWechatSubscriptionPaymentSnapshotUsesConfiguredCNYRate(t *testing.T) {
 				Title:       "test plan",
 				PriceAmount: test.price,
 				Currency:    test.currency,
-			}, test.unitPrice)
+			}, test.usdExchangeRate)
 			if test.wantError {
 				require.Error(t, err)
 				return
@@ -641,6 +641,16 @@ func TestRequestWechatSubscriptionPayPersistsExactExpiryAndPaymentSnapshot(t *te
 	platformPrivate := configureWechatNotifyTest(t)
 	confirmPaymentComplianceForTest(t)
 	setting.WechatOrderExpireMinutes = 5
+	originalWechatUnitPrice := setting.WechatUnitPrice
+	originalUSDExchangeRate := operation_setting.USDExchangeRate
+	// Keep the two rates different so this regression proves that the
+	// recharge-only WechatUnitPrice cannot alter subscription checkout.
+	setting.WechatUnitPrice = 2
+	operation_setting.USDExchangeRate = 7.3
+	t.Cleanup(func() {
+		setting.WechatUnitPrice = originalWechatUnitPrice
+		operation_setting.USDExchangeRate = originalUSDExchangeRate
+	})
 	user := model.User{Username: "wechat-create-subscription", Password: "password", AffCode: "wechat-create-subscription", Group: "default"}
 	require.NoError(t, model.DB.Create(&user).Error)
 	plan := model.SubscriptionPlan{
@@ -674,7 +684,7 @@ func TestRequestWechatSubscriptionPayPersistsExactExpiryAndPaymentSnapshot(t *te
 	nativeOrder := <-captured
 	assert.Equal(t, response.Data.TradeNo, nativeOrder.OutTradeNo)
 	assert.Equal(t, "账户余额充值（订阅）", nativeOrder.Description)
-	assert.Equal(t, int64(999), nativeOrder.Amount.Total)
+	assert.Equal(t, int64(7293), nativeOrder.Amount.Total)
 	assert.Equal(t, "CNY", nativeOrder.Amount.Currency)
 	expiresAt, err := time.Parse(time.RFC3339, nativeOrder.TimeExpire)
 	require.NoError(t, err)

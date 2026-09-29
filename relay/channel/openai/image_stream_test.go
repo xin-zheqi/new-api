@@ -328,7 +328,7 @@ func TestOpenaiImageHandlerUsesPositiveActualCountForFixedPrice(t *testing.T) {
 		wantCount float64
 	}{
 		{
-			name:      "fixed price uses data length",
+			name:      "fixed price counts image payload entries",
 			body:      `{"data":[{"b64_json":"` + longImage + `"},{"b64_json":"second"}]}`,
 			usePrice:  true,
 			wantCount: 2,
@@ -336,6 +336,24 @@ func TestOpenaiImageHandlerUsesPositiveActualCountForFixedPrice(t *testing.T) {
 		{
 			name:      "empty data keeps requested count",
 			body:      `{"data":[]}`,
+			usePrice:  true,
+			wantCount: 3,
+		},
+		{
+			name:      "object data counts one image",
+			body:      `{"data":{"url":"https://example.test/image","b64_json":"` + longImage + `"}}`,
+			usePrice:  true,
+			wantCount: 1,
+		},
+		{
+			name:      "split url and base64 entries count one image",
+			body:      `{"data":[{"url":"https://example.test/image"},{"b64_json":"` + longImage + `"}]}`,
+			usePrice:  true,
+			wantCount: 1,
+		},
+		{
+			name:      "revised prompt entry does not count as an image",
+			body:      `{"data":[{"revised_prompt":"draw a cat"}]}`,
 			usePrice:  true,
 			wantCount: 3,
 		},

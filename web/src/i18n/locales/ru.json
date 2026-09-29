@@ -132,6 +132,8 @@
     "7 Days": "7 дней",
     "7 days ago": "7 дней назад",
     "80,443,8080": "80,443,8080",
+    "统一控制所有支付方式的启用状态和显示名称": "Единое управление состоянием и отображаемым именем всех способов оплаты",
+    "支付方式设置不是合法的 JSON 数组": "Настройки способов оплаты должны быть корректным массивом JSON",
     "A billing multiplier. Lower ratios mean lower API call costs.": "Множитель тарификации. Чем ниже коэффициент, тем ниже стоимость вызовов API.",
     "A focused home for keys, balance, routing, and service health.": "Единый экран для ключей, баланса, маршрутов и состояния сервиса.",
     "A gateway is shown only when its own credentials are configured. Disabling it here also blocks direct checkout requests.": "Шлюз отображается только при наличии его учётных данных. Отключение здесь также блокирует прямые заказы.",
@@ -3979,7 +3981,7 @@
     "Plugin key": "Ключ плагина",
     "Plugin metadata": "Метаданные плагина",
     "Plugin source": "Исходный код плагина",
-    "Plugin source exceeds the 1 MiB limit.": "Код плагина превышает лимит 1 МиБ.",
+    "Plugin source exceeds the 8 MiB limit.": "Код плагина превышает лимит 8 МиБ.",
     "Plugin uploaded successfully": "Плагин успешно загружен",
     "Plugin version activated": "Версия плагина активирована",
     "Plugin version deleted": "Версия плагина удалена",
@@ -4912,7 +4914,7 @@
     "Simple": "Простой",
     "Simple mode only returns message; status code and error type use system defaults.": "Простой режим возвращает только сообщение; код статуса и тип ошибки используют системные значения по умолчанию.",
     "Simple mode: prune objects by type, e.g. redacted_thinking.": "Простой режим: очистка объектов по типу, например redacted_thinking.",
-    "Single .js file, up to 1 MiB. Its source is shown below before upload.": "Один файл .js размером до 1 МиБ. Его исходный код показан ниже перед загрузкой.",
+    "Single .js file, up to 8 MiB. Its source is shown below before upload.": "Один файл .js размером до 8 МиБ. Его исходный код показан ниже перед загрузкой.",
     "Single Key": "Одиночный ключ",
     "Site & Branding": "Сайт и брендинг",
     "Site Key": "Ключ сайта",
@@ -6148,8 +6150,6 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom",
-    "支付方式设置不是合法的 JSON 数组": "Настройки способов оплаты должны быть корректным массивом JSON",
-    "统一控制所有支付方式的启用状态和显示名称": "Единое управление состоянием и отображаемым именем всех способов оплаты"
+    "Zoom": "Zoom"
   }
 }

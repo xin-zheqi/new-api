@@ -11,11 +11,25 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/gorm/schema"
 )
 
 type TaskPluginChannelRef struct {
 	Id   int    `json:"id"`
 	Name string `json:"name"`
+}
+
+// LongText stores large plugin payloads without forcing a dialect-specific
+// column type. MySQL needs LONGTEXT because TEXT stops at 64 KiB; PostgreSQL
+// and SQLite keep their portable TEXT representation. 这种类型不带长度，
+// 因此 AutoMigrate 在重启时不会反复修改已经正确的列。
+type LongText string
+
+func (LongText) GormDBDataType(db *gorm.DB, _ *schema.Field) string {
+	if db.Dialector.Name() == string(common.DatabaseTypeMySQL) {
+		return "longtext"
+	}
+	return "text"
 }
 
 func GetTaskPluginUsage(key string) ([]TaskPluginChannelRef, int64, error) {
@@ -39,7 +53,7 @@ type TaskPlugin struct {
 	Key        string `json:"key" gorm:"size:128;not null;uniqueIndex:uk_task_plugin_key_version,priority:1"`
 	APIVersion int    `json:"api_version" gorm:"not null"`
 	Version    string `json:"version" gorm:"size:64;not null;uniqueIndex:uk_task_plugin_key_version,priority:2"`
-	Source     string `json:"source" gorm:"type:text;not null"`
+	Source     LongText `json:"source" gorm:"not null"`
 	SourceHash string `json:"source_hash" gorm:"size:64;not null"`
 	Enabled    bool   `json:"enabled" gorm:"not null"`
 	Active     bool   `json:"active" gorm:"not null;index"`
@@ -121,7 +135,9 @@ type TaskPluginSyncSnapshot struct {
 // the revision even though their local routing-generation counters differ.
 func GetTaskPluginSyncSnapshot() (TaskPluginSyncSnapshot, error) {
 	var activePlugins []TaskPlugin
-	if err := DB.Where(&TaskPlugin{Active: true}).
+	// The sync loop runs on every node every 30 seconds. Avoid fetching the
+	// complete JavaScript source here; it is loaded only when a hash changes.
+	if err := DB.Omit("source").Where(&TaskPlugin{Active: true}).
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "key"}}).
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "version"}}).
 		Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}}).
@@ -165,6 +181,15 @@ func GetTaskPluginSyncSnapshot() (TaskPluginSyncSnapshot, error) {
 		Plugins:  enabledPlugins,
 		Revision: hex.EncodeToString(digest[:]),
 	}, nil
+}
+
+// GetTaskPluginSource loads the immutable source for one snapshot row. The
+// key/version row rejects source replacement, so the id and SourceHash remain
+// a stable pair between the lightweight snapshot and this query.
+func GetTaskPluginSource(id int64) (LongText, error) {
+	var plugin TaskPlugin
+	err := DB.Select("source").Where(&TaskPlugin{Id: id}).Take(&plugin).Error
+	return plugin.Source, err
 }
 
 func ActivateTaskPlugin(key, version string) error {

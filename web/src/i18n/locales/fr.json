@@ -132,6 +132,8 @@
     "7 Days": "7 jours",
     "7 days ago": "Il y a 7 jours",
     "80,443,8080": "80,443,8080",
+    "统一控制所有支付方式的启用状态和显示名称": "Contrôler l’activation et le nom affiché de tous les moyens de paiement",
+    "支付方式设置不是合法的 JSON 数组": "Les réglages des moyens de paiement doivent être un tableau JSON valide",
     "A billing multiplier. Lower ratios mean lower API call costs.": "Un multiplicateur de facturation. Plus le ratio est faible, plus le coût des appels API est bas.",
     "A focused home for keys, balance, routing, and service health.": "Un accueil dédié aux clés, au solde, au routage et à l'état du service.",
     "A gateway is shown only when its own credentials are configured. Disabling it here also blocks direct checkout requests.": "Une passerelle est affichée uniquement si ses identifiants sont configurés. La désactiver bloque aussi les commandes directes.",
@@ -3979,7 +3981,7 @@
     "Plugin key": "Clé du plugin",
     "Plugin metadata": "Métadonnées du plugin",
     "Plugin source": "Source du plugin",
-    "Plugin source exceeds the 1 MiB limit.": "Le code du plugin dépasse la limite de 1 Mio.",
+    "Plugin source exceeds the 8 MiB limit.": "Le code du plugin dépasse la limite de 8 Mio.",
     "Plugin uploaded successfully": "Plugin importé avec succès",
     "Plugin version activated": "Version du plugin activée",
     "Plugin version deleted": "Version du plugin supprimée",
@@ -4912,7 +4914,7 @@
     "Simple": "Simple",
     "Simple mode only returns message; status code and error type use system defaults.": "Le mode simple ne retourne que le message ; le code de statut et le type d'erreur utilisent les valeurs par défaut.",
     "Simple mode: prune objects by type, e.g. redacted_thinking.": "Mode simple : nettoyer les objets par type, ex. redacted_thinking.",
-    "Single .js file, up to 1 MiB. Its source is shown below before upload.": "Un seul fichier .js, jusqu’à 1 Mio. Sa source est affichée ci-dessous avant l’envoi.",
+    "Single .js file, up to 8 MiB. Its source is shown below before upload.": "Un seul fichier .js, jusqu’à 8 Mio. Sa source est affichée ci-dessous avant l’envoi.",
     "Single Key": "Clé unique",
     "Site & Branding": "Site et marque",
     "Site Key": "Clé du site",
@@ -6148,8 +6150,6 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom",
-    "支付方式设置不是合法的 JSON 数组": "Les réglages des moyens de paiement doivent être un tableau JSON valide",
-    "统一控制所有支付方式的启用状态和显示名称": "Contrôler l’activation et le nom affiché de tous les moyens de paiement"
+    "Zoom": "Zoom"
   }
 }

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -140,6 +141,31 @@ func TestTaskPluginSyncSnapshotRevisionTracksDesiredRuntimeState(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, disabled.Plugins)
 	assert.NotEqual(t, v2Snapshot.Revision, disabled.Revision)
+}
+
+func TestTaskPluginLargeSourceRoundTripAndLazySnapshot(t *testing.T) {
+	setupTaskPluginModelTest(t)
+
+	// Keep this above MySQL's 64 KiB TEXT boundary so the test protects the
+	// dialect-specific LONGTEXT mapping used for uploaded plugin sources.
+	source := strings.Repeat("plugin-source-", 6000)
+	plugin := TaskPlugin{
+		Key: "large-source", APIVersion: 1, Version: "1.0.0",
+		Source: LongText(source), SourceHash: "large-source-hash", Enabled: true,
+	}
+	require.NoError(t, SaveTaskPlugin(&plugin))
+
+	// AutoMigrate must stay idempotent after the custom type has been created.
+	require.NoError(t, DB.AutoMigrate(&TaskPlugin{}))
+
+	snapshot, err := GetTaskPluginSyncSnapshot()
+	require.NoError(t, err)
+	require.Len(t, snapshot.Plugins, 1)
+	assert.Empty(t, snapshot.Plugins[0].Source)
+
+	loadedSource, err := GetTaskPluginSource(plugin.Id)
+	require.NoError(t, err)
+	assert.Equal(t, LongText(source), loadedSource)
 }
 
 func TestTaskPluginOrderSQLQuotesMySQLKeyColumn(t *testing.T) {

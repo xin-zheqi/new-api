@@ -132,6 +132,8 @@
     "7 Days": "7 ngày",
     "7 days ago": "7 ngày trước",
     "80,443,8080": "80,443,8080",
+    "统一控制所有支付方式的启用状态和显示名称": "Kiểm soát tập trung trạng thái và tên hiển thị của mọi phương thức thanh toán",
+    "支付方式设置不是合法的 JSON 数组": "Cài đặt phương thức thanh toán phải là một mảng JSON hợp lệ",
     "A billing multiplier. Lower ratios mean lower API call costs.": "Hệ số tính phí. Tỷ lệ càng thấp thì chi phí gọi API càng thấp.",
     "A focused home for keys, balance, routing, and service health.": "Trang tổng quan tập trung cho khóa, số dư, định tuyến và trạng thái dịch vụ.",
     "A gateway is shown only when its own credentials are configured. Disabling it here also blocks direct checkout requests.": "Cổng chỉ hiển thị khi đã cấu hình đủ thông tin xác thực. Tắt tại đây cũng chặn yêu cầu thanh toán trực tiếp.",
@@ -3979,7 +3981,7 @@
     "Plugin key": "Khóa plugin",
     "Plugin metadata": "Siêu dữ liệu plugin",
     "Plugin source": "Mã nguồn plugin",
-    "Plugin source exceeds the 1 MiB limit.": "Mã nguồn plugin vượt giới hạn 1 MiB.",
+    "Plugin source exceeds the 8 MiB limit.": "Mã nguồn plugin vượt giới hạn 8 MiB.",
     "Plugin uploaded successfully": "Đã tải plugin lên",
     "Plugin version activated": "Đã kích hoạt phiên bản plugin",
     "Plugin version deleted": "Đã xóa phiên bản plugin",
@@ -4912,7 +4914,7 @@
     "Simple": "Đơn giản",
     "Simple mode only returns message; status code and error type use system defaults.": "Chế độ đơn giản chỉ trả về message; mã trạng thái và loại lỗi sử dụng giá trị mặc định.",
     "Simple mode: prune objects by type, e.g. redacted_thinking.": "Chế độ đơn giản: dọn dẹp đối tượng theo type, ví dụ redacted_thinking.",
-    "Single .js file, up to 1 MiB. Its source is shown below before upload.": "Một tệp .js duy nhất, tối đa 1 MiB. Mã nguồn được hiển thị bên dưới trước khi tải lên.",
+    "Single .js file, up to 8 MiB. Its source is shown below before upload.": "Một tệp .js duy nhất, tối đa 8 MiB. Mã nguồn được hiển thị bên dưới trước khi tải lên.",
     "Single Key": "Khóa đơn",
     "Site & Branding": "Trang web & thương hiệu",
     "Site Key": "Khóa trang web",
@@ -6148,8 +6150,6 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom",
-    "支付方式设置不是合法的 JSON 数组": "Cài đặt phương thức thanh toán phải là một mảng JSON hợp lệ",
-    "统一控制所有支付方式的启用状态和显示名称": "Kiểm soát tập trung trạng thái và tên hiển thị của mọi phương thức thanh toán"
+    "Zoom": "Zoom"
   }
 }

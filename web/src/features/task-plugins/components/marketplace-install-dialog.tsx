@@ -137,7 +137,7 @@ export function MarketplaceInstallDialog(props: MarketplaceInstallDialogProps) {
   if (fetchError instanceof PluginSourceFetchError) {
     fetchErrorMessage =
       fetchError.reason === 'too_large'
-        ? t('Plugin source exceeds the 1 MiB limit.')
+        ? t('Plugin source exceeds the 8 MiB limit.')
         : t(
             'Could not fetch the plugin source from this browser. The host may block cross-origin requests or be unreachable.'
           )

@@ -132,6 +132,8 @@
     "7 Days": "7 Days",
     "7 days ago": "7 days ago",
     "80,443,8080": "80,443,8080",
+    "统一控制所有支付方式的启用状态和显示名称": "Control the enabled state and display name of all payment methods",
+    "支付方式设置不是合法的 JSON 数组": "Payment method settings must be a valid JSON array",
     "A billing multiplier. Lower ratios mean lower API call costs.": "A billing multiplier. Lower ratios mean lower API call costs.",
     "A focused home for keys, balance, routing, and service health.": "A focused home for keys, balance, routing, and service health.",
     "A gateway is shown only when its own credentials are configured. Disabling it here also blocks direct checkout requests.": "A gateway is shown only when its own credentials are configured. Disabling it here also blocks direct checkout requests.",
@@ -3979,7 +3981,7 @@
     "Plugin key": "Plugin key",
     "Plugin metadata": "Plugin metadata",
     "Plugin source": "Plugin source",
-    "Plugin source exceeds the 1 MiB limit.": "Plugin source exceeds the 1 MiB limit.",
+    "Plugin source exceeds the 8 MiB limit.": "Plugin source exceeds the 8 MiB limit.",
     "Plugin uploaded successfully": "Plugin uploaded successfully",
     "Plugin version activated": "Plugin version activated",
     "Plugin version deleted": "Plugin version deleted",
@@ -4912,7 +4914,7 @@
     "Simple": "Simple",
     "Simple mode only returns message; status code and error type use system defaults.": "Simple mode only returns message; status code and error type use system defaults.",
     "Simple mode: prune objects by type, e.g. redacted_thinking.": "Simple mode: prune objects by type, e.g. redacted_thinking.",
-    "Single .js file, up to 1 MiB. Its source is shown below before upload.": "Single .js file, up to 1 MiB. Its source is shown below before upload.",
+    "Single .js file, up to 8 MiB. Its source is shown below before upload.": "Single .js file, up to 8 MiB. Its source is shown below before upload.",
     "Single Key": "Single Key",
     "Site & Branding": "Site & Branding",
     "Site Key": "Site Key",
@@ -6148,8 +6150,6 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom",
-    "支付方式设置不是合法的 JSON 数组": "Payment method settings must be a valid JSON array",
-    "统一控制所有支付方式的启用状态和显示名称": "Control the enabled state and display name of all payment methods"
+    "Zoom": "Zoom"
   }
 }

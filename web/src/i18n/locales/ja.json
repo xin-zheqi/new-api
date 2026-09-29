@@ -132,6 +132,8 @@
     "7 Days": "7日",
     "7 days ago": "7日前",
     "80,443,8080": "80,443,8080",
+    "统一控制所有支付方式的启用状态和显示名称": "すべての支払い方法の有効状態と表示名を一元管理",
+    "支付方式设置不是合法的 JSON 数组": "支払い方法の設定は有効な JSON 配列である必要があります",
     "A billing multiplier. Lower ratios mean lower API call costs.": "課金倍率です。倍率が低いほど API 呼び出しコストは低くなります。",
     "A focused home for keys, balance, routing, and service health.": "キー、残高、ルーティング、サービス状態を集約したホームです。",
     "A gateway is shown only when its own credentials are configured. Disabling it here also blocks direct checkout requests.": "各ゲートウェイの認証情報が設定されている場合のみ表示されます。ここで無効にすると直接注文も拒否されます。",
@@ -3979,7 +3981,7 @@
     "Plugin key": "プラグインキー",
     "Plugin metadata": "プラグインメタデータ",
     "Plugin source": "プラグインソース",
-    "Plugin source exceeds the 1 MiB limit.": "プラグインのソースが 1 MiB の上限を超えています。",
+    "Plugin source exceeds the 8 MiB limit.": "プラグインのソースが 8 MiB の上限を超えています。",
     "Plugin uploaded successfully": "プラグインをアップロードしました",
     "Plugin version activated": "プラグインバージョンを有効化しました",
     "Plugin version deleted": "プラグインバージョンを削除しました",
@@ -4912,7 +4914,7 @@
     "Simple": "シンプル",
     "Simple mode only returns message; status code and error type use system defaults.": "シンプルモードはメッセージのみ返します。ステータスコードとエラータイプはシステムデフォルトを使用します。",
     "Simple mode: prune objects by type, e.g. redacted_thinking.": "シンプルモード：typeでオブジェクトを削除（例：redacted_thinking）。",
-    "Single .js file, up to 1 MiB. Its source is shown below before upload.": "単一の .js ファイル、最大 1 MiB。アップロード前に下部でソースを確認できます。",
+    "Single .js file, up to 8 MiB. Its source is shown below before upload.": "単一の .js ファイル、最大 8 MiB。アップロード前に下部でソースを確認できます。",
     "Single Key": "単一キー",
     "Site & Branding": "サイトとブランド",
     "Site Key": "サイトキー",
@@ -6148,8 +6150,6 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム",
-    "支付方式设置不是合法的 JSON 数组": "支払い方法の設定は有効な JSON 配列である必要があります",
-    "统一控制所有支付方式的启用状态和显示名称": "すべての支払い方法の有効状態と表示名を一元管理"
+    "Zoom": "ズーム"
   }
 }

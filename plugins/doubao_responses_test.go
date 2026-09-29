@@ -1,6 +1,12 @@
 package plugins_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	builtinplugins "github.com/QuantumNous/new-api/plugins"
+	"github.com/stretchr/testify/require"
+)
 
 func TestDoubaoResponsesProtocol(t *testing.T) {
 	testVideoResponsesProtocol(t, videoResponsesTestCase{
@@ -28,4 +34,32 @@ func TestDoubaoResponsesProtocol(t *testing.T) {
 		wantUsageKeys:  []string{"resolution", "tokens", "video_input"},
 		wantVendorName: "doubao",
 	})
+}
+
+func TestDoubaoRejectsResolutionUnsupportedByModel(t *testing.T) {
+	source, err := builtinplugins.Source("doubao")
+	require.NoError(t, err)
+	plugin, err := jsplugin.NewRegistry().RegisterFactory(source, jsplugin.Options{Key: "doubao"})
+	require.NoError(t, err)
+
+	_, err = plugin.Engine.Call(t.Context(), "buildSubmitRequest", map[string]any{
+		"upstreamModel": "doubao-seedance-2-0-fast-260128",
+		"requestBody": map[string]any{
+			"model":   "doubao-seedance-2-0-fast-260128",
+			"prompt":  "a running fox",
+			"metadata": map[string]any{"resolution": "1080p"},
+		},
+	})
+	require.ErrorContains(t, err, "resolution must be one of 480p, 720p")
+
+	value, err := plugin.Engine.Call(t.Context(), "buildSubmitRequest", map[string]any{
+		"upstreamModel": "doubao-seedance-2-0-fast-260128",
+		"requestBody": map[string]any{
+			"model":   "doubao-seedance-2-0-fast-260128",
+			"prompt":  "a running fox",
+			"metadata": map[string]any{"resolution": "720p"},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, value)
 }

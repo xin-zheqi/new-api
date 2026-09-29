@@ -248,7 +248,7 @@ func TestDisableFactoryPluginRespectsInUseGuard(t *testing.T) {
 	assert.True(t, ok)
 }
 
-func TestDisableFactoryOverrideRowKeepsEnabledFlagPath(t *testing.T) {
+func TestDisableFactoryOverrideRowSuppressesBothLayers(t *testing.T) {
 	setupTaskPluginFactoryDisableTest(t)
 	factorySource, err := plugins.Source("kling")
 	require.NoError(t, err)
@@ -267,7 +267,7 @@ func TestDisableFactoryOverrideRowKeepsEnabledFlagPath(t *testing.T) {
 
 	recorder := postTaskPluginStatus(t, "kling", "", `{"enabled":false}`)
 	assert.Contains(t, recorder.Body.String(), `"success":true`)
-	assert.Empty(t, setting.GetTaskPluginDisabledFactoryKeys())
+	assert.Equal(t, []string{"kling"}, setting.GetTaskPluginDisabledFactoryKeys())
 
 	row, err := model.GetTaskPluginVersion("kling", "")
 	require.NoError(t, err)
@@ -276,11 +276,20 @@ func TestDisableFactoryOverrideRowKeepsEnabledFlagPath(t *testing.T) {
 	item := listTaskPluginItem(t, "kling")
 	assert.Equal(t, "override_over_factory", item.Source)
 	assert.False(t, item.Enabled)
-	assert.Equal(t, "disabled_fallback", item.RuntimeStatus)
-	assert.True(t, taskPluginOptionsHasKey(t, "kling"))
+	assert.Equal(t, "disabled", item.RuntimeStatus)
+	assert.False(t, taskPluginOptionsHasKey(t, "kling"))
+	_, ok := jsplugin.DefaultRegistry.Get("kling")
+	assert.False(t, ok)
+
+	recorder = postTaskPluginStatus(t, "kling", "", `{"enabled":true}`)
+	assert.Contains(t, recorder.Body.String(), `"success":true`)
+	assert.Empty(t, setting.GetTaskPluginDisabledFactoryKeys())
+	row, err = model.GetTaskPluginVersion("kling", "")
+	require.NoError(t, err)
+	assert.True(t, row.Enabled)
 	got, ok := jsplugin.DefaultRegistry.Get("kling")
 	require.True(t, ok)
-	assert.Equal(t, factoryVersion, got.Meta.Version)
+	assert.Equal(t, loaded.Meta.Version, got.Meta.Version)
 }
 
 func TestListTaskPluginsIncludesFactoryWithoutDatabaseRows(t *testing.T) {

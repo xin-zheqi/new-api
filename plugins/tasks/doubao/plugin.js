@@ -1,3 +1,20 @@
+// Keep model capabilities separate from prices. A model may accept fewer
+// output tiers than the shared schema exposes; accepting an unsupported tier
+// would reserve one price and send another request upstream.
+// 模型能力与价格配置分离；不支持的分辨率必须在预扣费和提交前拒绝。
+const SEEDANCE_CAPABILITIES = {
+  "doubao-seedance-1-0-pro-250528": { resolutions: ["480p", "720p", "1080p"] },
+  "doubao-seedance-1-0-lite-t2v": { resolutions: ["480p", "720p", "1080p"] },
+  "doubao-seedance-1-0-lite-i2v": { resolutions: ["480p", "720p", "1080p"] },
+  "doubao-seedance-1-5-pro-251215": { resolutions: ["480p", "720p", "1080p"] },
+  "doubao-seedance-2-0-260128": { resolutions: ["480p", "720p", "1080p", "4k"], videoInput: true },
+  "doubao-seedance-2-0-fast-260128": { resolutions: ["480p", "720p"], videoInput: true },
+  "doubao-seedance-2-0-mini-260615": { resolutions: ["480p", "720p"], videoInput: true },
+  "doubao-seedance-2-5-260628": { resolutions: ["480p", "720p", "1080p"], videoInput: true },
+};
+
+const DEFAULT_SEEDANCE_CAPABILITY = { resolutions: ["480p", "720p", "1080p", "4k"], videoInput: true };
+
 export const meta = {
   apiVersion: 1,
   key: "doubao",
@@ -10,16 +27,7 @@ export const meta = {
   version: "1.0.1",
   author: { name: "QuantumNous" },
   channelTypes: [54, 45], // VolcEngine-type channels serve Ark video models with the same wire format
-  models: [
-    "doubao-seedance-1-0-pro-250528",
-    "doubao-seedance-1-0-lite-t2v",
-    "doubao-seedance-1-0-lite-i2v",
-    "doubao-seedance-1-5-pro-251215",
-    "doubao-seedance-2-0-260128",
-    "doubao-seedance-2-0-fast-260128",
-    "doubao-seedance-2-0-mini-260615",
-    "doubao-seedance-2-5-260628",
-  ],
+  models: Object.keys(SEEDANCE_CAPABILITIES),
   fetchMode: "per_task",
   usageSchema: {
     tokens: {
@@ -111,6 +119,28 @@ function normalizeResolution(value) {
   if (max >= 1920) return "1080p";
   if (max >= 1280) return "720p";
   return "480p";
+}
+
+function videoProfile(ctx) {
+  const model = trimmed(ctx && (ctx.upstreamModel || ctx.model));
+  return SEEDANCE_CAPABILITIES[model] || DEFAULT_SEEDANCE_CAPABILITY;
+}
+
+// Resolve the reservation tier from the request using the selected model's
+// capability list. This is intentionally shared by estimate and submission so
+// pricing cannot silently fall back to a tier the provider does not support.
+// 预估和提交共用同一校验，避免计费档位与实际请求不一致。
+function videoResolution(ctx) {
+  const request = (ctx && ctx.requestBody) || {};
+  const metadata = request.metadata || {};
+  const profile = videoProfile(ctx);
+  const raw = trimmed(metadata.resolution || request.size);
+  const resolution = raw ? normalizeResolution(raw) : profile.resolutions[profile.resolutions.length - 1];
+  if (!profile.resolutions.includes(resolution)) {
+    const model = trimmed(ctx && (ctx.upstreamModel || ctx.model)) || "Seedance";
+    throw new Error(model + " resolution must be one of " + profile.resolutions.join(", "));
+  }
+  return resolution;
 }
 
 function hasVideo(content) {
@@ -248,6 +278,8 @@ export const native = {
 export function buildSubmitRequest(ctx) {
   const req = ctx.requestBody;
   const metadata = req.metadata || {};
+  // Reject unsupported output tiers before the provider request is sent.
+  videoResolution(ctx);
   const body = Object.assign({ model: req.model || "", content: [] }, metadata);
   const imageContent = [];
   const images = Array.isArray(req.images) ? req.images : [];
@@ -289,10 +321,7 @@ export function extractUsage(ctx) {
   }
   if (seconds <= 0) seconds = 5;
   seconds = Math.min(seconds, 3600);
-  const rawResolution = metadata.resolution || req.size;
-  const raw = trimmed(rawResolution).toLowerCase();
-  const recognized = ["480p", "720p", "1080p", "4k"].includes(raw) || raw.replace("*", "x").split("x").length === 2;
-  const resolution = recognized ? normalizeResolution(rawResolution) : "1080p";
+  const resolution = videoResolution(ctx);
   return {
     tokens: estimateTokens(seconds, resolution),
     resolution: resolution,
@@ -359,7 +388,7 @@ export function extractUsageOnComplete(task, taskResult, body) {
   if (Number.isFinite(tokens) && tokens > 0) facts.tokens = tokens;
   const content = body.content || {};
   const resolution = trimmed(content.resolution || body.resolution).toLowerCase();
-  if (["480p", "720p", "1080p", "4k"].includes(resolution)) facts.resolution = resolution;
+  if (videoProfile(task).resolutions.includes(resolution)) facts.resolution = resolution;
   return facts;
 }
 

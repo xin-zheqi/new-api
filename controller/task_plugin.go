@@ -193,6 +193,12 @@ func ListTaskPlugins(c *gin.Context) {
 			} else {
 				item.RuntimeStatus = "not_registered"
 			}
+			// "disabled_fallback" is only truthful when the factory layer still
+			// serves the key. If both layers are disabled, report that nothing can
+			// route this plugin so the admin UI does not suggest a usable fallback.
+			if item.RuntimeStatus == "disabled_fallback" && hasFactory && setting.IsTaskPluginFactoryDisabled(key) {
+				item.RuntimeStatus = "disabled"
+			}
 		} else {
 			item.Source = "factory"
 			item.Meta = factoryMeta
@@ -473,9 +479,10 @@ func SetTaskPluginStatus(c *gin.Context) {
 		common.ApiError(c, lookupErr)
 		return
 	}
-	// The disabled set suppresses only the factory fallback layer. An enabled
-	// override for the same key keeps serving and is toggled independently.
-	if taskPluginHasFactory(key) && !hasActiveOverride {
+	// Disabling a key must silence every layer that can serve it. Otherwise an
+	// override row can be disabled while the built-in factory keeps routing the
+	// same models and causing conflicts. Re-enable removes the factory block.
+	if taskPluginHasFactory(key) {
 		keys := setting.GetTaskPluginDisabledFactoryKeys()
 		if *request.Enabled {
 			next := make([]string, 0, len(keys))
@@ -501,8 +508,10 @@ func SetTaskPluginStatus(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		common.ApiSuccess(c, gin.H{"plugin_enabled": *request.Enabled, "disabled_channels": disabledChannels})
-		return
+		if !hasActiveOverride {
+			common.ApiSuccess(c, gin.H{"plugin_enabled": *request.Enabled, "disabled_channels": disabledChannels})
+			return
+		}
 	}
 	if err := model.SetTaskPluginEnabled(key, *request.Enabled); err != nil {
 		common.ApiError(c, err)

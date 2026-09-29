@@ -54,6 +54,47 @@ func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens i
 	})
 }
 
+// RecordTaskResult records one terminal async task after its status CAS has
+// been won. Task polling may be performed by several workers, so callers must
+// invoke this only from the winner's terminal path to avoid double counting.
+// 终态任务的采样必须放在状态 CAS 成功之后，避免多个轮询 worker 重复计数。
+func RecordTaskResult(task *model.Task, result *relaycommon.TaskInfo) {
+	if task == nil {
+		return
+	}
+	modelName := task.Properties.OriginModelName
+	if billing := task.PrivateData.BillingContext; billing != nil && billing.OriginModelName != "" {
+		modelName = billing.OriginModelName
+	}
+	end := task.FinishTime
+	if end <= 0 {
+		end = time.Now().Unix()
+	}
+	sample := Sample{
+		Model:   modelName,
+		Group:   task.Group,
+		Success: task.Status == model.TaskStatusSuccess,
+	}
+	if task.SubmitTime > 0 && end > task.SubmitTime {
+		sample.LatencyMs = (end - task.SubmitTime) * 1000
+	}
+	if sample.Success && result != nil {
+		tokens := result.TotalTokens
+		if tokens <= 0 {
+			tokens = result.CompletionTokens
+		}
+		generationStart := task.StartTime
+		if generationStart <= 0 {
+			generationStart = task.SubmitTime
+		}
+		if tokens > 0 && generationStart > 0 && end > generationStart {
+			sample.OutputTokens = int64(tokens)
+			sample.GenerationMs = (end - generationStart) * 1000
+		}
+	}
+	Record(sample)
+}
+
 func Record(sample Sample) {
 	setting := perf_metrics_setting.GetSetting()
 	if !setting.Enabled || sample.Model == "" {

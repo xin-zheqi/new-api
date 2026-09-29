@@ -547,8 +547,12 @@ func (s *responsesWSSession) restoreConnectionContext(c *gin.Context, model stri
 	keyEnabled := channel.Key == s.lockedKey
 	if channel.ChannelInfo.IsMultiKey {
 		keys := channel.GetKeys()
-		status := channel.ChannelInfo.MultiKeyStatusList[s.lockedKeyIndex]
-		keyEnabled = s.lockedKeyIndex >= 0 && s.lockedKeyIndex < len(keys) && keys[s.lockedKeyIndex] == s.lockedKey && (status == 0 || status == common.ChannelStatusEnabled)
+		if s.lockedKeyIndex >= 0 && s.lockedKeyIndex < len(keys) {
+			status, found := channel.ChannelInfo.MultiKeyStatusList[s.lockedKeyIndex]
+			keyEnabled = keys[s.lockedKeyIndex] == s.lockedKey && (!found || status == 0 || status == common.ChannelStatusEnabled)
+		} else {
+			keyEnabled = false
+		}
 	}
 	if !keyEnabled {
 		return types.NewErrorWithStatusCode(errors.New("the upstream connection credential is no longer enabled"), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())

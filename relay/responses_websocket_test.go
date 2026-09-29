@@ -221,6 +221,49 @@ func TestRestoreConnectionContextRejectsChangedAdvancedCustomRoute(t *testing.T)
 	assert.ErrorContains(t, apiErr, "upstream route changed")
 }
 
+func TestRestoreConnectionContextHandlesChangedMultiKeyList(t *testing.T) {
+	database := setupRelayChannelDB(t)
+	channel := &model.Channel{
+		Name:   "multi-key",
+		Key:    "sk-first\nsk-second",
+		Group:  "default",
+		Status: common.ChannelStatusEnabled,
+		Type:   constant.ChannelTypeOpenAI,
+		ChannelInfo: model.ChannelInfo{
+			IsMultiKey:         true,
+			MultiKeyStatusList: map[int]int{1: common.ChannelStatusManuallyDisabled},
+		},
+	}
+	channel.SetSetting(dto.ChannelSettings{ResponsesWebSocketEnabled: true})
+	require.NoError(t, database.Create(channel).Error)
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	service.GetChannelConstraints(c).AddPin(appdto.ChannelPin{
+		ChannelId: channel.Id, Source: appdto.PinSourceToken, Rank: appdto.PinRankToken,
+		RetryMode: appdto.PinRetrySingleAttempt,
+	})
+
+	session := &responsesWSSession{
+		lockedChannelID: channel.Id,
+		lockedModel:     "ws-model",
+		lockedKey:       "sk-first",
+		lockedKeyIndex:  0,
+		lockedContext: map[constant.ContextKey]any{
+			constant.ContextKeyChannelBaseUrl:        channel.GetBaseURL(),
+			constant.ContextKeyChannelHeaderOverride: channel.GetHeaderOverride(),
+		},
+	}
+	// Missing entries in the sparse status map mean that the key is enabled.
+	require.Nil(t, session.restoreConnectionContext(c, "ws-model"))
+
+	session.lockedKeyIndex = 2
+	apiErr := session.restoreConnectionContext(c, "ws-model")
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusForbidden, apiErr.StatusCode)
+	assert.Contains(t, apiErr.Error(), "credential")
+}
+
 func TestResponsesWSChannelRoutingRequiresExplicitOptIn(t *testing.T) {
 	require.NoError(t, i18n.Init())
 	database := setupRelayChannelDB(t)

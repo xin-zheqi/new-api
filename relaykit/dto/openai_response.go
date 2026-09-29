@@ -275,6 +275,17 @@ type InputTokenDetails struct {
 	ImageTokens      int `json:"image_tokens"`
 }
 
+// Clone returns an independent copy for conversion paths that retain usage
+// snapshots after the upstream response has been processed.
+// Clone 返回独立副本，避免转换后的计费快照与上游 DTO 共享可变内存。
+func (d *InputTokenDetails) Clone() *InputTokenDetails {
+	if d == nil {
+		return nil
+	}
+	copy := *d
+	return &copy
+}
+
 // CacheCreationTokensTotal returns the cache-write token count regardless of
 // which field the upstream reported it in: Claude-derived conversions populate
 // CachedCreationTokens while OpenAI reports cache_write_tokens natively. Both

@@ -196,6 +196,7 @@ import {
   ChannelEditorLoadingState,
   ChannelModelsSection,
 } from './sections'
+import { ResponsesWebSocketSetting } from '../responses-websocket-setting'
 
 type ChannelMutateDrawerProps = {
   open: boolean
@@ -4257,6 +4258,11 @@ export function ChannelMutateDrawer({
                                     </FormControl>
                                   </FormItem>
                                 )}
+                              />
+
+                              <ResponsesWebSocketSetting
+                                channelType={currentType}
+                                disabled={sensitiveLocked}
                               />
 
                               <FormField

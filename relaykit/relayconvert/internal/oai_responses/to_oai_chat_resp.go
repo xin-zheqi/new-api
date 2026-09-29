@@ -218,7 +218,7 @@ func usageFromResponsesUsage(src *dto.Usage, createBillingSnapshot bool) *dto.Us
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
 	if src.InputTokensDetails != nil {
-		usage.PromptTokensDetails = src.InputTokensDetails.Clone()
+		usage.PromptTokensDetails = *src.InputTokensDetails.Clone()
 	}
 	if src.CompletionTokenDetails.ReasoningTokens != 0 ||
 		src.CompletionTokenDetails.TextTokens != 0 ||

@@ -145,7 +145,9 @@ export function parseTaskResult(ctx, body) {
     failed: "FAILURE",
     cancelled: "FAILURE",
   };
-  const result = { status: statuses[body.status] || "UNKNOWN" };
+  const mapped = statuses[body.status];
+  const result = { status: mapped || "UNKNOWN" };
+  if (!mapped) result.reason = "unrecognized status: " + String(body.status || "");
   if (body.progress > 0 && body.progress < 100) result.progress = body.progress + "%";
   if (result.status === "FAILURE") result.reason = body.error && body.error.message ? body.error.message : "task failed";
   return result;

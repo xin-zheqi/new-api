@@ -206,9 +206,11 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info con
 					if mediaMsg.IsStringContent() {
 						oaiToolMessage.SetStringContent(mediaMsg.GetStringContent())
 					} else {
-						mediaContents := mediaMsg.ParseMediaContent()
-						encodedJSON, _ := kitutil.Marshal(mediaContents)
-						oaiToolMessage.SetStringContent(string(encodedJSON))
+						content, media := claudeToolResultToChat(mediaMsg.ParseMediaContent())
+						oaiToolMessage.SetStringContent(content)
+						// A Chat tool message only carries text. Keep images on the
+						// following user message so base64 never becomes prompt text.
+						mediaMessages = append(mediaMessages, media...)
 					}
 					openAIMessages = append(openAIMessages, oaiToolMessage)
 				}
@@ -228,6 +230,39 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info con
 
 	openAIRequest.Messages = openAIMessages
 	return &openAIRequest, nil
+}
+
+// claudeToolResultToChat maps a structured Claude tool_result array onto Chat
+// Completions. Text stays on the tool message; image blocks are returned for
+// the caller to attach to the user message produced by the same Claude turn.
+// Unknown block types retain the historical JSON representation.
+func claudeToolResultToChat(blocks []dto.ClaudeMediaMessage) (string, []dto.MediaContent) {
+	texts := make([]string, 0, len(blocks))
+	media := make([]dto.MediaContent, 0, len(blocks))
+	for _, block := range blocks {
+		switch {
+		case block.Type == "text" || block.Type == "input_text":
+			if text := block.GetText(); text != "" {
+				texts = append(texts, text)
+			}
+		case block.Type == "image" && block.Source != nil:
+			url := block.Source.Url
+			if url == "" {
+				url = fmt.Sprintf("data:%s;base64,%s", block.Source.MediaType, kitutil.Interface2String(block.Source.Data))
+			}
+			media = append(media, dto.MediaContent{Type: "image_url", ImageUrl: &dto.MessageImageUrl{Url: url}})
+		default:
+			return requestToJSONString(blocks), nil
+		}
+	}
+	switch {
+	case len(texts) == 0 && len(media) == 0:
+		return requestToJSONString(blocks), nil
+	case len(texts) == 0:
+		return "[image]", media
+	default:
+		return strings.Join(texts, "\n"), media
+	}
 }
 
 func requestToJSONString(v interface{}) string {

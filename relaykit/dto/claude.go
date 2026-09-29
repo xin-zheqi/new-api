@@ -135,6 +135,9 @@ type ClaudeMessageSource struct {
 type ClaudeMessage struct {
 	Role    string `json:"role"`
 	Content any    `json:"content"`
+	// OutputConfig carries per-message Claude effort settings, including the
+	// empty-content system message used by native Claude requests.
+	OutputConfig json.RawMessage `json:"output_config,omitempty"`
 }
 
 func (c *ClaudeMessage) IsStringContent() bool {

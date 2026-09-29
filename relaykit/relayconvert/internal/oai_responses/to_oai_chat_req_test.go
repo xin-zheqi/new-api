@@ -350,6 +350,30 @@ func TestResponsesRequestToChatCompletionsRequestRejectsMalformedPenalty(t *test
 	assert.Contains(t, err.Error(), "frequency_penalty")
 }
 
+func TestResponsesRequestToChatCompletionsRequestHoistsToolOutputMedia(t *testing.T) {
+	const imageURL = "data:image/png;base64,abc"
+	got, err := ResponsesRequestToChatCompletionsRequest(&dto.OpenAIResponsesRequest{
+		Model: "gpt-test",
+		Input: mustRawMessage(t, []map[string]any{
+			{"type": "function_call", "call_id": "call_1", "name": "screenshot", "arguments": "{}"},
+			{"type": "function_call_output", "call_id": "call_1", "output": []any{
+				map[string]any{"type": "input_image", "image_url": imageURL},
+			}},
+			{"role": "user", "content": "what do you see?"},
+		}),
+	})
+	require.NoError(t, err)
+	require.Len(t, got.Messages, 4)
+	assert.Equal(t, "tool", got.Messages[1].Role)
+	assert.Equal(t, "[image]", got.Messages[1].StringContent())
+	assert.Equal(t, "user", got.Messages[2].Role)
+	parts := got.Messages[2].ParseContent()
+	if assert.Len(t, parts, 1) && assert.NotNil(t, parts[0].GetImageMedia()) {
+		assert.Equal(t, imageURL, parts[0].GetImageMedia().Url)
+	}
+	assert.Equal(t, dto.Message{Role: "user", Content: "what do you see?"}, got.Messages[3])
+}
+
 func mustRawMessage(t *testing.T, value any) []byte {
 	t.Helper()
 	raw, err := kitutil.Marshal(value)

@@ -153,6 +153,57 @@ func TestChatCompletionsStreamToResponsesEventsAggregatesUsageAndToolArgs(t *tes
 	assert.Equal(t, `"{\"q\":\"x\"}"`, string(events[9].Payload.Response.Output[1].Arguments))
 }
 
+func TestChatCompletionsStreamToResponsesSegmentsLateDeltas(t *testing.T) {
+	state := NewChatToResponsesStreamState("resp_segments", "gpt-test")
+	firstFinish := "stop"
+	secondFinish := "stop"
+
+	mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
+			Delta:        dto.ChatCompletionsStreamResponseChoiceDelta{Content: lo.ToPtr("first")},
+			FinishReason: &firstFinish,
+		}},
+	})
+	lateEvents := mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
+			Delta:        dto.ChatCompletionsStreamResponseChoiceDelta{Content: lo.ToPtr("second")},
+			FinishReason: &secondFinish,
+		}},
+	})
+	assert.Equal(t, responsesEventOutputItemAdded, lateEvents[0].Type)
+	assert.Equal(t, "resp_segments_msg_1", lateEvents[0].Payload.Item.ID)
+
+	finalEvents := FinalizeChatCompletionsStreamToResponses(state)
+	require.NotEmpty(t, finalEvents)
+	response := finalEvents[len(finalEvents)-1].Payload.Response
+	require.NotNil(t, response)
+	require.Len(t, response.Output, 2)
+	assert.Equal(t, "resp_segments_msg_0", response.Output[0].ID)
+	assert.Equal(t, "first", response.Output[0].Content[0].Text)
+	assert.Equal(t, "resp_segments_msg_1", response.Output[1].ID)
+	assert.Equal(t, "second", response.Output[1].Content[0].Text)
+}
+
+func TestChatCompletionsStreamToResponsesReasoningSummaryPartLifecycle(t *testing.T) {
+	state := NewChatToResponsesStreamState("resp_reasoning", "gpt-test")
+	events := mustResponsesEventsFromChatChunk(t, state, &dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
+			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{ReasoningContent: lo.ToPtr("thinking")},
+		}},
+	})
+	assert.Equal(t, responsesEventReasoningSummaryPartAdded, events[2].Type)
+
+	finalEvents := FinalizeChatCompletionsStreamToResponses(state)
+	var sawPartDone bool
+	for _, event := range finalEvents {
+		if event.Type == responsesEventReasoningSummaryPartDone {
+			sawPartDone = true
+			assert.Equal(t, "thinking", event.Payload.Part.Text)
+		}
+	}
+	assert.True(t, sawPartDone)
+}
+
 func mustResponsesEventsFromChatChunk(t *testing.T, state *ChatToResponsesStreamState, chunk *dto.ChatCompletionsStreamResponse) []ChatToResponsesStreamEvent {
 	t.Helper()
 	events, err := ChatCompletionsStreamChunkToResponsesEvents(chunk, state)

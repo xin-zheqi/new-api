@@ -88,3 +88,32 @@ func TestConvertClaudeRequestDoesNotOverwriteTrimmedUpstreamModelName(t *testing
 	require.NoError(t, err)
 	assert.Equal(t, "claude-3-7-sonnet", info.UpstreamModelName)
 }
+
+func TestConvertClaudeRequestPreservesMessageOutputConfig(t *testing.T) {
+	body := `{"model":"claude-opus-5-5","max_tokens":64,"output_config":{"effort":"medium"},"messages":[` +
+		`{"role":"user","content":"summary"},` +
+		`{"role":"system","content":[],"output_config":{"effort":"high"}},` +
+		`{"role":"assistant","content":"done"}]}`
+	var req dto.ClaudeRequest
+	require.NoError(t, common.UnmarshalJsonStr(body, &req))
+	info := &relaycommon.RelayInfo{
+		OriginModelName: req.Model,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: req.Model,
+		},
+	}
+
+	out, err := (&Adaptor{}).ConvertClaudeRequest(nil, info, &req)
+	require.NoError(t, err)
+	encoded, err := common.Marshal(out)
+	require.NoError(t, err)
+
+	var upstream struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	require.NoError(t, common.Unmarshal(encoded, &upstream))
+	require.Len(t, upstream.Messages, 3)
+	assert.Equal(t, map[string]any{"effort": "high"}, upstream.Messages[1]["output_config"])
+	assert.NotContains(t, upstream.Messages[0], "output_config")
+	assert.NotContains(t, upstream.Messages[2], "output_config")
+}

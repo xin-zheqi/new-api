@@ -2270,6 +2270,114 @@ export function parseTiersFromExpr(exprStr) {
   }
 }
 
+const REQUEST_RULE_TIME_RANGE_REGEX =
+    /^(hour|minute|weekday|month|day)\("([^"]+)"\) >= ([\d.eE+-]+) (&&|\|\|) \1\("\2"\) < ([\d.eE+-]+)$/;
+
+const REQUEST_RULE_TIME_VALUE_REGEX =
+    /^(hour|minute|weekday|month|day)\("([^"]+)"\) (==|>=|<) ([\d.eE+-]+)$/;
+
+function formatRequestRuleCondition(condition) {
+  const text = String(condition || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+
+  const rangeMatch = text.match(REQUEST_RULE_TIME_RANGE_REGEX);
+  if (rangeMatch) {
+    const separator = rangeMatch[4] === '||' ? ' / ' : '–';
+    return `${rangeMatch[1]} ${rangeMatch[3]}:00${separator}${rangeMatch[5]}:00 (${rangeMatch[2]})`;
+  }
+
+  const valueMatch = text.match(REQUEST_RULE_TIME_VALUE_REGEX);
+  if (valueMatch) {
+    const op = valueMatch[3] === '==' ? '=' : valueMatch[3];
+    return `${valueMatch[1]} ${op} ${valueMatch[4]} (${valueMatch[2]})`;
+  }
+
+  return text;
+}
+
+function normalizeRequestRuleMultiplier(value) {
+  const multiplier = Number(value);
+  if (!Number.isFinite(multiplier)) return null;
+  return formatRatioValue(multiplier);
+}
+
+function getMatchedRequestRuleMultiplier(requestRules) {
+  if (!Array.isArray(requestRules)) return null;
+
+  let multiplier = 1;
+  let matched = false;
+  for (const rule of requestRules) {
+    if (rule?.matched !== true) continue;
+    const value = normalizeRequestRuleMultiplier(rule.multiplier);
+    if (value == null) return null;
+    multiplier *= value;
+    matched = true;
+  }
+
+  return matched ? formatRatioValue(multiplier) : null;
+}
+
+function renderRequestRuleDetails(requestRules) {
+  if (!Array.isArray(requestRules) || requestRules.length === 0) {
+    return null;
+  }
+
+  return (
+      <span style={{ display: 'block', marginTop: 8 }}>
+        <Typography.Text
+            strong
+            size='small'
+            style={{ display: 'block', marginBottom: 6 }}
+        >
+          {i18next.t('条件乘数')}
+        </Typography.Text>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {requestRules.map((rule, index) => {
+            const matched = rule?.matched === true;
+            const multiplier = normalizeRequestRuleMultiplier(rule?.multiplier);
+            const condition = formatRequestRuleCondition(rule?.cond);
+            if (!condition || multiplier == null) return null;
+
+            return (
+                <span
+                    key={`request-rule-${index}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      padding: '6px 8px',
+                      borderRadius: 6,
+                      background: matched
+                          ? 'var(--semi-color-success-light-default)'
+                          : 'var(--semi-color-fill-0)',
+                      border: matched
+                          ? '1px solid var(--semi-color-success-light-active)'
+                          : '1px solid transparent',
+                    }}
+                >
+                  <Typography.Text
+                      size='small'
+                      type={matched ? undefined : 'tertiary'}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        wordBreak: 'break-word',
+                      }}
+                  >
+                    {condition}
+                  </Typography.Text>
+                  <Tag color={matched ? 'green' : 'grey'} size='small'>
+                    {multiplier}x · {i18next.t(matched ? '已命中' : '未命中')}
+                  </Tag>
+                </span>
+            );
+          })}
+        </span>
+      </span>
+  );
+}
+
 export const decodeFromBase64 = (base64) => {
   if (!base64) return '';
 
@@ -2307,7 +2415,7 @@ export function renderTieredModelPrice(opts) {
     completion_tokens: completionTokens = 0,
     expr_b64: exprB64,
     matched_tier: matchedTier,
-    group_ratio: groupRatio,
+    request_rules: requestRules,
     cache_tokens: cacheTokens = 0,
     cache_creation_tokens: cacheCreationTokens = 0,
     cache_creation_tokens_5m: cacheCreationTokens5m = 0,
@@ -2331,8 +2439,6 @@ export function renderTieredModelPrice(opts) {
     return i18next.t('阶梯计费（未匹配到对应阶梯）');
   }
   const { symbol, rate } = getCurrencyConfig();
-  const gr = groupRatio || 1;
-
   const hasAnyCacheTokens = cacheTokens > 0 || cacheCreationTokens > 0
       || cacheCreationTokens5m > 0 || cacheCreationTokens1h > 0;
 
@@ -2347,6 +2453,7 @@ export function renderTieredModelPrice(opts) {
         .map(([field, label]) =>
             buildBillingPriceText(`${label}：{{symbol}}{{price}} / 1M tokens`, { symbol, usdAmount: tier[field], rate }),
         ),
+    renderRequestRuleDetails(requestRules),
   ];
 
   return renderBillingArticle(lines);
@@ -2358,6 +2465,7 @@ export function renderTieredModelPriceSimple(opts) {
     matched_tier: matchedTier,
     group_ratio: groupRatio,
     user_group_ratio,
+    request_rules: requestRules,
     cache_tokens: cacheTokens = 0,
     cache_creation_tokens_5m: cacheCreationTokens5m = 0,
     cache_creation_tokens_1h: cacheCreationTokens1h = 0,
@@ -2382,6 +2490,14 @@ export function renderTieredModelPriceSimple(opts) {
         text: getGroupRatioText(groupRatio, user_group_ratio),
       },
     ];
+
+    const requestRuleMultiplier = getMatchedRequestRuleMultiplier(requestRules);
+    if (requestRuleMultiplier != null) {
+      segments.push({
+        tone: 'secondary',
+        text: `${i18next.t('条件乘数')} ${requestRuleMultiplier}x`,
+      });
+    }
 
     if (!tier) {
       segments.push({

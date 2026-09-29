@@ -42,10 +42,33 @@ func shouldRecordRelayPerfSample(relayInfo *relaycommon.RelayInfo) bool {
 	if relayInfo == nil || relayInfo.StreamStatus == nil {
 		return true
 	}
-	if relayInfo.StreamStatus.EndReason == relaycommon.StreamEndReasonNone {
+	if outcome := relayInfo.StreamStatus.OutcomeSnapshot(); outcome.Response == relaycommon.ResponseOutcomeFailed && outcome.ErrorCode == "context_length_exceeded" {
+		// The provider rejected the user's input before generation. This is a
+		// billable/observable request, but it must not be treated as a channel
+		// health failure or included in model success-rate samples.
+		return false
+	}
+	outcome := relayInfo.StreamStatus.OutcomeSnapshot()
+	if outcome.EndReason == relaycommon.StreamEndReasonClientGone {
+		// A downstream disconnect is not evidence of an upstream/channel
+		// failure and must not affect health metrics.
+		return false
+	}
+	if outcome.EndReason == relaycommon.StreamEndReasonNone {
 		return true
 	}
-	return relayInfo.StreamStatus.IsNormalEnd()
+	// Protocol failures and transport interruptions (timeout, scanner error,
+	// first-response timeout, etc.) are useful health samples. Normal
+	// completion is also sampled below; only client cancellation is excluded.
+	return true
+}
+
+func relayPerfSampleSucceeded(relayInfo *relaycommon.RelayInfo) bool {
+	if relayInfo == nil || relayInfo.StreamStatus == nil {
+		return true
+	}
+	status := relayInfo.StreamStatus
+	return status.IsNormalEnd() && !status.ResponseFailed() && !status.HasErrors()
 }
 
 func hasCustomModelRatio(modelName string, currentRatio float64) bool {
@@ -214,6 +237,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	if tieredOk {
 		quota = tieredQuota
 	}
+	billableZeroUsage := tieredOk && quota > 0
 
 	totalTokens := usage.TotalTokens
 	var logContent string
@@ -225,7 +249,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	}
 
 	// record all the consume log even if quota is 0
-	if totalTokens == 0 {
+	if totalTokens == 0 && !billableZeroUsage {
 		// in this case, must be some error happened
 		// we cannot just return, because we may have to return the pre-consumed quota
 		quota = 0
@@ -343,6 +367,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	if tieredOk {
 		quota = tieredQuota
 	}
+	billableZeroUsage := tieredOk && quota > 0
 
 	totalTokens := usage.TotalTokens
 	var logContent string
@@ -354,7 +379,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 
 	// record all the consume log even if quota is 0
-	if totalTokens == 0 {
+	if totalTokens == 0 && !billableZeroUsage {
 		// in this case, must be some error happened
 		// we cannot just return, because we may have to return the pre-consumed quota
 		quota = 0
@@ -395,8 +420,9 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		Other:            other,
 	})
 	if shouldRecordRelayPerfSample(relayInfo) {
+		success := relayPerfSampleSucceeded(relayInfo)
 		gopool.Go(func() {
-			perfmetrics.RecordRelaySample(relayInfo, true, int64(usage.CompletionTokens))
+			perfmetrics.RecordRelaySample(relayInfo, success, int64(usage.CompletionTokens))
 		})
 	}
 }

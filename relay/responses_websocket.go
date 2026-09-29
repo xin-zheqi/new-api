@@ -356,6 +356,8 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 
 	accumulator := service.NewResponsesUsageAccumulator(info)
 	info.StreamStatus = relaycommon.NewStreamStatus()
+	common.SetContextKey(c, appconstant.ContextKeyResponseStreamStatus, info.StreamStatus)
+	info.StreamStatus.RequireTerminal()
 	timeout := time.Duration(appconstant.StreamingTimeout) * time.Second
 	if timeout <= 0 {
 		timeout = 300 * time.Second
@@ -418,13 +420,22 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 							if rejection.Error.Code != nil {
 								code = fmt.Sprint(rejection.Error.Code)
 							}
+							info.StreamStatus.MarkFailed(code, rejection.Error.Type, rejection.Status)
 							info.StreamStatus.RecordError(fmt.Sprintf("upstream response error type=%s code=%s status=%d", rejection.Error.Type, code, rejection.Status))
 						}
 						accumulator.Observe(&event.ResponsesStreamResponse)
 						info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
 						s.lastResponseID = responseID
 						state.terminal, state.closeAfter = &incoming, ambiguous
-						ConsumeResponsesQuota(c, info, accumulator.Finish())
+						usage := accumulator.Finish()
+						// An error tied to an explicit response ID, or an ambiguous
+						// response to a client control event, does not prove that the
+						// provider generated billable output. Refund the reservation
+						// while retaining the consume log and error status.
+						if ambiguous || rejection.ResponseID != "" {
+							usage = nil
+						}
+						ConsumeResponsesQuota(c, info, usage)
 						return nil
 					}
 					if rejection.Error == nil {

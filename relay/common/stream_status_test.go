@@ -180,3 +180,21 @@ func TestStreamStatus_Summary_NilSafe(t *testing.T) {
 	var s *StreamStatus
 	assert.Equal(t, "StreamStatus<nil>", s.Summary())
 }
+
+func TestStreamStatus_ResponseOutcomeClassification(t *testing.T) {
+	t.Parallel()
+	s := NewStreamStatus()
+	s.RequireTerminal()
+	s.MarkCompleted()
+	s.MarkIncomplete("max_output_tokens")
+
+	assert.Equal(t, "completed", s.ResponseOutcome())
+	assert.False(t, s.ResponseFailed())
+	s.MarkFailed("server_error", "server_error", 500)
+	assert.True(t, s.ResponseFailed())
+	snapshot := s.OutcomeSnapshot()
+	assert.True(t, snapshot.ExpectsTerminal)
+	assert.Equal(t, ResponseOutcomeFailed, snapshot.Response)
+	assert.Equal(t, "server_error", snapshot.ErrorCode)
+	assert.Equal(t, 500, snapshot.ErrorStatus)
+}

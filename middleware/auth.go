@@ -359,14 +359,17 @@ func TokenAuth() func(c *gin.Context) {
 			// read sk from Sec-WebSocket-Protocol
 			key := c.Request.Header.Get("Sec-WebSocket-Protocol")
 			parts := strings.Split(key, ",")
+			protocolKey := ""
 			for _, part := range parts {
 				part = strings.TrimSpace(part)
-				if strings.HasPrefix(part, "openai-insecure-api-key") {
-					key = strings.TrimPrefix(part, "openai-insecure-api-key.")
+				if strings.HasPrefix(part, "openai-insecure-api-key.") {
+					protocolKey = strings.TrimPrefix(part, "openai-insecure-api-key.")
 					break
 				}
 			}
-			c.Request.Header.Set("Authorization", "Bearer "+key)
+			if protocolKey != "" {
+				c.Request.Header.Set("Authorization", "Bearer "+protocolKey)
+			}
 		}
 		// 检查path包含/v1/messages 或 /v1/models
 		if strings.Contains(c.Request.URL.Path, "/v1/messages") || strings.Contains(c.Request.URL.Path, "/v1/models") {

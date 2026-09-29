@@ -421,6 +421,10 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			summary.Quota = composeTieredTextQuota(relayInfo, summary, tieredQuota, tieredRes)
 		}
 	}
+	// A tiered expression may contain a request-level fixed charge. Such a
+	// charge is valid even when the provider reports zero token usage (for
+	// example response.completed with an empty usage object).
+	billableZeroUsage := tieredBillingApplied && summary.Quota > 0
 
 	for _, item := range summary.ToolSurchargeItems {
 		q := decimal.NewFromFloat(item.Price).
@@ -440,7 +444,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, fmt.Sprintf("Audio Input 花费 %s", logger.LogQuota(common.QuotaFromDecimal(q))))
 	}
 
-	if !summary.hasBillableUsage() {
+	if !summary.hasBillableUsage() && !billableZeroUsage {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
@@ -538,8 +542,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		Other:            other,
 	})
 	if shouldRecordRelayPerfSample(relayInfo) {
+		success := relayPerfSampleSucceeded(relayInfo)
 		gopool.Go(func() {
-			perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
+			perfmetrics.RecordRelaySample(relayInfo, success, int64(summary.CompletionTokens))
 		})
 	}
 }

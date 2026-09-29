@@ -107,6 +107,49 @@ func TestResponsesUsageAccumulatorInterruptedTextFallback(t *testing.T) {
 	}
 }
 
+func TestResponsesUsageAccumulatorEstimatesAllGeneratedDeltas(t *testing.T) {
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gpt-4o"}}
+	info.SetEstimatePromptTokens(17)
+	info.StreamStatus = relaycommon.NewStreamStatus()
+	accumulator := NewResponsesUsageAccumulator(info)
+	events := []struct {
+		eventType string
+		delta     string
+	}{
+		{eventType: "response.function_call_arguments.delta", delta: "function call arguments"},
+		{eventType: "response.reasoning_summary_text.delta", delta: "reasoning summary"},
+		{eventType: "response.reasoning_text.delta", delta: "detailed reasoning"},
+		{eventType: "response.refusal.delta", delta: "refusal explanation"},
+	}
+	for _, event := range events {
+		accumulator.Observe(&dto.ResponsesStreamResponse{Type: event.eventType, Delta: event.delta})
+	}
+	usage := accumulator.Finish()
+	assert.Equal(t, 17, usage.PromptTokens)
+	assert.Greater(t, usage.CompletionTokens, 1)
+	assert.Equal(t, usage.PromptTokens+usage.CompletionTokens, usage.TotalTokens)
+}
+
+func TestResponsesUsageAccumulatorChargesPromptAfterCreatedEvent(t *testing.T) {
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gpt-4o"}}
+	info.SetEstimatePromptTokens(23)
+	info.StreamStatus = relaycommon.NewStreamStatus()
+	accumulator := NewResponsesUsageAccumulator(info)
+	accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.created"})
+	usage := accumulator.Finish()
+	assert.Equal(t, 23, usage.PromptTokens)
+	assert.Zero(t, usage.CompletionTokens)
+
+	failedInfo := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gpt-4o"}}
+	failedInfo.SetEstimatePromptTokens(23)
+	failedInfo.StreamStatus = relaycommon.NewStreamStatus()
+	failed := NewResponsesUsageAccumulator(failedInfo)
+	failed.Observe(&dto.ResponsesStreamResponse{Type: "response.failed"})
+	failedUsage := failed.Finish()
+	assert.Zero(t, failedUsage.PromptTokens)
+	assert.True(t, failedInfo.StreamStatus.ResponseFailed())
+}
+
 func TestResponsesUsageAccumulatorDisconnectBillsCompletedImage(t *testing.T) {
 	info := &relaycommon.RelayInfo{OriginModelName: "gpt-5.1"}
 	accumulator := NewResponsesUsageAccumulator(info)

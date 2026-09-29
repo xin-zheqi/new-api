@@ -345,9 +345,11 @@ func newResponsesWSBillingTest(t *testing.T, expression string, handle func(*web
 		common.BatchUpdateEnabled, common.LogConsumeEnabled, constant.CountToken, common.QuotaPerUnit = previousBatch, previousLogs, previousCount, previousQuota
 		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
 	})
-	// The local billing expression dialect has no fixed() helper; normalize the
-	// upstream fixture shorthand to an equivalent token expression.
-	expression = strings.ReplaceAll(expression, "fixed(0.002)", "p * 2")
+	// The local billing expression dialect has no fixed() helper. A 2,000
+	// $/1M constant converts to 1,000 quota units with this fixture's
+	// QuotaPerUnit, preserving the intended $0.002 request charge even when
+	// the upstream reports zero tokens.
+	expression = strings.ReplaceAll(expression, "fixed(0.002)", "2000")
 	expressions, err := common.Marshal(map[string]string{"ws-billing": expression})
 	require.NoError(t, err)
 	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{

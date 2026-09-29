@@ -46,10 +46,22 @@ const SettingsInvoice = ({ options, refresh }) => {
       InvoiceApplicationDay: Number(options.InvoiceApplicationDay || 25),
       InvoiceLookbackDays: Number(options.InvoiceLookbackDays || 90),
       InvoiceMonthlyLimit: Number(options.InvoiceMonthlyLimit || 1),
-      InvoiceSystemRechargeEnabled: options.InvoiceSystemRechargeEnabled === undefined ? true : toBoolean(options.InvoiceSystemRechargeEnabled),
-      InvoiceRedemptionRechargeEnabled: options.InvoiceRedemptionRechargeEnabled === undefined ? true : toBoolean(options.InvoiceRedemptionRechargeEnabled),
-      InvoiceSystemSubscriptionEnabled: options.InvoiceSystemSubscriptionEnabled === undefined ? true : toBoolean(options.InvoiceSystemSubscriptionEnabled),
-      InvoiceRedemptionSubscriptionEnabled: options.InvoiceRedemptionSubscriptionEnabled === undefined ? true : toBoolean(options.InvoiceRedemptionSubscriptionEnabled),
+      InvoiceSystemRechargeEnabled:
+        options.InvoiceSystemRechargeEnabled === undefined
+          ? true
+          : toBoolean(options.InvoiceSystemRechargeEnabled),
+      InvoiceRedemptionRechargeEnabled:
+        options.InvoiceRedemptionRechargeEnabled === undefined
+          ? true
+          : toBoolean(options.InvoiceRedemptionRechargeEnabled),
+      InvoiceSystemSubscriptionEnabled:
+        options.InvoiceSystemSubscriptionEnabled === undefined
+          ? true
+          : toBoolean(options.InvoiceSystemSubscriptionEnabled),
+      InvoiceRedemptionSubscriptionEnabled:
+        options.InvoiceRedemptionSubscriptionEnabled === undefined
+          ? true
+          : toBoolean(options.InvoiceRedemptionSubscriptionEnabled),
     };
     setValues(nextValues);
     formApiRef.current?.setValues(nextValues);
@@ -68,7 +80,8 @@ const SettingsInvoice = ({ options, refresh }) => {
           system_recharge_enabled: values.InvoiceSystemRechargeEnabled,
           redemption_recharge_enabled: values.InvoiceRedemptionRechargeEnabled,
           system_subscription_enabled: values.InvoiceSystemSubscriptionEnabled,
-          redemption_subscription_enabled: values.InvoiceRedemptionSubscriptionEnabled,
+          redemption_subscription_enabled:
+            values.InvoiceRedemptionSubscriptionEnabled,
         },
         { skipErrorHandler: true },
       );
@@ -99,7 +112,11 @@ const SettingsInvoice = ({ options, refresh }) => {
       <Typography.Paragraph type='tertiary'>
         {t('Configure the invoice application window and monthly limits.')}
       </Typography.Paragraph>
-        <Form layout='vertical' initValues={values} getFormApi={(api) => (formApiRef.current = api)}>
+      <Form
+        layout='vertical'
+        initValues={values}
+        getFormApi={(api) => (formApiRef.current = api)}
+      >
         <div className='mb-3 flex max-w-xl items-center justify-between gap-6'>
           <Typography.Text>{t('Enable invoice center')}</Typography.Text>
           <Switch
@@ -118,11 +135,16 @@ const SettingsInvoice = ({ options, refresh }) => {
           ['InvoiceSystemSubscriptionEnabled', '系统开通订阅'],
           ['InvoiceRedemptionSubscriptionEnabled', '兑换码开通订阅'],
         ].map(([field, label]) => (
-          <div key={field} className='mb-3 flex max-w-xl items-center justify-between gap-6'>
+          <div
+            key={field}
+            className='mb-3 flex max-w-xl items-center justify-between gap-6'
+          >
             <Typography.Text>{t(label)}</Typography.Text>
             <Switch
               checked={values[field]}
-              onChange={(checked) => setValues((current) => ({ ...current, [field]: checked }))}
+              onChange={(checked) =>
+                setValues((current) => ({ ...current, [field]: checked }))
+              }
             />
           </div>
         ))}
@@ -130,7 +152,7 @@ const SettingsInvoice = ({ options, refresh }) => {
           field='InvoiceApplicationDay'
           label={t('Application day of each month')}
           min={1}
-          max={28}
+          max={31}
           value={values.InvoiceApplicationDay}
           onChange={(value) =>
             setValues((current) => ({

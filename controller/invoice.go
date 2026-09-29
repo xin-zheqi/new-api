@@ -120,10 +120,22 @@ func ensureInvoiceWindow(settings model.InvoiceSettings, now time.Time) error {
 	if !settings.Enabled {
 		return errors.New("invoice center is disabled")
 	}
-	if now.Day() != settings.ApplicationDay {
-		return fmt.Errorf("invoice applications are accepted on day %d of each month", settings.ApplicationDay)
+	effectiveDay := invoiceApplicationDayForMonth(settings.ApplicationDay, now)
+	if now.Day() != effectiveDay {
+		return fmt.Errorf("invoice applications are accepted on day %d of each month", effectiveDay)
 	}
 	return nil
+}
+
+func invoiceApplicationDayForMonth(configuredDay int, now time.Time) int {
+	if configuredDay < 1 {
+		return 1
+	}
+	lastDay := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).Day()
+	if configuredDay > lastDay {
+		return lastDay
+	}
+	return configuredDay
 }
 
 func loadCurrentInvoiceSettings(c *gin.Context) (model.InvoiceSettings, bool) {
@@ -209,17 +221,18 @@ func GetSelfInvoiceCenter(c *gin.Context) {
 		remainingApplications = 0
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{
-		"application_day":        settings.ApplicationDay,
-		"application_open":       now.Day() == settings.ApplicationDay,
-		"identity_eligible":      identityEligible,
-		"lookback_days":          settings.LookbackDays,
-		"monthly_limit":          settings.MonthlyLimit,
-		"remaining_applications": remainingApplications,
-		"subscriptions":          subscriptions,
-		"applications":           applications,
-		"applications_total":     applicationsTotal,
-		"page":                   page,
-		"size":                   pageSize,
+		"application_day":           settings.ApplicationDay,
+		"application_effective_day": invoiceApplicationDayForMonth(settings.ApplicationDay, now),
+		"application_open":          now.Day() == invoiceApplicationDayForMonth(settings.ApplicationDay, now),
+		"identity_eligible":         identityEligible,
+		"lookback_days":             settings.LookbackDays,
+		"monthly_limit":             settings.MonthlyLimit,
+		"remaining_applications":    remainingApplications,
+		"subscriptions":             subscriptions,
+		"applications":              applications,
+		"applications_total":        applicationsTotal,
+		"page":                      page,
+		"size":                      pageSize,
 	}})
 }
 
@@ -228,14 +241,14 @@ func CreateInvoiceApplication(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := ensureInvoiceWindow(settings, time.Now()); err != nil {
-		common.ApiErrorMsg(c, err.Error())
-		return
-	}
 	// Check identity eligibility before validating form fields so unauthorized
 	// callers cannot learn or bypass invoice requirements with malformed input.
 	if _, eligibilityErr := model.GetInvoiceEligibleSubscriptions(c.GetInt("id"), settings); errors.Is(eligibilityErr, model.ErrInvoiceIdentityRequired) {
 		writeInvoiceModelError(c, eligibilityErr)
+		return
+	}
+	if err := ensureInvoiceWindow(settings, time.Now()); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 	var request invoiceApplicationRequest
@@ -308,7 +321,7 @@ func UpdateInvoiceSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "all invoice settings are required"})
 		return
 	}
-	if *request.ApplicationDay < 1 || *request.ApplicationDay > 28 || *request.LookbackDays < 1 || *request.LookbackDays > 3650 || *request.MonthlyLimit < 1 || *request.MonthlyLimit > 31 {
+	if *request.ApplicationDay < 1 || *request.ApplicationDay > 31 || *request.LookbackDays < 1 || *request.LookbackDays > 3650 || *request.MonthlyLimit < 1 || *request.MonthlyLimit > 31 {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invoice settings are outside the allowed range"})
 		return
 	}

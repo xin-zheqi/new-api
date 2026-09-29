@@ -82,6 +82,8 @@ export function InvoiceCenter() {
   })
 
   const applicationDay = invoiceQuery.data?.application_day ?? 0
+  const effectiveApplicationDay =
+    invoiceQuery.data?.application_effective_day ?? applicationDay
   const remainingApplications = invoiceQuery.data?.remaining_applications ?? 0
   let disabledReason: string | undefined
   if (invoiceQuery.data && !invoiceQuery.data.identity_eligible) {
@@ -90,7 +92,7 @@ export function InvoiceCenter() {
     )
   } else if (invoiceQuery.data && !invoiceQuery.data.application_open) {
     disabledReason = t('Applications can only be submitted on day {{day}}.', {
-      day: applicationDay,
+      day: effectiveApplicationDay,
     })
   } else if (remainingApplications === 0) {
     disabledReason = t(
@@ -165,7 +167,7 @@ export function InvoiceCenter() {
                   {t(
                     'Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days.',
                     {
-                      day: invoiceQuery.data.application_day,
+                      day: effectiveApplicationDay,
                       days: invoiceQuery.data.lookback_days,
                     }
                   )}

@@ -43,7 +43,7 @@ import { useResetForm } from '../hooks/use-reset-form'
 
 const schema = z.object({
   InvoiceEnabled: z.boolean(),
-  InvoiceApplicationDay: z.number().int().min(1).max(28),
+  InvoiceApplicationDay: z.number().int().min(1).max(31),
   InvoiceLookbackDays: z.number().int().min(1).max(3650),
   InvoiceMonthlyLimit: z.number().int().min(1).max(31),
   InvoiceSystemRechargeEnabled: z.boolean(),
@@ -159,7 +159,7 @@ export function InvoiceSettingsSection({
                   <Input
                     type='number'
                     min={1}
-                    max={28}
+                    max={31}
                     value={field.value}
                     onChange={(event) =>
                       field.onChange(Number(event.target.value))

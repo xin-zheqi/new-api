@@ -82,6 +82,7 @@ export type InvoiceApplication = {
 
 export type InvoiceCenterData = {
   application_day: number
+  application_effective_day: number
   application_open: boolean
   identity_eligible: boolean
   lookback_days: number

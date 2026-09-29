@@ -34,7 +34,7 @@ func TestGetSelfInvoiceCenterReturnsPaymentIdentifierAndDisplayName(t *testing.T
 	))
 	require.NoError(t, db.Create([]model.Option{
 		{Key: "InvoiceEnabled", Value: "true"},
-		{Key: "InvoiceApplicationDay", Value: time.Now().Format("2")},
+		{Key: "InvoiceApplicationDay", Value: "15"},
 		{Key: "InvoiceLookbackDays", Value: "90"},
 		{Key: "InvoiceMonthlyLimit", Value: "1"},
 	}).Error)
@@ -149,7 +149,7 @@ func TestPendingIdentityReviewCanReadHistoryButCannotApplyForInvoice(t *testing.
 	))
 	require.NoError(t, db.Create([]model.Option{
 		{Key: "InvoiceEnabled", Value: "true"},
-		{Key: "InvoiceApplicationDay", Value: time.Now().Format("2")},
+		{Key: "InvoiceApplicationDay", Value: "15"},
 		{Key: "InvoiceLookbackDays", Value: "90"},
 		{Key: "InvoiceMonthlyLimit", Value: "1"},
 	}).Error)
@@ -158,7 +158,7 @@ func TestPendingIdentityReviewCanReadHistoryButCannotApplyForInvoice(t *testing.
 	originalOptions := common.OptionMap
 	common.OptionMap = map[string]string{
 		"InvoiceEnabled":        "true",
-		"InvoiceApplicationDay": time.Now().Format("2"),
+		"InvoiceApplicationDay": "15",
 		"InvoiceLookbackDays":   "90",
 		"InvoiceMonthlyLimit":   "1",
 	}

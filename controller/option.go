@@ -137,7 +137,7 @@ func normalizeOptionUpdateValue(key, value, applicationHost string) (string, err
 		}
 		return trimmed, nil
 	case "InvoiceApplicationDay":
-		return normalizeBoundedIntegerOption(key, value, 1, 28)
+		return normalizeBoundedIntegerOption(key, value, 1, 31)
 	case "InvoiceLookbackDays":
 		return normalizeBoundedIntegerOption(key, value, 1, 3650)
 	case "InvoiceMonthlyLimit":

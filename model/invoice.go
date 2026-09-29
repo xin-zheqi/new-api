@@ -218,7 +218,7 @@ func invoiceSettingsFromValues(values map[string]string, rejectInvalid bool) (In
 		}
 	}
 	var err error
-	settings.ApplicationDay, err = parseInvoiceSettingInt(values, "InvoiceApplicationDay", 1, 28, settings.ApplicationDay, rejectInvalid)
+	settings.ApplicationDay, err = parseInvoiceSettingInt(values, "InvoiceApplicationDay", 1, 31, settings.ApplicationDay, rejectInvalid)
 	if err != nil {
 		return InvoiceSettings{}, err
 	}

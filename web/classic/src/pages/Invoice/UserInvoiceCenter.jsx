@@ -59,7 +59,7 @@ const UserInvoiceCenter = () => {
   const [applicationPage, setApplicationPage] = useState(1);
   const [applicationPageSize, setApplicationPageSize] =
     useState(DEFAULT_PAGE_SIZE);
-  const [applicationDay, setApplicationDay] = useState(25);
+  const [effectiveApplicationDay, setEffectiveApplicationDay] = useState(25);
   const [applicationOpen, setApplicationOpen] = useState(false);
   const [identityEligible, setIdentityEligible] = useState(true);
   const [lookbackDays, setLookbackDays] = useState(null);
@@ -104,7 +104,9 @@ const UserInvoiceCenter = () => {
       );
       setApplicationPage(Number(data.page || nextPage));
       setApplicationPageSize(Number(data.size || nextPageSize));
-      setApplicationDay(Number(data.application_day || 25));
+      setEffectiveApplicationDay(
+        Number(data.application_effective_day || data.application_day || 25),
+      );
       setApplicationOpen(data.application_open === true);
       setIdentityEligible(data.identity_eligible !== false);
       setLookbackDays(data.lookback_days ?? null);
@@ -192,7 +194,7 @@ const UserInvoiceCenter = () => {
   } else if (!applicationOpen) {
     disabledReason = t(
       'Invoice applications are accepted only on day {{day}} of each month.',
-      { day: applicationDay },
+      { day: effectiveApplicationDay },
     );
   } else if (remainingApplications === 0) {
     disabledReason = t(
@@ -484,7 +486,7 @@ const UserInvoiceCenter = () => {
         description={t(
           'Applications open on day {{day}} of each month for eligible subscriptions from the past {{days}} days. Each user may submit up to {{limit}} applications per month.',
           {
-            day: applicationDay,
+            day: effectiveApplicationDay,
             days: lookbackDays ?? '-',
             limit: monthlyLimit,
           },

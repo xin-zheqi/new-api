@@ -716,6 +716,31 @@ func TestBuildTieredTokenParams_GPT_WithCache(t *testing.T) {
 	}
 }
 
+func TestBuildTieredTokenParams_NegativeProviderCountersAreIgnored(t *testing.T) {
+	usage := &dto.Usage{
+		PromptTokens:     -100,
+		CompletionTokens: -50,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:         -20,
+			CachedCreationTokens: -10,
+			ImageTokens:          -5,
+			AudioTokens:          -4,
+		},
+		CompletionTokenDetails: dto.OutputTokenDetails{
+			ImageTokens: -3,
+			AudioTokens: -2,
+		},
+		ClaudeCacheCreation5mTokens: -1,
+		ClaudeCacheCreation1hTokens: -1,
+	}
+
+	params := BuildTieredTokenParams(usage, false, map[string]bool{
+		"cr": true, "cc": true, "cc1h": true, "img": true, "ai": true,
+		"img_o": true, "ao": true,
+	})
+	assert.Equal(t, billingexpr.TokenParams{}, params)
+}
+
 func TestBuildTieredTokenParams_GPT_NoCacheVar(t *testing.T) {
 	usage := &dto.Usage{
 		PromptTokens:     1000,

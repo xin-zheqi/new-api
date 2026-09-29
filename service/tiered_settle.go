@@ -23,21 +23,34 @@ type TieredResultWrapper = billingexpr.TieredResult
 // report them as text-only. This function normalizes to text-only when
 // sub-categories are separately priced.
 func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVars map[string]bool) billingexpr.TokenParams {
-	p := float64(usage.PromptTokens)
-	c := float64(usage.CompletionTokens)
-	cr := float64(usage.PromptTokensDetails.CachedTokens)
-	cc5m := float64(usage.PromptTokensDetails.CacheCreationTokensTotal())
+	if usage == nil {
+		usage = &dto.Usage{}
+	}
+	// Usage is provider-controlled. Treat negative counters as invalid zeroes
+	// before they enter an expression; otherwise a malformed response could
+	// create a negative cost or make a settlement fail after the request ran.
+	nonNegative := func(value int) float64 {
+		if value <= 0 {
+			return 0
+		}
+		return float64(value)
+	}
+
+	p := nonNegative(usage.PromptTokens)
+	c := nonNegative(usage.CompletionTokens)
+	cr := nonNegative(usage.PromptTokensDetails.CachedTokens)
+	cc5m := nonNegative(usage.PromptTokensDetails.CacheCreationTokensTotal())
 	cc1h := float64(0)
 
 	if usage.UsageSemantic == "anthropic" {
-		cc1h = float64(usage.ClaudeCacheCreation1hTokens)
-		cc5m = float64(usage.ClaudeCacheCreation5mTokens)
+		cc1h = nonNegative(usage.ClaudeCacheCreation1hTokens)
+		cc5m = nonNegative(usage.ClaudeCacheCreation5mTokens)
 	}
 
-	img := float64(usage.PromptTokensDetails.ImageTokens)
-	ai := float64(usage.PromptTokensDetails.AudioTokens)
-	imgO := float64(usage.CompletionTokenDetails.ImageTokens)
-	ao := float64(usage.CompletionTokenDetails.AudioTokens)
+	img := nonNegative(usage.PromptTokensDetails.ImageTokens)
+	ai := nonNegative(usage.PromptTokensDetails.AudioTokens)
+	imgO := nonNegative(usage.CompletionTokenDetails.ImageTokens)
+	ao := nonNegative(usage.CompletionTokenDetails.AudioTokens)
 
 	// len = total input context length for tier condition evaluation.
 	// Non-Claude: prompt_tokens already includes everything.

@@ -529,7 +529,7 @@ func TestTaskAdaptorMapsJSContract(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestTaskAdaptorSanitizesOpenAIVideoRendererOutput(t *testing.T) {
+func TestTaskAdaptorPreservesOpenAIVideoRendererOutput(t *testing.T) {
 	source := `
 export const meta = {
   apiVersion: 1, key: "safe-video", name: "Safe Video", version: "1.0.0",
@@ -582,16 +582,20 @@ render: function() {
 	assert.Empty(t, video.TaskID)
 	assert.Equal(t, "origin-model", video.Model)
 	assert.Zero(t, video.CompletedAt)
-	assert.Equal(t, map[string]any{"label": "safe"}, video.Metadata)
+	assert.Equal(t, map[string]any{
+		"url":   "https://upstream.example/video.mp4",
+		"URL":   "https://upstream.example/uppercase.mp4",
+		"label": "safe",
+	}, video.Metadata)
 
 	var fields map[string]any
 	require.NoError(t, common.Unmarshal(rendered, &fields))
-	assert.NotContains(t, fields, "url")
-	assert.NotContains(t, fields, "upstream_url")
-	assert.NotContains(t, fields, "provider_payload")
+	assert.Equal(t, "https://upstream.example/top-level.mp4", fields["url"])
+	assert.Equal(t, "https://upstream.example/unknown.mp4", fields["upstream_url"])
+	assert.Equal(t, map[string]any{"task_id": "upstream-task-id"}, fields["provider_payload"])
 	assert.NotContains(t, fields, "completed_at")
-	assert.NotContains(t, string(rendered), "upstream.example")
-	assert.NotContains(t, string(rendered), "upstream-task-id")
+	assert.Contains(t, string(rendered), "upstream.example")
+	assert.Contains(t, string(rendered), "upstream-task-id")
 }
 
 func TestTaskAdaptorPreservesOpenAIVideoFailureSlotsAndOwnsLifecycle(t *testing.T) {

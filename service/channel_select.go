@@ -355,10 +355,11 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 					MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 				}
 			}
+			skipRetryAfterAffinityFailure := !affinityUsable && ShouldSkipRetryAfterChannelAffinityFailure(c)
 			if !affinityUsable && !ShouldKeepChannelAffinityOnChannelDisabled() {
 				ClearCurrentChannelAffinityCache(c)
 			}
-			if !affinityUsable && RequestPolicy(c).SessionMode == "strict" {
+			if skipRetryAfterAffinityFailure {
 				return nil, "", &ChannelSelectError{StatusCode: http.StatusServiceUnavailable, Message: "strict_session_binding_unavailable"}
 			}
 		}

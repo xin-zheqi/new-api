@@ -66,14 +66,21 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		modelName := c.GetString("original_model")
 		tokenId := c.GetInt("token_id")
 		userGroup := c.GetString("group")
-		other := model.NewLogOther()
+		other := make(map[string]interface{})
 		if c.Request != nil && c.Request.URL != nil {
-			other.SetPublic("request_path", c.Request.URL.Path)
+			other["request_path"] = c.Request.URL.Path
 		}
-		other.SetPublic("error_type", err.GetErrorType())
-		other.SetPublic("error_code", err.GetErrorCode())
-		other.SetPublic("status_code", err.StatusCode)
-		AppendRelayLogAdminInfo(c, relayInfo, other)
+		other["error_type"] = err.GetErrorType()
+		other["error_code"] = err.GetErrorCode()
+		other["status_code"] = err.StatusCode
+		adminInfo := map[string]interface{}{"use_channel": c.GetStringSlice("use_channel")}
+		if relayInfo != nil {
+			if diagnostics := relayInfo.ConversionDiagnostics(); len(diagnostics) > 0 {
+				adminInfo["conversion_diagnostics"] = diagnostics
+			}
+		}
+		AppendChannelAffinityAdminInfo(c, adminInfo)
+		other["admin_info"] = model.MergeLogRequestAdminInfo(c, adminInfo)
 		AppendTaskPluginContextAuditInfo(c, other)
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {

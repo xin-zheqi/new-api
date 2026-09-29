@@ -594,7 +594,10 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 		cacheKeySuffix := buildChannelAffinityCacheKeySuffix(rule, modelName, usingGroup, affinityValue)
 		cacheKeyFull := channelAffinityCacheNamespace + ":" + cacheKeySuffix
 		setChannelAffinityContext(c, channelAffinityMeta{
-			CacheKey:       cacheKeyFull,
+			// HybridCache namespaces raw keys internally. Keep the suffix in
+			// request context so recording and deletion address the same entry
+			// that lookup reads.
+			CacheKey:       cacheKeySuffix,
 			TTLSeconds:     ttlSeconds,
 			RuleName:       rule.Name,
 			SkipRetry:      rule.SkipRetryOnFailure,

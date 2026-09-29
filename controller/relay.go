@@ -223,6 +223,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 }
 
+func addUsedChannel(c *gin.Context, channelId int) {
+	useChannel := c.GetStringSlice("use_channel")
+	useChannel = append(useChannel, fmt.Sprintf("%d", channelId))
+	c.Set("use_channel", useChannel)
+}
+
 func writeRelayErrorResponse(c *gin.Context, relayFormat types.RelayFormat, ws *websocket.Conn, newAPIError *types.NewAPIError) {
 	if newAPIError == nil {
 		return

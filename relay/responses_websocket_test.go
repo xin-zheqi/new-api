@@ -270,8 +270,8 @@ func TestResponsesWSChannelRoutingRequiresExplicitOptIn(t *testing.T) {
 }
 
 // Session affinity follows the HTTP distributor: a strict binding to an
-// unusable channel fails the request, a prefer binding falls back, and an
-// unusable binding is dropped from the cache either way.
+// unusable channel fails the request, while a prefer binding falls back and
+// clears the unusable binding.
 func TestSelectResponsesWSChannelHonorsStrictSessionBinding(t *testing.T) {
 	require.NoError(t, i18n.Init())
 	database := setupRelayChannelDB(t)
@@ -284,8 +284,11 @@ func TestSelectResponsesWSChannelHonorsStrictSessionBinding(t *testing.T) {
 		require.NoError(t, database.Create(&model.Ability{ChannelId: channel.Id, Model: "ws-model", Group: "default", Enabled: channel.Status == common.ChannelStatusEnabled, Priority: channel.Priority}).Error)
 	}
 	previousCache := common.MemoryCacheEnabled
+	affinity := operation_setting.GetChannelAffinitySetting()
+	previousAffinity := *affinity
 	t.Cleanup(func() {
-		defer func() { common.MemoryCacheEnabled = previousCache }()
+		common.MemoryCacheEnabled = previousCache
+		*affinity = previousAffinity
 		ids := []int{bound.Id, fallback.Id}
 		require.NoError(t, database.Where("channel_id IN ?", ids).Delete(&model.Ability{}).Error)
 		require.NoError(t, database.Where("id IN ?", ids).Delete(&model.Channel{}).Error)
@@ -293,16 +296,20 @@ func TestSelectResponsesWSChannelHonorsStrictSessionBinding(t *testing.T) {
 	})
 	common.MemoryCacheEnabled = true
 	model.InitChannelCache()
-	affinity := operation_setting.GetChannelAffinitySetting()
-	previousAffinity := *affinity
-	t.Cleanup(func() { *affinity = previousAffinity })
-	snapshot, err := model.BuildRequestPolicy(map[string]string{
-		"channel_affinity_setting.enabled":      "true",
-		"channel_affinity_setting.session_mode": "strict",
-		"channel_affinity_setting.rules":        `[{"name":"session","model_regex":[".*"],"key_sources":[{"type":"request_header","key":"X-Session"}],"session_mode":"inherit"}]`,
-	})
-	require.NoError(t, err)
-	*affinity = snapshot.Affinity
+	*affinity = operation_setting.ChannelAffinitySetting{
+		Enabled:               true,
+		SwitchOnSuccess:       true,
+		KeepOnChannelDisabled: false,
+		MaxEntries:            100,
+		DefaultTTLSeconds:     3600,
+		Rules: []operation_setting.ChannelAffinityRule{{
+			Name:               "session",
+			ModelRegex:         []string{".*"},
+			PathRegex:          []string{"/v1/responses"},
+			KeySources:         []operation_setting.ChannelAffinityKeySource{{Type: "request_header", Key: "X-Session"}},
+			SkipRetryOnFailure: true,
+		}},
+	}
 	newSessionContext := func() *gin.Context {
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
@@ -325,7 +332,7 @@ func TestSelectResponsesWSChannelHonorsStrictSessionBinding(t *testing.T) {
 	_, found = service.GetPreferredChannelByAffinity(seed, "ws-model", "default")
 	assert.False(t, found, "an unusable binding is cleared unless keep_on_channel_disabled is set")
 
-	affinity.SessionMode = "prefer"
+	affinity.Rules[0].SkipRetryOnFailure = false
 	service.RecordChannelAffinity(seed, bound.Id)
 	prefer := newSessionContext()
 	channel, apiErr = selectResponsesWSChannel(prefer, "ws-model", &service.RetryParam{Ctx: prefer, ModelName: "ws-model", TokenGroup: "default", Retry: common.GetPointer(0)})

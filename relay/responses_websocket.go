@@ -225,7 +225,6 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 }
 
 func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState, create responsesWSCreateRequest) (apiErr *types.NewAPIError) {
-	policy := service.RequestPolicy(c)
 	modelName := create.Request.Model
 	started := time.Now()
 	var info *relaycommon.RelayInfo
@@ -238,10 +237,12 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 		if info == nil && modelName != "" {
 			info = &relaycommon.RelayInfo{OriginModelName: modelName, UsingGroup: common.GetContextKeyString(c, appconstant.ContextKeyUsingGroup), StartTime: started}
 		}
-		perfmetrics.RecordRelayResult(c.Request.Context(), info, apiErr)
-		// Settlement already marks the request policy successful, and nothing
-		// reads a termination decision after this point on the WebSocket path,
-		// so neither policy record belongs here.
+		if info != nil && apiErr != nil {
+			switch apiErr.GetErrorCode() {
+			case types.ErrorCodeGetChannelFailed, types.ErrorCodeModelNotFound, types.ErrorCodeDoRequestFailed:
+				perfmetrics.RecordRelaySample(info, false, 0)
+			}
+		}
 		if info != nil && billingPrepared {
 			apiErr = RefundFailedRequestBilling(c, info, apiErr)
 		}
@@ -303,7 +304,6 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				}
 			}
 			info.RetryIndex = retry.GetRetry()
-			policy.BeginAttempt(channel, info.UsingGroup)
 			var payload []byte
 			payload, apiErr = buildResponsesWSCreatePayload(c, info, create.Request, create.Generate, create.StreamID)
 			if apiErr != nil {
@@ -316,10 +316,8 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				apiErr = service.NormalizeViolationFeeError(types.NewError(dialErr, types.ErrorCodeDoRequestFailed))
 				service.ResetStatusCode(apiErr, c.GetString("status_code_mapping"))
 				info.LastError = apiErr
-				decision := service.DecideRelayRetry(c, apiErr, common.RetryTimes-retry.GetRetry())
-				service.RecordPolicyFailure(c, channel.Id, apiErr, decision)
 				service.ProcessChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, info.ApiKey, channel.GetAutoBan()), apiErr, info)
-				if decision.Action == "retry" {
+				if service.ShouldRetryRelayError(c, apiErr, common.RetryTimes-retry.GetRetry()) {
 					continue
 				}
 				return apiErr
@@ -358,8 +356,6 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 
 	accumulator := service.NewResponsesUsageAccumulator(info)
 	info.StreamStatus = relaycommon.NewStreamStatus()
-	info.StreamStatus.RequireTerminal()
-	common.SetContextKey(c, appconstant.ContextKeyResponseStreamStatus, info.StreamStatus)
 	timeout := time.Duration(appconstant.StreamingTimeout) * time.Second
 	if timeout <= 0 {
 		timeout = 300 * time.Second
@@ -422,7 +418,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 							if rejection.Error.Code != nil {
 								code = fmt.Sprint(rejection.Error.Code)
 							}
-							info.StreamStatus.MarkFailed(code, rejection.Error.Type, rejection.Status)
+							info.StreamStatus.RecordError(fmt.Sprintf("upstream response error type=%s code=%s status=%d", rejection.Error.Type, code, rejection.Status))
 						}
 						accumulator.Observe(&event.ResponsesStreamResponse)
 						info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
@@ -590,9 +586,6 @@ func (s *responsesWSSession) restoreConnectionContext(c *gin.Context, model stri
 	common.SetContextKey(c, appconstant.ContextKeyChannelParamOverride, channel.GetParamOverride())
 	common.SetContextKey(c, appconstant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, appconstant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
-	policy := service.RequestPolicy(c)
-	policy.BeginAttempt(channel, s.lockedGroup)
-	policy.AddEvent(service.PolicyEvent{ChannelID: channel.Id, Decision: service.PolicyDecision{Action: "select", Reason: "pinned_channel", Source: "channel_constraint"}})
 	return nil
 }
 

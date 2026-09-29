@@ -38,6 +38,16 @@ type QuotaInfo struct {
 	GroupRatio    float64
 }
 
+func shouldRecordRelayPerfSample(relayInfo *relaycommon.RelayInfo) bool {
+	if relayInfo == nil || relayInfo.StreamStatus == nil {
+		return true
+	}
+	if relayInfo.StreamStatus.EndReason == relaycommon.StreamEndReasonNone {
+		return true
+	}
+	return relayInfo.StreamStatus.IsNormalEnd()
+}
+
 func hasCustomModelRatio(modelName string, currentRatio float64) bool {
 	defaultRatio, exists := ratio_setting.GetDefaultModelRatioMap()[modelName]
 	if !exists {
@@ -384,9 +394,11 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
 	})
-	gopool.Go(func() {
-		perfmetrics.RecordRelaySample(relayInfo, true, int64(usage.CompletionTokens))
-	})
+	if shouldRecordRelayPerfSample(relayInfo) {
+		gopool.Go(func() {
+			perfmetrics.RecordRelaySample(relayInfo, true, int64(usage.CompletionTokens))
+		})
+	}
 }
 
 func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {

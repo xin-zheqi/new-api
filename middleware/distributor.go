@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	settingreasoning "github.com/QuantumNous/new-api/setting/reasoning"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -29,6 +30,30 @@ import (
 type ModelRequest struct {
 	Model string `json:"model"`
 	Group string `json:"group,omitempty"`
+}
+
+// TokenModelLimitAllows applies the same model normalization used by the
+// regular distributor to Responses WebSocket requests.
+func TokenModelLimitAllows(limit map[string]bool, model string) bool {
+	if limit[model] {
+		return true
+	}
+	if formatted := ratio_setting.FormatMatchingModelName(model); limit[formatted] {
+		return true
+	}
+	// Responses supports host-side effort tails and @ modifiers. Token model
+	// limits are configured against the base model, just like HTTP routing.
+	base := model
+	if modifier := strings.IndexByte(base, '@'); modifier >= 0 {
+		base = base[:modifier]
+	}
+	if limit[base] {
+		return true
+	}
+	if _, effortBase := settingreasoning.ParseOpenAIReasoningEffortFromModelSuffix(base); effortBase != base && limit[effortBase] {
+		return true
+	}
+	return false
 }
 
 func Distribute() func(c *gin.Context) {
@@ -45,8 +70,38 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
-		_, pinned, _ := constraints.ResolvedPin()
-		if !pinned {
+		if pin, found, overridden := constraints.ResolvedPin(); found {
+			for _, lost := range overridden {
+				logger.LogWarn(c, fmt.Sprintf(
+					"channel pin overridden: winning_source=%s winning_channel_id=%d overridden_source=%s overridden_channel_id=%d",
+					pin.Source, pin.ChannelId, lost.Source, lost.ChannelId,
+				))
+			}
+			channel, err = model.CacheGetChannel(pin.ChannelId)
+			if err != nil {
+				if pin.Source == taskdto.PinSourceOriginTask {
+					abortWithOpenAiMessage(c, http.StatusBadRequest, "origin_task_channel_disabled", types.ErrorCode("origin_task_channel_disabled"))
+				} else {
+					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
+				}
+				return
+			}
+			if channel.Status != common.ChannelStatusEnabled {
+				if pin.Source == taskdto.PinSourceOriginTask {
+					abortWithOpenAiMessage(c, http.StatusBadRequest, "origin_task_channel_disabled", types.ErrorCode("origin_task_channel_disabled"))
+				} else {
+					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
+				}
+				return
+			}
+			if ok, kind := model.ChannelSatisfiesFilters(channel, modelRequest.Model, constraints.Filters); !ok {
+				if kind == taskdto.FilterTaskPluginIdentity {
+					logTaskPluginChannelDecision(c, channel, modelRequest.Model, "channel_rejected", "identity_mismatch")
+				}
+				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "Model": modelRequest.Model}), types.ErrorCode(kind))
+				return
+			}
+		} else {
 			// Select a channel for the user
 			// check token model mapping
 			modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
@@ -62,8 +117,7 @@ func Distribute() func(c *gin.Context) {
 				if !ok {
 					tokenModelLimit = map[string]bool{}
 				}
-				matchName := ratio_setting.FormatMatchingModelName(modelRequest.Model) // match gpts & thinking-*
-				if _, ok := tokenModelLimit[matchName]; !ok {
+				if !TokenModelLimitAllows(tokenModelLimit, modelRequest.Model) {
 					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
 					return
 				}
@@ -74,9 +128,10 @@ func Distribute() func(c *gin.Context) {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
 					return
 				}
+				var selectGroup string
+				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 				// check path is /pg/chat/completions
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
-					usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 					playgroundRequest := &dto.PlayGroundRequest{}
 					err = common.UnmarshalBodyReusable(c, playgroundRequest)
 					if err != nil {
@@ -171,27 +226,12 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 		}
-		if pinned || shouldSelectChannel {
-			usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-			var selectErr *service.ChannelSelectError
-			channel, _, selectErr = service.SelectChannelForRequest(c, modelRequest.Model, &service.RetryParam{
-				Ctx:         c,
-				ModelName:   modelRequest.Model,
-				TokenGroup:  usingGroup,
-				RequestPath: c.Request.URL.Path,
-				Retry:       common.GetPointer(0),
-			})
-			if selectErr != nil {
-				if selectErr.FilterKind == taskdto.FilterTaskPluginIdentity {
-					logTaskPluginChannelDecision(c, selectErr.Channel, modelRequest.Model, "channel_rejected", "identity_mismatch")
+		if channel != nil {
+			if ok, kind := model.ChannelSatisfiesFilters(channel, modelRequest.Model, constraints.Filters); !ok {
+				if kind == taskdto.FilterTaskPluginIdentity {
+					logTaskPluginChannelDecision(c, channel, modelRequest.Model, "channel_rejected", "identity_mismatch")
 				}
-				message := selectErr.Message
-				if selectErr.NoAvailableChannel {
-					message = noAvailableChannelMessage(c, usingGroup, modelRequest.Model)
-				} else if selectErr.MessageID != "" {
-					message = i18n.T(c, selectErr.MessageID, selectErr.Params)
-				}
-				abortWithOpenAiMessage(c, selectErr.StatusCode, message, selectErr.Code)
+				abortWithOpenAiMessage(c, http.StatusServiceUnavailable, noAvailableChannelMessage(c, common.GetContextKeyString(c, constant.ContextKeyUsingGroup), modelRequest.Model), types.ErrorCodeModelNotFound)
 				return
 			}
 		}

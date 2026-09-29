@@ -40,7 +40,7 @@ func PrepareResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, req *d
 	if err := helper.ModelMappedHelper(c, info, request); err != nil {
 		return nil, nil, nil, types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
 	}
-	if err := helper.ApplyReasoningModelSuffix(c, info, request); err != nil {
+	if err := helper.ApplyReasoningModelSuffix(info, request); err != nil {
 		return nil, nil, nil, newConvertRequestFailedError(c, info, err)
 	}
 

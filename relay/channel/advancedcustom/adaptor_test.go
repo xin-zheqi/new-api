@@ -478,6 +478,8 @@ func TestAdaptorConvertsResponsesRequestToOpenAIChatUpstream(t *testing.T) {
 	})
 	info.RelayMode = relayconstant.RelayModeResponses
 	info.RequestURLPath = "/v1/responses"
+	info.IsStream = true
+	info.SupportStreamOptions = true
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -499,6 +501,8 @@ func TestAdaptorConvertsResponsesRequestToOpenAIChatUpstream(t *testing.T) {
 	assert.Equal(t, "system rules", chatReq.Messages[0].StringContent())
 	assert.Equal(t, "user", chatReq.Messages[1].Role)
 	assert.Equal(t, "hello", chatReq.Messages[1].StringContent())
+	require.NotNil(t, chatReq.StreamOptions)
+	assert.True(t, chatReq.StreamOptions.IncludeUsage)
 
 	requestURL, err := adaptor.GetRequestURL(info)
 	require.NoError(t, err)

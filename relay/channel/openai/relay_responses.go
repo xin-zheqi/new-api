@@ -76,6 +76,8 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var responseTextBuilder strings.Builder
 	imageCounter := &relaycommon.ImageGenerationCallCounter{}
 	imageCommitted := false
+	started := false
+	explicitFailure := false
 
 	scanErr := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -86,6 +88,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
+		started = true
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
@@ -93,6 +96,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				if streamResponse.Response.Usage != nil {
 					incomingUsage := relayconvert.NormalizeResponsesUsage(streamResponse.Response.Usage)
 					usage = dto.MergeUsageNonZero(usage, incomingUsage)
+				}
+				if responseTextBuilder.Len() == 0 {
+					responseTextBuilder.WriteString(service.ExtractOutputTextFromResponses(streamResponse.Response))
 				}
 				if !imageCommitted {
 					if relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status) {
@@ -113,13 +119,15 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				imageCommitted = true
 			}
 		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+			explicitFailure = true
 			if !imageCommitted {
 				imageCounter.Reset()
 				imageCounter.Commit(info)
 				imageCommitted = true
 			}
-		case "response.output_text.delta":
-			// 处理输出文本
+		case "response.output_text.delta", "response.function_call_arguments.delta",
+			"response.reasoning_summary_text.delta", "response.reasoning_text.delta", "response.refusal.delta":
+			// All of these deltas consume output tokens when terminal usage is absent.
 			responseTextBuilder.WriteString(streamResponse.Delta)
 		case dto.ResponsesOutputTypeItemDone:
 			if streamResponse.Item != nil {
@@ -152,7 +160,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 	}
 
-	if usage.PromptTokens == 0 && usage.CompletionTokens != 0 {
+	if usage.PromptTokens == 0 && (usage.CompletionTokens != 0 || (started && !explicitFailure)) {
 		usage.PromptTokens = info.GetEstimatePromptTokens()
 	}
 

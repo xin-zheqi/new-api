@@ -97,3 +97,83 @@ func TestOllamaChatHandlerNonStreamToolCalls(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildOllamaStreamDelta(t *testing.T) {
+	tests := []struct {
+		name          string
+		raw           string
+		startIndex    int
+		wantContent   string
+		wantReasoning string
+		wantToolCalls int
+		wantNextIndex int
+		wantPayload   bool
+	}{
+		{name: "chat content", raw: `{"message":{"content":"hello"}}`, wantContent: "hello", wantPayload: true},
+		{name: "generate content", raw: `{"response":"hello"}`, wantContent: "hello", wantPayload: true},
+		{name: "thinking json string", raw: `{"message":{"thinking":"consider this"}}`, wantReasoning: "consider this", wantPayload: true},
+		{name: "thinking raw fallback", raw: `{"message":{"thinking":{"step":"consider this"}}}`, wantReasoning: `{"step":"consider this"}`, wantPayload: true},
+		{name: "final frame tool calls", raw: `{"message":{"tool_calls":[{"id":"call_upstream","function":{"name":"get_weather","arguments":{"city":"Paris"}}},{"function":{"name":"get_time","arguments":{"timezone":"UTC"}}}]}}`, wantToolCalls: 2, wantNextIndex: 2, wantPayload: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var chunk ollamaChatStreamChunk
+			require.NoError(t, common.Unmarshal([]byte(tt.raw), &chunk))
+			toolCallIndex := tt.startIndex
+			delta, hasPayload := buildOllamaStreamDelta(&chunk, "response-id", 123, "model", &toolCallIndex)
+			require.NotEmpty(t, delta.Choices)
+			assert.Equal(t, tt.wantPayload, hasPayload)
+			assert.Equal(t, tt.wantContent, delta.Choices[0].Delta.GetContentString())
+			assert.Equal(t, tt.wantReasoning, delta.Choices[0].Delta.GetReasoningContent())
+			assert.Len(t, delta.Choices[0].Delta.ToolCalls, tt.wantToolCalls)
+			assert.Equal(t, tt.wantNextIndex, toolCallIndex)
+		})
+	}
+}
+
+func TestOllamaStreamHandlerPreservesDoneFrameToolCalls(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body: io.NopCloser(strings.NewReader(`{"model":"qwen3-coder","created_at":"2026-05-27T12:00:00Z","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"get_weather","arguments":{"city":"北京"}}},{"function":{"name":"get_time","arguments":{"timezone":"Asia/Shanghai"}}}]},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":7}`)),
+	}
+
+	usage, apiErr := ollamaStreamHandler(c, &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "fallback-model"}}, resp)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	assert.Equal(t, 12, usage.TotalTokens)
+
+	var chunks []dto.ChatCompletionsStreamResponse
+	for _, line := range strings.Split(w.Body.String(), "\n") {
+		data, ok := strings.CutPrefix(line, "data: ")
+		if !ok || data == "[DONE]" {
+			continue
+		}
+		var chunk dto.ChatCompletionsStreamResponse
+		require.NoError(t, common.Unmarshal([]byte(data), &chunk))
+		chunks = append(chunks, chunk)
+	}
+	toolChunkIndex, stopChunkIndex := -1, -1
+	for i := range chunks {
+		if len(chunks[i].Choices) == 0 {
+			continue
+		}
+		if len(chunks[i].Choices[0].Delta.ToolCalls) > 0 {
+			toolChunkIndex = i
+		}
+		if chunks[i].Choices[0].FinishReason != nil {
+			stopChunkIndex = i
+		}
+	}
+	require.NotEqual(t, -1, toolChunkIndex)
+	require.NotEqual(t, -1, stopChunkIndex)
+	assert.Less(t, toolChunkIndex, stopChunkIndex)
+	require.Len(t, chunks[toolChunkIndex].Choices[0].Delta.ToolCalls, 2)
+	assert.Equal(t, "call_0", chunks[toolChunkIndex].Choices[0].Delta.ToolCalls[0].ID)
+	assert.Equal(t, "call_1", chunks[toolChunkIndex].Choices[0].Delta.ToolCalls[1].ID)
+	assert.Equal(t, constant.FinishReasonToolCalls, *chunks[stopChunkIndex].Choices[0].FinishReason)
+}

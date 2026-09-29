@@ -758,26 +758,24 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	rendered := kitdto.NewOpenAIVideo()
-	if err = common.Unmarshal(encoded, rendered); err != nil {
+	var rendered map[string]any
+	if err = common.Unmarshal(encoded, &rendered); err != nil || rendered == nil {
 		return nil, fmt.Errorf("plugin returned an invalid OpenAI video object")
 	}
 	host := task.ToOpenAIVideo()
-	rendered.ID = host.ID
-	rendered.Object = host.Object
-	rendered.TaskID = ""
-	rendered.Status = host.Status
-	rendered.Progress = host.Progress
-	rendered.CreatedAt = host.CreatedAt
-	rendered.Model = host.Model
-	rendered.CompletedAt = host.CompletedAt
-	for key := range rendered.Metadata {
-		if strings.EqualFold(key, "url") {
-			delete(rendered.Metadata, key)
-		}
-	}
-	if len(rendered.Metadata) == 0 {
-		rendered.Metadata = nil
+	// Preserve provider-specific fields while the host owns the public task
+	// identity and lifecycle fields.
+	rendered["id"] = host.ID
+	rendered["object"] = host.Object
+	delete(rendered, "task_id")
+	rendered["status"] = host.Status
+	rendered["progress"] = host.Progress
+	rendered["created_at"] = host.CreatedAt
+	rendered["model"] = host.Model
+	if host.CompletedAt != 0 {
+		rendered["completed_at"] = host.CompletedAt
+	} else {
+		delete(rendered, "completed_at")
 	}
 	return common.Marshal(rendered)
 }

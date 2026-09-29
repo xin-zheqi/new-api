@@ -316,12 +316,12 @@ func (usage *BillingUsage) canonicalOpenAIUsage() *Usage {
 
 func (usage *BillingUsage) canonicalClaudeUsage() *Usage {
 	claudeUsage := usage.ClaudeUsage
-	cacheCreation5m := claudeUsage.GetCacheCreation5mTokens()
-	if cacheCreation5m == 0 {
+	var cacheCreation5m, cacheCreation1h int
+	if claudeUsage.CacheCreation != nil {
+		cacheCreation5m = claudeUsage.GetCacheCreation5mTokens()
+		cacheCreation1h = claudeUsage.GetCacheCreation1hTokens()
+	} else {
 		cacheCreation5m = claudeUsage.ClaudeCacheCreation5mTokens
-	}
-	cacheCreation1h := claudeUsage.GetCacheCreation1hTokens()
-	if cacheCreation1h == 0 {
 		cacheCreation1h = claudeUsage.ClaudeCacheCreation1hTokens
 	}
 
@@ -363,7 +363,7 @@ func (usage *BillingUsage) canonicalGeminiUsage() *Usage {
 		addGeminiInputTokenDetail(&canonical.PromptTokensDetails, detail)
 	}
 	for _, detail := range metadata.CandidatesTokensDetails {
-		switch detail.Modality {
+		switch normalizeGeminiModality(detail.Modality) {
 		case "IMAGE":
 			canonical.CompletionTokenDetails.ImageTokens += detail.TokenCount
 		case "AUDIO":
@@ -377,6 +377,9 @@ func (usage *BillingUsage) canonicalGeminiUsage() *Usage {
 		canonical.TotalTokens = canonical.PromptTokens + canonical.CompletionTokens
 	} else if canonical.CompletionTokens <= 0 {
 		canonical.CompletionTokens = canonical.TotalTokens - canonical.PromptTokens
+		if canonical.CompletionTokens < 0 {
+			canonical.CompletionTokens = 0
+		}
 	}
 	if canonical.PromptTokens > 0 && canonical.PromptTokensDetails.TextTokens == 0 && canonical.PromptTokensDetails.AudioTokens == 0 {
 		canonical.PromptTokensDetails.TextTokens = canonical.PromptTokens
@@ -385,7 +388,7 @@ func (usage *BillingUsage) canonicalGeminiUsage() *Usage {
 }
 
 func addGeminiInputTokenDetail(details *InputTokenDetails, detail GeminiPromptTokensDetails) {
-	switch detail.Modality {
+	switch normalizeGeminiModality(detail.Modality) {
 	case "AUDIO":
 		details.AudioTokens += detail.TokenCount
 	case "IMAGE":
@@ -393,6 +396,10 @@ func addGeminiInputTokenDetail(details *InputTokenDetails, detail GeminiPromptTo
 	case "TEXT":
 		details.TextTokens += detail.TokenCount
 	}
+}
+
+func normalizeGeminiModality(modality string) string {
+	return strings.ToUpper(strings.TrimSpace(modality))
 }
 
 func cloneOpenAIUsage(usage *Usage) *Usage {
@@ -404,6 +411,10 @@ func cloneOpenAIUsage(usage *Usage) *Usage {
 	if usage.InputTokensDetails != nil {
 		inputTokensDetails := *usage.InputTokensDetails
 		clone.InputTokensDetails = &inputTokensDetails
+	}
+	if usage.OutputTokensDetails != nil {
+		outputTokensDetails := *usage.OutputTokensDetails
+		clone.OutputTokensDetails = &outputTokensDetails
 	}
 	return &clone
 }

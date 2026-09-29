@@ -102,14 +102,13 @@ function validateAndNormalize(ctx) {
 export function buildSubmitRequest(ctx) {
   const normalized = validateAndNormalize(ctx);
   const incoming = ctx.requestHeaders || {};
+  const headers = { Authorization: "Bearer " + ctx.apiKey };
+  if (typeof incoming["Content-Type"] === "string" && incoming["Content-Type"]) headers["Content-Type"] = incoming["Content-Type"];
+  if (typeof incoming.Accept === "string" && incoming.Accept) headers.Accept = incoming.Accept;
   return {
     url: ctx.baseUrl + "/suno/submit/" + normalized.action,
     method: "POST",
-    headers: {
-      "Content-Type": incoming["Content-Type"] || "",
-      Accept: incoming.Accept || "",
-      Authorization: "Bearer " + ctx.apiKey,
-    },
+    headers: headers,
     body: normalized.body,
     action: normalized.action,
   };
@@ -224,7 +223,7 @@ function escapedAttribute(value) {
 }
 
 function responseContent(ctx, task) {
-  const model = trimmed(ctx && ctx.requestBody && ctx.requestBody.model).toLowerCase();
+  const model = trimmed(ctx && (ctx.upstreamModel || ctx.model || (ctx.requestBody && ctx.requestBody.model))).toLowerCase();
   const songs = artifactData(task);
   const lyrics = [];
   for (const song of songs) {
@@ -263,8 +262,8 @@ export const protocols = {
       if (!ctx.body || ctx.body.kind !== "json") throw new Error("JSON body required");
       const req = ctx.body.value;
       if (!req || typeof req !== "object" || Array.isArray(req)) throw new Error("request body must be an object");
-      const model = trimmed(req.model);
-      if (model !== "suno_music" && model !== "suno_lyrics") throw new Error("model is required");
+      const model = trimmed(ctx.upstreamModel || ctx.model || req.model).toLowerCase();
+      if (model !== "suno_music" && model !== "suno_lyrics") throw new Error("model must be suno_music or suno_lyrics");
       if (req.input !== undefined && typeof req.input !== "string" && !Array.isArray(req.input)) throw new Error("input must be a string or array");
       if (req.metadata !== undefined && (!req.metadata || typeof req.metadata !== "object" || Array.isArray(req.metadata)))
         throw new Error("metadata must be an object");
@@ -273,11 +272,11 @@ export const protocols = {
       if (model === "suno_lyrics") {
         if (!trimmed(requestBody.prompt)) requestBody.prompt = input || trimmed(req.prompt);
         if (!trimmed(requestBody.prompt)) throw new Error("input is required");
-        return { kind: "submit", model: model, action: "LYRICS", requestBody: requestBody };
+        return { kind: "submit", model: ctx.model, action: "LYRICS", requestBody: requestBody };
       }
       if (!trimmed(requestBody.gpt_description_prompt)) requestBody.gpt_description_prompt = input || trimmed(req.prompt);
       if (!trimmed(requestBody.gpt_description_prompt) && !trimmed(requestBody.prompt)) throw new Error("input is required");
-      return { kind: "submit", model: model, action: "MUSIC", requestBody: requestBody };
+      return { kind: "submit", model: ctx.model, action: "MUSIC", requestBody: requestBody };
     },
     renderEvents: function (ctx, task, previousState) {
       const status = String(task.status || "UNKNOWN").toUpperCase();

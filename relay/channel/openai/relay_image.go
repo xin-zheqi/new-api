@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +26,38 @@ func updateOpenAIImageCount(info *relaycommon.RelayInfo, count int64) {
 		return
 	}
 	info.PriceData.AddOtherRatio("n", float64(count))
+}
+
+// openaiImageResponseCount counts image payloads rather than arbitrary data
+// entries. Some providers return one object, some return an array, and an
+// entry may contain both url and b64_json for the same image.
+func openaiImageResponseCount(responseBody []byte) int64 {
+	data := gjson.GetBytes(responseBody, "data")
+	if data.IsObject() {
+		if openaiImageDataHasField(data, "url") || openaiImageDataHasField(data, "b64_json") {
+			return 1
+		}
+		return 0
+	}
+	if !data.IsArray() {
+		return 0
+	}
+	var urls, b64s int64
+	data.ForEach(func(_, item gjson.Result) bool {
+		if openaiImageDataHasField(item, "url") {
+			urls++
+		}
+		if openaiImageDataHasField(item, "b64_json") {
+			b64s++
+		}
+		return true
+	})
+	return max(urls, b64s)
+}
+
+func openaiImageDataHasField(item gjson.Result, field string) bool {
+	value := item.Get(field)
+	return value.Type == gjson.String && value.Raw != `""`
 }
 
 // OpenaiImageHandler handles non-streaming OpenAI image responses
@@ -84,6 +115,9 @@ func normalizeOpenAIUsage(usage *dto.Usage) {
 		usage.PromptTokensDetails.ImageTokens = usage.InputTokensDetails.ImageTokens
 		usage.PromptTokensDetails.TextTokens = usage.InputTokensDetails.TextTokens
 		usage.PromptTokensDetails.AudioTokens = usage.InputTokensDetails.AudioTokens
+	}
+	if usage.OutputTokensDetails != nil {
+		usage.CompletionTokenDetails = *usage.OutputTokensDetails
 	}
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
@@ -252,7 +286,7 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 	normalizeOpenAIUsage(&usageResp.Usage)
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 
-	imageCount := gjson.GetBytes(responseBody, "data.#").Int()
+	imageCount := openaiImageResponseCount(responseBody)
 	updateOpenAIImageCount(info, imageCount)
 
 	helper.SetEventStreamHeaders(c)
@@ -275,8 +309,11 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 		}
 	}
 
-	for i := int64(0); i < imageCount; i++ {
-		image := gjson.GetBytes(responseBody, "data."+strconv.FormatInt(i, 10))
+	emitted := int64(0)
+	for _, image := range gjson.GetBytes(responseBody, "data").Array() {
+		if !openaiImageDataHasField(image, "url") && !openaiImageDataHasField(image, "b64_json") {
+			continue
+		}
 		payload := []byte(`{"type":"image_generation.completed"}`)
 		payload, err = sjson.SetBytes(payload, "created_at", created)
 		if err != nil {
@@ -311,6 +348,7 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 			}
 			return &usageResp.Usage, nil
 		}
+		emitted++
 	}
 	if err := writeOpenaiImageStreamDone(c); err != nil {
 		if info != nil && info.StreamStatus != nil {
@@ -319,7 +357,7 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 		return &usageResp.Usage, nil
 	}
 	if info != nil {
-		info.ReceivedResponseCount += int(imageCount)
+		info.ReceivedResponseCount += int(emitted)
 		if info.StreamStatus == nil {
 			info.StreamStatus = relaycommon.NewStreamStatus()
 		}

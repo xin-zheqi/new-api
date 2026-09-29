@@ -101,7 +101,11 @@ func MergeBillingUsageNonZero(current *BillingUsage, incoming *BillingUsage) *Bi
 		return CloneBillingUsage(current)
 	}
 	if current == nil || !sameBillingUsageDialect(current, incoming) {
-		return CloneBillingUsage(incoming)
+		replaced := CloneBillingUsage(incoming)
+		if current != nil && replaced != nil {
+			replaced.Estimated = current.Estimated || incoming.Estimated
+		}
+		return replaced
 	}
 
 	merged := CloneBillingUsage(current)
@@ -146,6 +150,9 @@ func mergeClaudeUsageNonZero(current *ClaudeUsage, incoming *ClaudeUsage) *Claud
 		merged = &ClaudeUsage{}
 	}
 	if incoming == nil {
+		if current != nil {
+			merged.BillingUsage = CloneBillingUsage(current.BillingUsage)
+		}
 		return merged
 	}
 	if incoming.InputTokens > 0 {
@@ -169,6 +176,8 @@ func mergeClaudeUsageNonZero(current *ClaudeUsage, incoming *ClaudeUsage) *Claud
 	if incoming.CacheCreation != nil {
 		cacheCreation := *incoming.CacheCreation
 		merged.CacheCreation = &cacheCreation
+		merged.ClaudeCacheCreation5mTokens = cacheCreation.Ephemeral5mInputTokens
+		merged.ClaudeCacheCreation1hTokens = cacheCreation.Ephemeral1hInputTokens
 	}
 	if incoming.ServerToolUse != nil {
 		if merged.ServerToolUse == nil {
@@ -186,6 +195,11 @@ func mergeClaudeUsageNonZero(current *ClaudeUsage, incoming *ClaudeUsage) *Claud
 		if incoming.ServerToolUse.ToolSearchRequests > 0 {
 			merged.ServerToolUse.ToolSearchRequests = incoming.ServerToolUse.ToolSearchRequests
 		}
+	}
+	if incoming.BillingUsage != nil {
+		merged.BillingUsage = CloneBillingUsage(incoming.BillingUsage)
+	} else if current != nil {
+		merged.BillingUsage = CloneBillingUsage(current.BillingUsage)
 	}
 	return merged
 }
@@ -242,15 +256,15 @@ func mergeGeminiTokenDetails(current []GeminiPromptTokensDetails, incoming []Gem
 	merged := append([]GeminiPromptTokensDetails{}, current...)
 	indexes := make(map[string]int, len(merged))
 	for index, detail := range merged {
-		indexes[strings.ToUpper(strings.TrimSpace(detail.Modality))] = index
+		indexes[normalizeGeminiModality(detail.Modality)] = index
 	}
 	for _, detail := range incoming {
 		if detail.TokenCount <= 0 {
 			continue
 		}
-		key := strings.ToUpper(strings.TrimSpace(detail.Modality))
+		key := normalizeGeminiModality(detail.Modality)
 		if index, ok := indexes[key]; ok {
-			merged[index] = detail
+			merged[index].TokenCount += detail.TokenCount
 			continue
 		}
 		indexes[key] = len(merged)

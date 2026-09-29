@@ -103,6 +103,18 @@ func TestRelayRouterRegistersClaudeTokenCountingEndpoint(t *testing.T) {
 	t.Fatal("POST /v1/messages/count_tokens route is not registered")
 }
 
+func TestRelayRouterRejectsGeminiCountTokensRouteBeforeAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	SetRelayRouter(engine)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-flash:countTokens", nil)
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+}
+
 func setupRelayRouterTestDB(t *testing.T) {
 	t.Helper()
 

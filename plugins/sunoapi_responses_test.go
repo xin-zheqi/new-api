@@ -67,6 +67,22 @@ func TestSunoResponsesProtocol(t *testing.T) {
 		assert.Equal(t, map[string]any{"prompt": "write about the sea"}, lyrics["requestBody"])
 	})
 
+	t.Run("keeps channel-mapped aliases while using the upstream model for dispatch", func(t *testing.T) {
+		music := decodeMap(t, callProtocol(t, "decodeRequest", map[string]any{
+			"model": "my-suno", "upstreamModel": "suno_music",
+			"body": map[string]any{"kind": "json", "value": map[string]any{"model": "my-suno", "input": "summer pop"}},
+		}))
+		assert.Equal(t, "my-suno", music["model"])
+		assert.Equal(t, "MUSIC", music["action"])
+
+		lyrics := decodeMap(t, callProtocol(t, "decodeRequest", map[string]any{
+			"model": "my-lyrics", "upstreamModel": "suno_lyrics",
+			"body": map[string]any{"kind": "json", "value": map[string]any{"model": "my-lyrics", "input": "write about the sea"}},
+		}))
+		assert.Equal(t, "my-lyrics", lyrics["model"])
+		assert.Equal(t, "LYRICS", lyrics["action"])
+	})
+
 	t.Run("rejects malformed input", func(t *testing.T) {
 		_, callErr := plugin.Engine.CallPath(t.Context(), "protocols", []string{"openai_responses", "decodeRequest"}, map[string]any{
 			"model": "suno_music", "body": map[string]any{"kind": "json", "value": map[string]any{"model": "suno_music", "input": map[string]any{"text": "bad"}}},

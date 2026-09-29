@@ -25,6 +25,17 @@ func TestMergeClaudeUsageCacheCreationReplacesWholeObject(t *testing.T) {
 	require.NotNil(t, merged.CacheCreation)
 	assert.Equal(t, 1000, merged.CacheCreation.Ephemeral5mInputTokens)
 	assert.Equal(t, 0, merged.CacheCreation.Ephemeral1hInputTokens)
+	assert.Equal(t, 1000, merged.ClaudeCacheCreation5mTokens)
+	assert.Equal(t, 0, merged.ClaudeCacheCreation1hTokens)
+}
+
+func TestMergeGeminiUsageMetadataSumsNormalizedModalities(t *testing.T) {
+	merged := MergeGeminiUsageMetadataNonZero(
+		&GeminiUsageMetadata{CandidatesTokensDetails: []GeminiPromptTokensDetails{{Modality: " image ", TokenCount: 10}}},
+		&GeminiUsageMetadata{CandidatesTokensDetails: []GeminiPromptTokensDetails{{Modality: "IMAGE", TokenCount: 7}}},
+	)
+	require.Len(t, merged.CandidatesTokensDetails, 1)
+	assert.Equal(t, 17, merged.CandidatesTokensDetails[0].TokenCount)
 }
 
 func TestMergeGeminiUsageMetadataCandidatesAndThoughtsReplacedAsPair(t *testing.T) {
@@ -64,4 +75,12 @@ func TestMergeUsageNonZeroKeepsPositiveValuesAndTakesMaxTotal(t *testing.T) {
 	assert.Equal(t, 10, merged.PromptTokens)
 	assert.Equal(t, 5, merged.CompletionTokens)
 	assert.Equal(t, 20, merged.TotalTokens)
+}
+
+func TestMergeBillingUsageReplacementPreservesEstimatedFlag(t *testing.T) {
+	current := &BillingUsage{Estimated: true, ClaudeUsage: &ClaudeUsage{InputTokens: 1}}
+	incoming := &BillingUsage{OpenAIUsage: &Usage{CompletionTokens: 2}}
+	merged := MergeBillingUsageNonZero(current, incoming)
+	require.NotNil(t, merged)
+	assert.True(t, merged.Estimated)
 }

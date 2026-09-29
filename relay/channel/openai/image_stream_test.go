@@ -289,7 +289,7 @@ func TestOpenaiImageStreamHandlerWrapsJSONResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(func() { gin.SetMode(oldMode) })
 
-	body := `{"created":1710000000,"data":[{"b64_json":"first","revised_prompt":"draw a cat"},{"b64_json":"second"}],"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"input_tokens_details":{"image_tokens":2,"text_tokens":1}}}`
+	body := `{"created":1710000000,"data":[{"b64_json":"first","revised_prompt":"draw a cat"},{"b64_json":"second"}],"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"input_tokens_details":{"image_tokens":2,"text_tokens":1},"output_tokens_details":{"image_tokens":4}}}`
 
 	c, recorder, resp, info := newImageTestContext(t, body, "application/json", true)
 	info.PriceData.UsePrice = true
@@ -302,6 +302,7 @@ func TestOpenaiImageStreamHandlerWrapsJSONResponse(t *testing.T) {
 	require.Equal(t, 7, usage.TotalTokens)
 	require.Equal(t, 2, usage.PromptTokensDetails.ImageTokens)
 	require.Equal(t, 1, usage.PromptTokensDetails.TextTokens)
+	require.Equal(t, 4, usage.CompletionTokenDetails.ImageTokens)
 	require.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
 	require.Empty(t, recorder.Header().Get("Content-Length"))
 	require.Contains(t, recorder.Body.String(), `event: image_generation.completed`)
@@ -357,6 +358,24 @@ func TestOpenaiImageHandlerUsesPositiveActualCountForFixedPrice(t *testing.T) {
 			require.Nil(t, err)
 			require.Equal(t, tt.wantCount, info.PriceData.OtherRatios()["n"])
 			require.Equal(t, tt.body, recorder.Body.String())
+		})
+	}
+}
+
+func TestOpenaiImageResponseCountUsesImagePayload(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want int64
+	}{
+		{name: "object payload", body: `{"data":{"url":"https://example.test/image"}}`, want: 1},
+		{name: "paired url and base64 entries are one image", body: `{"data":[{"url":"https://example.test/image"},{"b64_json":"encoded"}]}`, want: 1},
+		{name: "revised prompt is not an image", body: `{"data":[{"revised_prompt":"draw a cat"}]}`, want: 0},
+		{name: "empty payload", body: `{"data":[]}`, want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, openaiImageResponseCount([]byte(tt.body)))
 		})
 	}
 }

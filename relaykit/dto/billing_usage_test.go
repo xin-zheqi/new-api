@@ -20,6 +20,18 @@ func TestNewGeminiChatBillingUsageRequiresTokenContent(t *testing.T) {
 	assert.False(t, billingUsage.Estimated)
 }
 
+func TestCanonicalGeminiUsageClampsNegativeDerivedCompletion(t *testing.T) {
+	billingUsage := NewGeminiChatBillingUsage(&GeminiUsageMetadata{
+		PromptTokenCount: 100,
+		TotalTokenCount:  10,
+	})
+	require.NotNil(t, billingUsage)
+	usage, ok := billingUsage.CanonicalUsage()
+	require.True(t, ok)
+	assert.Equal(t, 0, usage.CompletionTokens)
+	assert.Equal(t, 10, usage.TotalTokens)
+}
+
 func TestNewClaudeMessagesBillingUsageRequiresTokenContent(t *testing.T) {
 	require.Nil(t, NewClaudeMessagesBillingUsage(nil))
 	require.Nil(t, NewClaudeMessagesBillingUsage(&ClaudeUsage{}))

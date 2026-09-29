@@ -195,6 +195,9 @@ func TestGeneralOpenAIRequestGetSystemRoleName(t *testing.T) {
 		{name: "o1 mini stays system", model: "o1-mini", want: "system"},
 		{name: "o1 preview stays system", model: "o1-preview", want: "system"},
 		{name: "gpt 5 uses developer", model: "gpt-5", want: "developer"},
+		{name: "gpt 6 uses developer", model: "gpt-6-astra", want: "developer"},
+		{name: "gpt 6 dated snapshot uses developer", model: "gpt-6-astra-2026-09-03", want: "developer"},
+		{name: "future generation stays system", model: "gpt-7", want: "system"},
 		{name: "omni is not o series", model: "omni-moderation-latest", want: "system"},
 	}
 
@@ -203,6 +206,37 @@ func TestGeneralOpenAIRequestGetSystemRoleName(t *testing.T) {
 			req := GeneralOpenAIRequest{Model: tt.model}
 
 			require.Equal(t, tt.want, req.GetSystemRoleName())
+		})
+	}
+}
+
+func TestOpenAIChatCapabilities(t *testing.T) {
+	tests := []struct {
+		name                   string
+		model                  string
+		effort                 string
+		useMaxCompletionTokens bool
+		useDeveloperRole       bool
+		supportsTemperature    bool
+		supportsTopP           bool
+		supportsLogProbs       bool
+	}{
+		{name: "gpt 6", model: "gpt-6-astra", useMaxCompletionTokens: true, useDeveloperRole: true},
+		{name: "gpt 6 dated snapshot", model: "gpt-6-astra-2026-09-03", useMaxCompletionTokens: true, useDeveloperRole: true},
+		{name: "gpt 6 unknown variant", model: "gpt-6-astra-pro", supportsTemperature: true, supportsTopP: true, supportsLogProbs: true},
+		{name: "gpt 5.2 no reasoning", model: "gpt-5.2", supportsTemperature: true, supportsTopP: true, supportsLogProbs: true, useMaxCompletionTokens: true, useDeveloperRole: true},
+		{name: "gpt 5.2 reasoning", model: "gpt-5.2", effort: "high", useMaxCompletionTokens: true, useDeveloperRole: true},
+		{name: "o1 mini", model: "o1-mini", useMaxCompletionTokens: true, supportsTopP: true, supportsLogProbs: true},
+		{name: "gpt 4", model: "gpt-4.1", supportsTemperature: true, supportsTopP: true, supportsLogProbs: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := GetOpenAIChatCapabilities(tt.model, tt.effort)
+			assert.Equal(t, tt.useMaxCompletionTokens, got.UseMaxCompletionTokens)
+			assert.Equal(t, tt.useDeveloperRole, got.UseDeveloperRole)
+			assert.Equal(t, tt.supportsTemperature, got.SupportsTemperature)
+			assert.Equal(t, tt.supportsTopP, got.SupportsTopP)
+			assert.Equal(t, tt.supportsLogProbs, got.SupportsLogProbs)
 		})
 	}
 }

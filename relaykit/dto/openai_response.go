@@ -239,6 +239,10 @@ type Usage struct {
 	InputTokens            int                `json:"input_tokens"`
 	OutputTokens           int                `json:"output_tokens"`
 	InputTokensDetails     *InputTokenDetails `json:"input_tokens_details"`
+	// OutputTokensDetails is the native Images API field. It is normalized into
+	// CompletionTokenDetails before billing, while retaining the source shape
+	// for callers that need to inspect the upstream response.
+	OutputTokensDetails *OutputTokenDetails `json:"output_tokens_details,omitempty"`
 
 	// claude cache 1h
 	ClaudeCacheCreation5mTokens int `json:"claude_cache_creation_5_m_tokens"`

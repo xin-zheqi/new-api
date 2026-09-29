@@ -136,4 +136,27 @@ func TestAlibabaWan3(t *testing.T) {
 		require.NoError(t, callErr)
 		assert.Equal(t, map[string]any{"seconds": float64(5), "resolution": "1080P"}, roundTrip(t, value))
 	})
+
+	t.Run("completion facts include Wan3 input video duration", func(t *testing.T) {
+		value, callErr := plugin.Engine.Call(t.Context(), "extractUsageOnComplete", map[string]any{
+			"upstreamModel": "wan3.0-video",
+		}, map[string]any{}, map[string]any{
+			"output": map[string]any{"task_status": "SUCCEEDED"},
+			"usage":  map[string]any{"input_video_duration": 7.5, "output_video_duration": 5.0, "SR": 720},
+		})
+		require.NoError(t, callErr)
+		assert.Equal(t, map[string]any{"seconds": 12.5, "resolution": "720P"}, roundTrip(t, value))
+	})
+
+	t.Run("task result accepts nested result video URL", func(t *testing.T) {
+		value, callErr := plugin.Engine.Call(t.Context(), "parseTaskResult", map[string]any{}, map[string]any{
+			"output": map[string]any{
+				"task_status": "SUCCEEDED",
+				"results":     map[string]any{"video_url": "https://upstream.example/result.mp4"},
+			},
+		})
+		require.NoError(t, callErr)
+		assert.Equal(t, "SUCCESS", roundTrip(t, value)["status"])
+		assert.Equal(t, "https://upstream.example/result.mp4", roundTrip(t, value)["url"])
+	})
 }

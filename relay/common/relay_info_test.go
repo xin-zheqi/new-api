@@ -145,6 +145,24 @@ func TestGenRelayInfoCapturesRequestReasoningEffort(t *testing.T) {
 			}},
 			expected: "low",
 		},
+		{
+			name:        "Gemini thinking level is canonicalized",
+			path:        "/v1beta/models/gemini-3-pro:generateContent",
+			relayFormat: types.RelayFormatGemini,
+			request: &dto.GeminiChatRequest{GenerationConfig: dto.GeminiChatGenerationConfig{
+				ThinkingConfig: &dto.GeminiThinkingConfig{ThinkingLevel: " MEDIUM "},
+			}},
+			expected: "medium",
+		},
+		{
+			name:        "Gemini unknown thinking level remains visible",
+			path:        "/v1beta/models/gemini-3-pro:generateContent",
+			relayFormat: types.RelayFormatGemini,
+			request: &dto.GeminiChatRequest{GenerationConfig: dto.GeminiChatGenerationConfig{
+				ThinkingConfig: &dto.GeminiThinkingConfig{ThinkingLevel: "ULTRA"},
+			}},
+			expected: "ULTRA",
+		},
 	}
 
 	for _, tt := range tests {

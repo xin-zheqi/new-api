@@ -282,7 +282,18 @@ export function extractUsageOnComplete(task, taskResult, body) {
   const output = (body && body.output) || {};
   const usage = (body && body.usage) || {};
   const facts = {};
-  const seconds = Number(usage.output_video_duration || usage.duration || output.duration || output.duration_seconds || 0);
+  const model = String((task && (task.upstreamModel || task.model)) || "");
+  let seconds = Number(usage.output_video_duration || usage.duration || output.duration || output.duration_seconds || 0);
+  if (model.startsWith("wan3.0") && usage.input_video_duration !== undefined) {
+    const inputSeconds = Number(usage.input_video_duration);
+    const outputSeconds = Number(usage.output_video_duration ?? usage.duration);
+    // Wan3 bills input and generated video duration together. Only combine
+    // complete, finite facts; otherwise keep the output-only fallback so a
+    // partial provider response never creates a negative or NaN charge.
+    if (Number.isFinite(inputSeconds) && inputSeconds >= 0 && Number.isFinite(outputSeconds) && outputSeconds >= 0) {
+      seconds = inputSeconds + outputSeconds;
+    }
+  }
   if (Number.isFinite(seconds) && seconds > 0) facts.seconds = Math.min(seconds, 3600);
   const resolution = normalizeResolution(usage.SR || output.resolution || "");
   if (["480P", "720P", "1080P"].includes(resolution)) facts.resolution = resolution;
@@ -297,7 +308,7 @@ export function parseTaskResult(ctx, body) {
   const output = body.output || {};
   if (output.task_status === "PENDING") return { status: "QUEUED" };
   if (output.task_status === "RUNNING") return { status: "IN_PROGRESS" };
-  if (output.task_status === "SUCCEEDED") return { status: "SUCCESS", url: output.video_url || "" };
+  if (output.task_status === "SUCCEEDED") return { status: "SUCCESS", url: videoURL(body) };
   if (["FAILED", "CANCELED", "UNKNOWN"].includes(output.task_status)) {
     let reason = body.message || "";
     if (!reason && output.message) reason = "task failed, code: " + (output.code || "") + " , message: " + output.message;
@@ -307,6 +318,11 @@ export function parseTaskResult(ctx, body) {
   return { status: "UNKNOWN", reason: "unrecognized status: " + String(output.task_status || "") };
 }
 
+function videoURL(body) {
+  const output = (body && body.output) || {};
+  return trimmed(output.video_url) || trimmed((output.results || {}).video_url);
+}
+
 function artifactData(ctx) {
   const data = (ctx && ctx.data) || {};
   if (data.data && typeof data.data === "object" && data.data.task_id && Object.prototype.hasOwnProperty.call(data.data, "data")) return data.data.data || {};
@@ -314,13 +330,12 @@ function artifactData(ctx) {
 }
 
 export function listArtifacts(task) {
-  const output = artifactData(task).output || {};
-  return task.status === "SUCCESS" && trimmed(output.video_url) ? [{ key: "video", type: "video" }] : [];
+  return task.status === "SUCCESS" && videoURL(artifactData(task)) ? [{ key: "video", type: "video" }] : [];
 }
 
 export function buildContentRequest(ctx) {
   if (ctx.artifactKey !== "video") throw new Error("artifact_not_found");
-  const url = trimmed((artifactData(ctx).output || {}).video_url);
+  const url = videoURL(artifactData(ctx));
   if (!url) throw new Error("artifact_not_found");
   return { url: url, method: ctx.clientRequest.method, credentialless: true };
 }

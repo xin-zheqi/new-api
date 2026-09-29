@@ -124,12 +124,12 @@ type RelayInfo struct {
 	ReasoningEffort    string
 	// ReasoningConversion is the suffix-derived reasoning intent attached
 	// after model mapping. Converters read it via ReasoningState().
-	ReasoningConversion   *dto.ReasoningConversionState
-	UserSetting           dto.UserSetting
-	UserEmail             string
-	UserQuota             int
-	RelayFormat           types.RelayFormat
-	SendResponseCount     int
+	ReasoningConversion *dto.ReasoningConversionState
+	UserSetting         dto.UserSetting
+	UserEmail           string
+	UserQuota           int
+	RelayFormat         types.RelayFormat
+	SendResponseCount   int
 	// ClaudeToChatStreamState / ChatToGeminiStreamState hold per-attempt
 	// stream converters. InitChannelMeta nils them so a retry cannot resume a
 	// dirty converter (advanced tool index / finalized).
@@ -497,9 +497,16 @@ func reasoningEffortFromRequest(request dto.Request) string {
 		}
 	case *dto.GeminiChatRequest:
 		if req != nil && req.GenerationConfig.ThinkingConfig != nil {
+			config := req.GenerationConfig.ThinkingConfig
 			intent, err := kitreasoning.FromGemini(req)
 			if err == nil {
 				effort = string(kitreasoning.EffectiveEffort(intent))
+			} else {
+				// Keep an unknown provider value visible in request metadata. The
+				// native Gemini path does not validate this field here, and dropping
+				// it would make billing/log diagnostics disagree with the wire data.
+				// 未知 thinkingLevel 仍保留原值，避免日志与实际请求不一致。
+				effort = config.ThinkingLevel
 			}
 		}
 	}

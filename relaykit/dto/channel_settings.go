@@ -16,6 +16,7 @@ type ChannelSettings struct {
 	ThinkingToContent           bool   `json:"thinking_to_content,omitempty"`
 	Proxy                       string `json:"proxy"`
 	PassThroughBodyEnabled      bool   `json:"pass_through_body_enabled,omitempty"`
+	ResponsesWebSocketEnabled   bool   `json:"responses_websocket_enabled,omitempty"`
 	SystemPrompt                string `json:"system_prompt,omitempty"`
 	SystemPromptOverride        bool   `json:"system_prompt_override,omitempty"`
 	FirstResponseTimeoutSeconds int    `json:"first_response_timeout_seconds,omitempty"`

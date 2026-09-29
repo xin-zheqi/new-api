@@ -6,6 +6,10 @@ import (
 	"io"
 )
 
+// RawMessage keeps relay payloads opaque while using the project's JSON wrapper.
+// RawMessage 保留中继负载的原始 JSON，同时继续通过项目统一 JSON 封装处理。
+type RawMessage = json.RawMessage
+
 func Unmarshal(data []byte, v any) error {
 	return json.Unmarshal(data, v)
 }

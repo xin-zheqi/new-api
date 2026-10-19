@@ -287,6 +287,7 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 			info.CountBillableToolCall(dto.BuildInCallFunctionCall, tc.Function.Name)
 		}
 	}
+	info.ApplyVendorToolUsage(responseBody)
 
 	forceFormat := false
 	if info.ChannelSetting.ForceFormat {

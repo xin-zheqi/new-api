@@ -38,10 +38,11 @@ func TestRequestConverterRegistryListsSupportedTextConverters(t *testing.T) {
 			},
 		},
 		{
-			converter: requestConverterClaudeToResponses,
-			from:      types.RelayFormatClaude,
-			to:        types.RelayFormatOpenAIResponses,
-			quality:   RequestConverterQualityFair,
+			converter:      requestConverterClaudeToResponses,
+			from:           types.RelayFormatClaude,
+			to:             types.RelayFormatOpenAIResponses,
+			quality:        RequestConverterQualityFair,
+			advancedCustom: true,
 		},
 		{
 			converter: requestConverterGeminiToClaude,
@@ -62,6 +63,7 @@ func TestRequestConverterRegistryListsSupportedTextConverters(t *testing.T) {
 				ConverterGeminiContentToOpenAIChat,
 				ConverterOpenAIChatToOpenAIResponses,
 			},
+			advancedCustom: true,
 		},
 		{
 			converter: requestConverterResponsesToClaude,
@@ -168,14 +170,14 @@ func TestResponsesNativeToolsRoundTripDoesNotBlock(t *testing.T) {
 		},
 	}
 	request := &dto.OpenAIResponsesRequest{
-		Model:             "compat-model",
-		Input:             input,
-		Tools:             tools,
-		MaxOutputTokens:   &maxOutputTokens,
-		Conversation:      conversation,
+		Model:              "compat-model",
+		Input:              input,
+		Tools:              tools,
+		MaxOutputTokens:    &maxOutputTokens,
+		Conversation:       conversation,
 		PreviousResponseID: "resp_previous",
-		Prompt:            prompt,
-		ContextManagement: contextManagement,
+		Prompt:             prompt,
+		ContextManagement:  contextManagement,
 	}
 
 	toMessages, err := ConvertRequestByID(nil, info, ConverterOpenAIResponsesToClaudeMessages, request)

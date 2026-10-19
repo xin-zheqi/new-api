@@ -19,10 +19,10 @@ func TestResponsesUsageAccumulatorTerminalAccounting(t *testing.T) {
 	}{
 		{eventType: "response.completed", wantImages: 1},
 		{eventType: "response.done", wantImages: 1},
-		{eventType: "response.incomplete"},
-		{eventType: "response.failed"},
-		{eventType: "response.cancelled"},
-		{eventType: "response.canceled"},
+		{eventType: "response.incomplete", wantImages: 1},
+		{eventType: "response.failed", wantImages: 1},
+		{eventType: "response.cancelled", wantImages: 1},
+		{eventType: "response.canceled", wantImages: 1},
 	} {
 		t.Run(tc.eventType, func(t *testing.T) {
 			info := &relaycommon.RelayInfo{OriginModelName: "gpt-5.1"}
@@ -33,10 +33,10 @@ func TestResponsesUsageAccumulatorTerminalAccounting(t *testing.T) {
 				{Type: dto.BuildInCallFunctionCall, Name: "responses_priced_fn"},
 				{Type: dto.BuildInCallFunctionCall, Name: "responses_unpriced_fn"},
 			} {
-				accumulator.Observe(&dto.ResponsesStreamResponse{Type: dto.ResponsesOutputTypeItemDone, Item: &item})
+				accumulator.Observe(&dto.ResponsesStreamResponse{Type: dto.ResponsesOutputTypeItemDone, Item: &item}, nil)
 			}
 			image := dto.ResponsesOutput{ID: "image-1", Type: dto.ResponsesOutputTypeImageGenerationCall, Status: "completed", Result: "image-data"}
-			accumulator.Observe(&dto.ResponsesStreamResponse{Type: dto.ResponsesOutputTypeItemDone, Item: &image})
+			accumulator.Observe(&dto.ResponsesStreamResponse{Type: dto.ResponsesOutputTypeItemDone, Item: &image}, nil)
 			upstream := &dto.Usage{InputTokens: 20, OutputTokens: 5, TotalTokens: 25, InputTokensDetails: &dto.InputTokenDetails{CachedTokens: 4}}
 			upstream.BillingUsage = dto.NewOpenAIResponsesBillingUsage(upstream)
 			terminal := &dto.ResponsesStreamResponse{
@@ -45,8 +45,8 @@ func TestResponsesUsageAccumulatorTerminalAccounting(t *testing.T) {
 					Usage: upstream, Output: []dto.ResponsesOutput{image},
 				},
 			}
-			accumulator.Observe(terminal)
-			accumulator.Observe(terminal)
+			accumulator.Observe(terminal, nil)
+			accumulator.Observe(terminal, nil)
 			usage := accumulator.Finish()
 
 			assert.Equal(t, 20, usage.PromptTokens)
@@ -78,11 +78,11 @@ func TestResponsesUsageAccumulatorInterruptedTextFallback(t *testing.T) {
 			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gpt-4o"}}
 			info.SetEstimatePromptTokens(100)
 			accumulator := NewResponsesUsageAccumulator(info)
-			accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.output_text.delta", Delta: "hello"})
+			accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.output_text.delta", Delta: "hello"}, nil)
 			if withUsage {
 				upstream := &dto.Usage{InputTokens: 20, InputTokensDetails: &dto.InputTokenDetails{CachedTokens: 4}}
 				upstream.BillingUsage = dto.NewOpenAIResponsesBillingUsage(upstream)
-				accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.failed", Response: &dto.OpenAIResponsesResponse{Usage: upstream}})
+				accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.failed", Response: &dto.OpenAIResponsesResponse{Usage: upstream}}, nil)
 			}
 			usage := accumulator.Finish()
 			assert.Equal(t, 1, usage.CompletionTokens)
@@ -100,7 +100,7 @@ func TestResponsesUsageAccumulatorInterruptedTextFallback(t *testing.T) {
 				assert.Equal(t, 100, usage.PromptTokens)
 				assert.Equal(t, 101, usage.TotalTokens)
 			}
-			accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.output_text.delta", Delta: " late output"})
+			accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.output_text.delta", Delta: " late output"}, nil)
 			assert.Equal(t, usage, accumulator.Finish())
 			assert.Equal(t, 1, usage.CompletionTokens)
 		})
@@ -122,7 +122,7 @@ func TestResponsesUsageAccumulatorEstimatesAllGeneratedDeltas(t *testing.T) {
 		{eventType: "response.refusal.delta", delta: "refusal explanation"},
 	}
 	for _, event := range events {
-		accumulator.Observe(&dto.ResponsesStreamResponse{Type: event.eventType, Delta: event.delta})
+		accumulator.Observe(&dto.ResponsesStreamResponse{Type: event.eventType, Delta: event.delta}, nil)
 	}
 	usage := accumulator.Finish()
 	assert.Equal(t, 17, usage.PromptTokens)
@@ -135,7 +135,7 @@ func TestResponsesUsageAccumulatorChargesPromptAfterCreatedEvent(t *testing.T) {
 	info.SetEstimatePromptTokens(23)
 	info.StreamStatus = relaycommon.NewStreamStatus()
 	accumulator := NewResponsesUsageAccumulator(info)
-	accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.created"})
+	accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.created"}, nil)
 	usage := accumulator.Finish()
 	assert.Equal(t, 23, usage.PromptTokens)
 	assert.Zero(t, usage.CompletionTokens)
@@ -144,7 +144,7 @@ func TestResponsesUsageAccumulatorChargesPromptAfterCreatedEvent(t *testing.T) {
 	failedInfo.SetEstimatePromptTokens(23)
 	failedInfo.StreamStatus = relaycommon.NewStreamStatus()
 	failed := NewResponsesUsageAccumulator(failedInfo)
-	failed.Observe(&dto.ResponsesStreamResponse{Type: "response.failed"})
+	failed.Observe(&dto.ResponsesStreamResponse{Type: "response.failed"}, nil)
 	failedUsage := failed.Finish()
 	assert.Zero(t, failedUsage.PromptTokens)
 	assert.True(t, failedInfo.StreamStatus.ResponseFailed())
@@ -156,11 +156,11 @@ func TestResponsesUsageAccumulatorDisconnectBillsCompletedImage(t *testing.T) {
 	accumulator.Observe(&dto.ResponsesStreamResponse{
 		Type: dto.ResponsesOutputTypeItemDone,
 		Item: &dto.ResponsesOutput{ID: "complete-image", Type: dto.ResponsesOutputTypeImageGenerationCall, Status: "completed", Result: "final-image-data"},
-	})
+	}, nil)
 	accumulator.Observe(&dto.ResponsesStreamResponse{
 		Type: dto.ResponsesOutputTypeItemDone,
 		Item: &dto.ResponsesOutput{ID: "partial-image", Type: dto.ResponsesOutputTypeImageGenerationCall, Status: "partial", Result: "partial-image-data"},
-	})
+	}, nil)
 	usage := accumulator.Finish()
 	assert.Zero(t, usage.TotalTokens)
 	require.Contains(t, info.ResponsesUsageInfo.BuiltInTools, dto.BuildInToolImageGeneration)

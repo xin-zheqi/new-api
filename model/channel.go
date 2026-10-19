@@ -1049,8 +1049,11 @@ func (channel *Channel) GetSetting() dto.ChannelSettings {
 		err := common.Unmarshal([]byte(*channel.Setting), &setting)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("failed to unmarshal setting: channel_id=%d, error=%v", channel.Id, err))
+			invalid := *channel.Setting
 			channel.Setting = nil // 清空设置以避免后续错误
-			_ = channel.Save()    // 保存修改
+			// Routing may load only settings columns. Repair just this field,
+			// and never overwrite a concurrent administrator's corrected value.
+			_ = DB.Model(&Channel{}).Where("id = ? AND setting = ?", channel.Id, invalid).Update("setting", nil).Error
 		}
 	}
 	return setting
@@ -1071,8 +1074,11 @@ func (channel *Channel) GetOtherSettings() dto.ChannelOtherSettings {
 		err := common.UnmarshalJsonStr(channel.OtherSettings, &setting)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("failed to unmarshal setting: channel_id=%d, error=%v", channel.Id, err))
+			invalid := channel.OtherSettings
 			channel.OtherSettings = "{}" // 清空设置以避免后续错误
-			_ = channel.Save()           // 保存修改
+			// Keep credentials, counters and unrelated settings intact even
+			// when this channel is a partial or stale routing snapshot.
+			_ = DB.Model(&Channel{}).Where("id = ? AND settings = ?", channel.Id, invalid).Update("settings", "{}").Error
 		}
 	}
 	return setting

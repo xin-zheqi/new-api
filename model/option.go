@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Option struct {
@@ -529,16 +530,32 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		for _, k := range keys {
-			v := normalizedValues[k]
-			option := Option{Key: k}
-			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
+		options := make([]Option, 0, len(keys))
+		for _, key := range keys {
+			options = append(options, Option{Key: key, Value: normalizedValues[key]})
+		}
+		// Bound both rows (SQLite bind limits) and payload size (MySQL packet
+		// limits). An unusually large individual value retains its own statement,
+		// just as before; batching must not make previously valid saves too big.
+		for start := 0; start < len(options); {
+			end, size := start, 0
+			for end < len(options) && end-start < 100 {
+				rowBytes := len(options[end].Key) + len(options[end].Value)
+				if end > start && rowBytes > (1<<20)-size {
+					break
+				}
+				size += rowBytes
+				end++
+			}
+			// GORM emits each dialect's upsert. Explicitly update value so empty
+			// strings survive; all batches commit before runtime publication.
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "key"}},
+				DoUpdates: clause.AssignmentColumns([]string{"value"}),
+			}).Create(options[start:end]).Error; err != nil {
 				return err
 			}
-			option.Value = v
-			if err := tx.Save(&option).Error; err != nil {
-				return err
-			}
+			start = end
 		}
 		return nil
 	})

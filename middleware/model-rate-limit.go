@@ -50,11 +50,9 @@ func checkRedisRateLimit(ctx context.Context, rdb *redis.Client, key string, max
 		return false, err
 	}
 
-	nowTimeStr := time.Now().UTC().Format(modelRateLimitTimeFormat)
-	nowTime, err := time.Parse(modelRateLimitTimeFormat, nowTimeStr)
-	if err != nil {
-		return false, err
-	}
+	// Preserve the stored millisecond precision without formatting and parsing
+	// the current timestamp again on every full-window check.
+	nowTime := time.Now().UTC().Truncate(time.Millisecond)
 	// 如果在时间窗口内已达到限制，拒绝请求
 	subTime := nowTime.Sub(oldTime).Seconds()
 	if int64(subTime) < duration {
@@ -73,9 +71,14 @@ func recordRedisRequest(ctx context.Context, rdb *redis.Client, key string, maxC
 	}
 
 	now := time.Now().UTC().Format(modelRateLimitTimeFormat)
-	rdb.LPush(ctx, key, now)
-	rdb.LTrim(ctx, key, 0, int64(maxCount-1))
-	rdb.Expire(ctx, key, time.Duration(duration)*time.Second)
+	// Keep command order and the existing window semantics with one network
+	// round trip instead of three. Recording remains best-effort as before.
+	_, _ = rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.LPush(ctx, key, now)
+		pipe.LTrim(ctx, key, 0, int64(maxCount-1))
+		pipe.Expire(ctx, key, time.Duration(duration)*time.Second)
+		return nil
+	})
 }
 
 // Redis限流处理器

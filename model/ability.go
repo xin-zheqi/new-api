@@ -192,7 +192,10 @@ func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters
 	}
 
 	var channels []*Channel
-	if err := DB.Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
+	// Filters only inspect channel type and routing settings. In particular,
+	// do not load every candidate's aggregated API keys and key-status JSON;
+	// GetChannel fetches the complete selected channel after filtering.
+	if err := DB.Select("id", "type", "setting", "settings").Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
 		if identityFilterRequiresKey(filters) {
 			return nil
 		}

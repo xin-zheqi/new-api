@@ -111,14 +111,14 @@ func TestRequestPolicyDatabaseMatrix(t *testing.T) {
 			var option Option
 			require.NoError(t, db.Where(map[string]any{"key": "RetryTimes"}).First(&option).Error)
 			assert.Equal(t, "2", option.Value)
-			require.NoError(t, db.Callback().Update().Before("gorm:update").Register("policy_fail", func(tx *gorm.DB) {
+			require.NoError(t, db.Callback().Create().Before("gorm:create").Register("policy_fail", func(tx *gorm.DB) {
 				if tx.Statement.Table == "policy_test_options" {
 					tx.AddError(errors.New("save rejected"))
 				}
 			}))
 			assert.Error(t, UpdateRequestPolicyOptions(map[string]string{"RetryTimes": "8", "channel_affinity_setting.session_mode": "off"}))
 			assert.Same(t, snapshot, CurrentRequestPolicy())
-			require.NoError(t, db.Callback().Update().Remove("policy_fail"))
+			require.NoError(t, db.Callback().Create().Remove("policy_fail"))
 			option = Option{}
 			require.NoError(t, db.Where(map[string]any{"key": "RetryTimes"}).First(&option).Error)
 			assert.Equal(t, "2", option.Value)

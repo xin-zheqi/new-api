@@ -80,7 +80,9 @@ func validateUpstreamTextBody(resp *http.Response, info *relaycommon.RelayInfo) 
 }
 
 func looksLikeEventStream(body []byte) bool {
-	for _, line := range bytes.Split(body, []byte{'\n'}) {
+	// Only the first non-empty line determines framing; avoid allocating an
+	// index for every line in a potentially large JSON response.
+	for line := range bytes.SplitSeq(body, []byte{'\n'}) {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
@@ -113,7 +115,7 @@ func ValidateUpstreamTextPayload(body []byte) *types.NewAPIError {
 	// Ollama and a few compatible providers can return newline-delimited JSON
 	// even for non-stream requests. Only classify it when every document parses.
 	parsedDocument := false
-	for _, line := range bytes.Split(body, []byte{'\n'}) {
+	for line := range bytes.SplitSeq(body, []byte{'\n'}) {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue

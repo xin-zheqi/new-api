@@ -1,6 +1,7 @@
 package model
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -49,6 +50,13 @@ func TestFilterCandidateIDs(t *testing.T) {
 		wantKept  []int
 		wantEmpty dto.ChannelFilterKind
 	}{
+		{
+			name:      "rejecting first and middle candidates preserves retained order",
+			ids:       []int{900011, 900003, 900011, 900010, 900011},
+			modelName: "gpt-4",
+			filters:   []dto.ChannelFilter{pathFilter},
+			wantKept:  []int{900003, 900010},
+		},
 		{
 			name:      "identity keeps matching type-59 key",
 			ids:       []int{900001, 900002},
@@ -165,7 +173,9 @@ func TestFilterCandidateIDs(t *testing.T) {
 
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
+			original := slices.Clone(testCase.ids)
 			kept, emptiedBy := filterCandidateIDs(testCase.ids, testCase.modelName, testCase.filters)
+			assert.Equal(t, original, testCase.ids, "request filtering must not alter shared routing candidates")
 			if testCase.wantKept == nil {
 				assert.Nil(t, kept)
 			} else {

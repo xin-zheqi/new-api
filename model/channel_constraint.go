@@ -5,6 +5,7 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 )
 
 var filterEvalOrder = []dto.ChannelFilterKind{
@@ -25,7 +26,7 @@ func ChannelSatisfiesFilters(ch *Channel, modelName string, filters []dto.Channe
 			if filter.Kind != kind {
 				continue
 			}
-			if !channelMatchesFilter(ch, modelName, filter) {
+			if !channelMatchesFilter(ch, modelName, filter, nil) {
 				return false, kind
 			}
 		}
@@ -47,10 +48,19 @@ func filterCandidateIDs(ids []int, modelName string, filters []dto.ChannelFilter
 		if len(kindFilters) == 0 {
 			continue
 		}
-		next := make([]int, 0, len(kept))
-		for _, id := range kept {
+		// Most ordinary relay requests keep every candidate. Allocate a copy
+		// only on the first rejection, never modifying the shared cache slice.
+		next := kept
+		copied := false
+		for i, id := range kept {
 			channel, exists := channelsIDM[id]
-			if candidatePassesKindFilters(channel, exists, modelName, kind, kindFilters) {
+			if !candidatePassesKindFilters(channel, exists, modelName, kind, kindFilters) {
+				if !copied {
+					next = make([]int, i, len(kept)-1)
+					copy(next, kept[:i])
+					copied = true
+				}
+			} else if copied {
 				next = append(next, id)
 			}
 		}
@@ -80,14 +90,16 @@ func candidatePassesKindFilters(ch *Channel, exists bool, modelName string, kind
 		return false
 	}
 	for _, filter := range filters {
-		if !channelMatchesFilter(ch, modelName, filter) {
+		// Full sync and CacheUpdateChannel publish this parsed config under
+		// channelSyncLock. Reuse it while the caller holds the read lock.
+		if !channelMatchesFilter(ch, modelName, filter, channel2advancedCustomConfig[ch.Id]) {
 			return false
 		}
 	}
 	return true
 }
 
-func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilter) bool {
+func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilter, advancedConfig *kitdto.AdvancedCustomConfig) bool {
 	switch filter.Kind {
 	case dto.FilterRequestPath:
 		if filter.RequestPath == "" {
@@ -96,8 +108,10 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		if ch.Type != constant.ChannelTypeAdvancedCustom {
 			return true
 		}
-		config := ch.GetOtherSettings().AdvancedCustom
-		return config != nil && config.SupportsPathForModel(filter.RequestPath, modelName)
+		if advancedConfig == nil {
+			advancedConfig = ch.GetOtherSettings().AdvancedCustom
+		}
+		return advancedConfig != nil && advancedConfig.SupportsPathForModel(filter.RequestPath, modelName)
 	case dto.FilterTaskPluginIdentity:
 		if ch.Type == constant.ChannelTypeTaskPlugin {
 			return filter.TaskPluginKey != "" && ch.GetSetting().TaskPluginKey == filter.TaskPluginKey
@@ -113,7 +127,10 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		case constant.ChannelTypeAdvancedCustom:
 			// The session forwards native Responses events without protocol
 			// conversion, so only a converter-free /v1/responses route qualifies.
-			route, ok := ch.GetOtherSettings().AdvancedCustom.MatchPathForModel("/v1/responses", modelName)
+			if advancedConfig == nil {
+				advancedConfig = ch.GetOtherSettings().AdvancedCustom
+			}
+			route, ok := advancedConfig.MatchPathForModel("/v1/responses", modelName)
 			return ok && route.IsNative()
 		default:
 			return false

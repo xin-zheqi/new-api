@@ -627,7 +627,7 @@ func (channel *Channel) UpdateResponseTime(responseTime int64) {
 	}
 }
 
-func (channel *Channel) UpdateBalance(balance float64) {
+func (channel *Channel) UpdateBalance(balance float64) error {
 	err := DB.Model(channel).Select("balance_updated_time", "balance").Updates(Channel{
 		BalanceUpdatedTime: common.GetTimestamp(),
 		Balance:            balance,
@@ -635,6 +635,7 @@ func (channel *Channel) UpdateBalance(balance float64) {
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update balance: channel_id=%d, error=%v", channel.Id, err))
 	}
+	return err
 }
 
 func (channel *Channel) Delete() error {

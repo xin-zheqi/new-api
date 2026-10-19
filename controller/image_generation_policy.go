@@ -268,13 +268,6 @@ func rebuildResponsesUsageInfo(info *relaycommon.RelayInfo, request *dto.OpenAIR
 			ToolName:  toolType,
 			CallCount: 0,
 		}
-		if toolType == dto.BuildInToolWebSearchPreview {
-			searchContextSize := common.Interface2String(tool["search_context_size"])
-			if searchContextSize == "" {
-				searchContextSize = "medium"
-			}
-			info.ResponsesUsageInfo.BuiltInTools[toolType].SearchContextSize = searchContextSize
-		}
 	}
 }
 

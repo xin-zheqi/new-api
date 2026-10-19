@@ -38,6 +38,12 @@ func ApplyReasoningModelSuffix(info *relaycommon.RelayInfo, outbound ...dto.Requ
 		return nil
 	}
 
+	// Explicit DeepSeek modifiers use upstream precedence (model over body).
+	// Keep legacy suffix behavior unchanged for existing provider integrations.
+	if strings.HasPrefix(origin, "deepseek-") || strings.HasPrefix(upstream, "deepseek-") {
+		return applyDeepSeekModelModifiers(info, origin, upstream, outbound)
+	}
+
 	originBase, originIntent, originFound, err := parseHostModelSuffix(origin, opts)
 	if err != nil {
 		return reasoning.AsClientError(err)

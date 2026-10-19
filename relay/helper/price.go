@@ -72,6 +72,15 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (hosttypes.PriceData, error) {
 	billingModelName := info.GetBillingModelName()
+	// Exact configured aliases retain their price. Only absent DeepSeek aliases
+	// inherit the base-model price, including explicit @ modifiers.
+	_, configuredPrice := ratio_setting.GetModelPrice(billingModelName, false)
+	if strings.HasPrefix(billingModelName, "deepseek-") && !configuredPrice && !ratio_setting.HasConfiguredModelRatio(billingModelName) && billing_setting.GetBillingMode(billingModelName) != billing_setting.BillingModeTieredExpr {
+		billingModelName = ratio_setting.RoutingMatchModelName(billingModelName)
+		if billingModelName != info.OriginModelName {
+			info.BillingModelName = billingModelName
+		}
+	}
 	modelPrice, usePrice := ratio_setting.GetModelPrice(billingModelName, false)
 
 	groupRatioInfo := HandleGroupRatio(c, info)

@@ -1,6 +1,8 @@
 package ratio_setting
 
 import (
+	kitreasoning "github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -742,4 +744,22 @@ func GetModelRatioOrPrice(model string) (float64, bool, bool) { // price or rati
 		return modelRatio, false, true
 	}
 	return 37.5, false, false
+}
+
+// RoutingMatchModelName preserves exact-name routing first and only falls back
+// for DeepSeek's explicit controls, keeping other provider aliases unchanged.
+func RoutingMatchModelName(name string) string {
+	if strings.HasPrefix(name, "deepseek-") && !model_setting.ShouldPreserveThinkingSuffix(name) {
+		name = kitreasoning.ParseModelModifiers(name).Base
+		if !model_setting.ShouldPreserveThinkingSuffix(name) {
+			if base, _, _, ok := kitreasoning.ParseDeepSeekV4ThinkingSuffix(name); ok {
+				name = base
+			}
+		}
+	}
+	return FormatMatchingModelName(name)
+}
+func HasConfiguredModelRatio(name string) bool {
+	_, ok := modelRatioMap.Get(FormatMatchingModelName(name))
+	return ok
 }

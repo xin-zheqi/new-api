@@ -38,7 +38,7 @@ func TokenModelLimitAllows(limit map[string]bool, model string) bool {
 	if limit[model] {
 		return true
 	}
-	if formatted := ratio_setting.FormatMatchingModelName(model); limit[formatted] {
+	if formatted := ratio_setting.RoutingMatchModelName(model); limit[formatted] {
 		return true
 	}
 	// Responses supports host-side effort tails and @ modifiers. Token model
@@ -575,6 +575,13 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		if modelRequest.Model == "" {
 			modelRequest.Model = c.Param("model")
 		}
+	}
+	// The routing name is also the billing name, so a model named in the body
+	// must not replace it: DeepSeek ignores that field.
+	if strings.HasPrefix(c.Request.URL.Path, "/v1/tools/search") {
+		modelRequest.Model = constant.DeepSeekSearchModel
+	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/tools/fetch") {
+		modelRequest.Model = constant.DeepSeekFetchModel
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/images/generations") {
 		modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "dall-e")

@@ -32,6 +32,7 @@ func TestModelGroupLimitsPreserveGlobalAndUserOverrides(t *testing.T) {
 		{name: "memory success", success: 1},
 		{name: "memory total", total: 1, success: 100},
 		{name: "redis success", redis: true, success: 1},
+		{name: "redis total", redis: true, total: 1, success: 100},
 		{name: "user override remains shared across groups", redis: true, userOverride: true, success: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

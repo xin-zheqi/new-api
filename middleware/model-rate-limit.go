@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting"
@@ -44,7 +45,15 @@ func checkRedisRateLimit(ctx context.Context, rdb *redis.Client, key string, max
 	}
 
 	// 检查时间窗口
-	oldTimeStr, _ := rdb.LIndex(ctx, key, -1).Result()
+	oldTimeStr, err := rdb.LIndex(ctx, key, -1).Result()
+	if err == redis.Nil {
+		// The key can expire between LLEN and LINDEX. An absent window has no
+		// remaining successful requests to limit; it is not a Redis failure.
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
 	oldTime, err := time.Parse(modelRateLimitTimeFormat, oldTimeStr)
 	if err != nil {
 		return false, err
@@ -64,21 +73,24 @@ func checkRedisRateLimit(ctx context.Context, rdb *redis.Client, key string, max
 }
 
 // 记录Redis请求
-func recordRedisRequest(ctx context.Context, rdb *redis.Client, key string, maxCount int, duration int64) {
+func recordRedisRequest(ctx context.Context, rdb *redis.Client, key string, maxCount int, duration int64) error {
 	// 如果maxCount为0，不记录请求
 	if maxCount == 0 {
-		return
+		return nil
 	}
 
 	now := time.Now().UTC().Format(modelRateLimitTimeFormat)
-	// Keep command order and the existing window semantics with one network
-	// round trip instead of three. Recording remains best-effort as before.
-	_, _ = rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+	// MULTI/EXEC keeps the three operations in one network round trip and
+	// prevents a disconnect before EXEC from leaving a partially recorded hit.
+	// go-redis v8 does not replay a TxPipeline after a reply-read failure; an
+	// ordinary Pipeline can replay LPUSH and count the same request twice.
+	_, err := rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.LPush(ctx, key, now)
 		pipe.LTrim(ctx, key, 0, int64(maxCount-1))
 		pipe.Expire(ctx, key, time.Duration(duration)*time.Second)
 		return nil
 	})
+	return err
 }
 
 // Redis限流处理器
@@ -131,7 +143,11 @@ func redisRateLimitHandler(subject string, duration int64, totalMaxCount, succes
 
 		// 5. 如果请求成功，记录成功请求
 		if modelRequestSucceeded(c) {
-			recordRedisRequest(ctx, rdb, successKey, successMaxCount, duration)
+			if err := recordRedisRequest(ctx, rdb, successKey, successMaxCount, duration); err != nil {
+				// The upstream response is already complete. Report the accounting
+				// failure without appending an error to a successful JSON/SSE body.
+				logger.LogError(c, "failed to record successful request for rate limit: "+err.Error())
+			}
 		}
 	}
 }

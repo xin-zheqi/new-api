@@ -9,6 +9,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestStreamResponseOpenAI2ClaudeKeepsReasoningAndTextInSameChunk(t *testing.T) {
+	info := &convmeta.Values{SendResponseCount: 1, ClaudeConvertInfo: &convmeta.ClaudeConvertInfo{LastMessagesType: convmeta.LastMessageTypeNone}}
+	responses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
+		Id: "chat-same-chunk", Model: "test-model",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+			ReasoningContent: ptr("reasoning"), Content: ptr("answer"),
+		}}},
+	}, info)
+	var kinds, values []string
+	var indices []int
+	for _, response := range responses {
+		if response.Type != "content_block_delta" {
+			continue
+		}
+		require.NotNil(t, response.Delta)
+		kinds = append(kinds, response.Delta.Type)
+		indices = append(indices, response.GetIndex())
+		if response.Delta.Thinking != nil {
+			values = append(values, *response.Delta.Thinking)
+		}
+		if response.Delta.Text != nil {
+			values = append(values, *response.Delta.Text)
+		}
+	}
+	assert.Equal(t, []string{"thinking_delta", "text_delta"}, kinds)
+	assert.Equal(t, []string{"reasoning", "answer"}, values)
+	assert.Equal(t, []int{0, 1}, indices, "text starts after the thinking block closes")
+}
+
 func TestResponseOpenAI2ClaudeToolUseInputIsObject(t *testing.T) {
 	tests := []struct {
 		name string

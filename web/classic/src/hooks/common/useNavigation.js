@@ -25,6 +25,7 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
     const defaultModules = {
       home: true,
       console: true,
+      balance: true,
       pricing: true,
       groupStatus: true,
       docs: true,
@@ -44,6 +45,11 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         text: t('控制台'),
         itemKey: 'console',
         to: '/console',
+      },
+      {
+        text: t('余额查询'),
+        itemKey: 'balance',
+        to: '/balance',
       },
       {
         text: t('模型广场'),

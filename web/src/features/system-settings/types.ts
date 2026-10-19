@@ -454,6 +454,7 @@ export type OperationsSettings = {
 }
 
 export type SecuritySettings = {
+  ContentAuditSettings: string
   GlobalApiRateLimitEnabled: boolean
   GlobalApiRateLimitCount: number
   GlobalApiRateLimitDuration: number

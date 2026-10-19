@@ -129,6 +129,82 @@ func TestConvertRequestToTargetRecordsConversionChain(t *testing.T) {
 	assert.Equal(t, []types.RelayFormat{types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses}, info.ConversionChain)
 }
 
+func TestResponsesNativeToolsRoundTripDoesNotBlock(t *testing.T) {
+	maxOutputTokens := uint(256)
+	tools, err := kitutil.Marshal([]map[string]any{
+		{"type": "computer_use_preview", "display_width": 1280, "display_height": 720},
+		{"type": "shell"},
+		{"type": "apply_patch"},
+		{"type": "web_search_preview"},
+	})
+	require.NoError(t, err)
+	input, err := kitutil.Marshal([]map[string]any{
+		{"type": "message", "role": "user", "content": "Inspect the workspace"},
+		{
+			"type":    "computer_call",
+			"id":      "cu_1",
+			"call_id": "cu_1",
+			"status":  "in_progress",
+			"action":  map[string]any{"type": "screenshot"},
+		},
+		{
+			"type":    "computer_call_output",
+			"call_id": "cu_1",
+			"status":  "completed",
+			"output":  map[string]any{"type": "computer_screenshot", "image_url": "data:image/png;base64,AA=="},
+		},
+	})
+	require.NoError(t, err)
+
+	conversation, err := kitutil.Marshal("conv_1")
+	require.NoError(t, err)
+	prompt, err := kitutil.Marshal(map[string]any{"id": "pmpt_1"})
+	require.NoError(t, err)
+	contextManagement, err := kitutil.Marshal(map[string]any{"type": "auto"})
+	require.NoError(t, err)
+	info := &convmeta.Values{
+		Options: &convmeta.Options{
+			Claude: convmeta.ClaudeOptions{DefaultMaxTokens: func(string) int { return 256 }},
+		},
+	}
+	request := &dto.OpenAIResponsesRequest{
+		Model:             "compat-model",
+		Input:             input,
+		Tools:             tools,
+		MaxOutputTokens:   &maxOutputTokens,
+		Conversation:      conversation,
+		PreviousResponseID: "resp_previous",
+		Prompt:            prompt,
+		ContextManagement: contextManagement,
+	}
+
+	toMessages, err := ConvertRequestByID(nil, info, ConverterOpenAIResponsesToClaudeMessages, request)
+	require.NoError(t, err)
+	claudeRequest, ok := toMessages.Value.(*dto.ClaudeRequest)
+	require.True(t, ok)
+	require.NotEmpty(t, claudeRequest.Messages)
+	require.NotEmpty(t, claudeRequest.Tools)
+
+	toResponses, err := ConvertRequest(nil, info, types.RelayFormatOpenAIResponses, claudeRequest)
+	require.NoError(t, err)
+	responsesRequest, ok := toResponses.Value.(*dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	require.NotEmpty(t, responsesRequest.Input)
+	var roundTrippedInput []map[string]any
+	require.NoError(t, kitutil.Unmarshal(responsesRequest.Input, &roundTrippedInput))
+	var hasComputerCall, hasComputerOutput bool
+	for _, item := range roundTrippedInput {
+		switch item["type"] {
+		case "computer_call":
+			hasComputerCall = true
+		case "computer_call_output":
+			hasComputerOutput = true
+		}
+	}
+	assert.True(t, hasComputerCall)
+	assert.True(t, hasComputerOutput)
+}
+
 func TestConvertRequestClaudeToResponsesUsesDirectPath(t *testing.T) {
 	info := &convmeta.Values{
 		ConversionChain: []types.RelayFormat{types.RelayFormatClaude},

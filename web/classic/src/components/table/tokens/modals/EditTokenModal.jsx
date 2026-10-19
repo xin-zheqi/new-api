@@ -61,6 +61,9 @@ import { StatusContext } from '../../../../context/Status';
 
 const { Text, Title } = Typography;
 
+const isPeriodicQuota = (period) =>
+  period === 'day' || period === 'week' || period === 'month';
+
 const EditTokenModal = (props) => {
   const { t } = useTranslation();
   const [statusState, statusDispatch] = useContext(StatusContext);
@@ -76,6 +79,10 @@ const EditTokenModal = (props) => {
     name: '',
     remain_quota: 0,
     remain_amount: 0,
+    // Keep an explicit value for the total option; Semi treats an empty
+    // option value as unset and can hide the selected mode.
+    quota_period: 'total',
+    quota_period_limit_amount: 0,
     expired_time: -1,
     unlimited_quota: true,
     model_limits_enabled: false,
@@ -202,6 +209,10 @@ const EditTokenModal = (props) => {
       data.remain_amount = Number(
         quotaToDisplayAmount(data.remain_quota || 0).toFixed(6),
       );
+      data.quota_period = data.quota_period || 'total';
+      data.quota_period_limit_amount = Number(
+        quotaToDisplayAmount(data.quota_period_limit || 0).toFixed(6),
+      );
       if (formApiRef.current) {
         formApiRef.current.setValues({ ...getInitValues(), ...data });
       }
@@ -249,9 +260,21 @@ const EditTokenModal = (props) => {
     setLoading(true);
     if (isEdit) {
       let { tokenCount: _tc, ...localInputs } = values;
-      localInputs.remain_quota = localInputs.unlimited_quota
+      const hasPeriodicQuota = isPeriodicQuota(localInputs.quota_period);
+      localInputs.remain_quota = hasPeriodicQuota
         ? 0
-        : displayAmountToQuota(localInputs.remain_amount);
+        : localInputs.unlimited_quota
+          ? 0
+          : displayAmountToQuota(localInputs.remain_amount);
+      localInputs.quota_period_limit = hasPeriodicQuota
+        ? displayAmountToQuota(localInputs.quota_period_limit_amount)
+        : 0;
+      localInputs.unlimited_quota = hasPeriodicQuota
+        ? true
+        : localInputs.unlimited_quota;
+      localInputs.quota_period = hasPeriodicQuota
+        ? localInputs.quota_period
+        : '';
       if (!localInputs.unlimited_quota && localInputs.remain_quota <= 0) {
         showError(t('请输入金额'));
         setLoading(false);
@@ -300,9 +323,21 @@ const EditTokenModal = (props) => {
         } else {
           localInputs.name = baseName;
         }
-        localInputs.remain_quota = localInputs.unlimited_quota
+        const hasPeriodicQuota = isPeriodicQuota(localInputs.quota_period);
+        localInputs.remain_quota = hasPeriodicQuota
           ? 0
-          : displayAmountToQuota(localInputs.remain_amount);
+          : localInputs.unlimited_quota
+            ? 0
+            : displayAmountToQuota(localInputs.remain_amount);
+        localInputs.quota_period_limit = hasPeriodicQuota
+          ? displayAmountToQuota(localInputs.quota_period_limit_amount)
+          : 0;
+        localInputs.unlimited_quota = hasPeriodicQuota
+          ? true
+          : localInputs.unlimited_quota;
+        localInputs.quota_period = hasPeriodicQuota
+          ? localInputs.quota_period
+          : '';
         if (!localInputs.unlimited_quota && localInputs.remain_quota <= 0) {
           showError(t('请输入金额'));
           setLoading(false);
@@ -486,7 +521,9 @@ const EditTokenModal = (props) => {
                     <Col span={24}>
                       <div className='flex flex-col gap-1.5'>
                         {values.groups.map((group, index) => {
-                          const info = groups.find((item) => item.value === group);
+                          const info = groups.find(
+                            (item) => item.value === group,
+                          );
                           return (
                             <div
                               key={`${group}-${index}`}
@@ -508,14 +545,18 @@ const EditTokenModal = (props) => {
                                 type='tertiary'
                                 icon={<IconChevronUp />}
                                 disabled={index === 0}
-                                onClick={() => moveGroup(values.groups, index, -1)}
+                                onClick={() =>
+                                  moveGroup(values.groups, index, -1)
+                                }
                               />
                               <Button
                                 theme='borderless'
                                 type='tertiary'
                                 icon={<IconChevronDown />}
                                 disabled={index === values.groups.length - 1}
-                                onClick={() => moveGroup(values.groups, index, 1)}
+                                onClick={() =>
+                                  moveGroup(values.groups, index, 1)
+                                }
                               />
                             </div>
                           );
@@ -528,7 +569,8 @@ const EditTokenModal = (props) => {
                     style={{
                       display:
                         values.group === 'auto' ||
-                        (Array.isArray(values.groups) && values.groups.length > 1)
+                        (Array.isArray(values.groups) &&
+                          values.groups.length > 1)
                           ? 'block'
                           : 'none',
                     }}
@@ -638,73 +680,124 @@ const EditTokenModal = (props) => {
                 </div>
                 <Row gutter={12}>
                   <Col span={24}>
-                    <Form.InputNumber
-                      field='remain_amount'
-                      label={t('金额')}
-                      prefix={getCurrencyConfig().symbol}
-                      placeholder={t('输入金额')}
-                      precision={6}
-                      disabled={values.unlimited_quota}
-                      min={0}
-                      step={0.000001}
-                      onChange={(val) => {
-                        const amount = val === '' || val == null ? 0 : val;
-                        formApiRef.current?.setValue('remain_amount', amount);
+                    <Form.Select
+                      field='quota_period'
+                      label={t('额度模式')}
+                      optionList={[
+                        { label: t('总额度'), value: 'total' },
+                        { label: t('每日额度'), value: 'day' },
+                        { label: t('每周额度'), value: 'week' },
+                        { label: t('每月额度'), value: 'month' },
+                      ]}
+                      onChange={(value) => {
                         formApiRef.current?.setValue(
-                          'remain_quota',
-                          displayAmountToQuota(amount),
+                          'unlimited_quota',
+                          value !== 'total',
                         );
                       }}
                       style={{ width: '100%' }}
-                      showClear
                     />
-                  </Col>
-                  <Col span={24}>
-                    <div
-                      className='text-xs cursor-pointer mt-1'
-                      style={{ color: 'var(--semi-color-text-2)' }}
-                      onClick={() => setShowQuotaInput((v) => !v)}
-                    >
-                      {showQuotaInput
-                        ? `▾ ${t('收起原生额度输入')}`
-                        : `▸ ${t('使用原生额度输入')}`}
+                    <div className='text-xs text-gray-500 mt-1'>
+                      {t(
+                        '总额度与日、周、月额度只能选择一种，周期额度会自动重置。',
+                      )}
                     </div>
-                    <div style={{ display: showQuotaInput ? 'block' : 'none' }} className='mt-2'>
+                  </Col>
+                  {isPeriodicQuota(values.quota_period) ? (
+                    <Col span={24}>
                       <Form.InputNumber
-                        field='remain_quota'
-                        label={t('额度')}
-                        placeholder={t('输入额度')}
+                        field='quota_period_limit_amount'
+                        label={t('周期额度')}
+                        prefix={getCurrencyConfig().symbol}
+                        placeholder={t('输入周期额度')}
+                        precision={6}
+                        min={0}
+                        step={0.000001}
+                        rules={[
+                          { required: true, message: t('请输入周期额度') },
+                        ]}
+                        style={{ width: '100%' }}
+                        showClear
+                      />
+                    </Col>
+                  ) : null}
+                  {values.quota_period === 'total' && (
+                    <Col span={24}>
+                      <Form.InputNumber
+                        field='remain_amount'
+                        label={t('金额')}
+                        prefix={getCurrencyConfig().symbol}
+                        placeholder={t('输入金额')}
+                        precision={6}
                         disabled={values.unlimited_quota}
                         min={0}
-                        step={500000}
-                        rules={
-                          values.unlimited_quota
-                            ? []
-                            : [{ required: true, message: t('请输入额度') }]
-                        }
+                        step={0.000001}
                         onChange={(val) => {
-                          const quota = val === '' || val == null ? 0 : val;
-                          formApiRef.current?.setValue('remain_quota', quota);
+                          const amount = val === '' || val == null ? 0 : val;
+                          formApiRef.current?.setValue('remain_amount', amount);
                           formApiRef.current?.setValue(
-                            'remain_amount',
-                            Number(quotaToDisplayAmount(quota).toFixed(6)),
+                            'remain_quota',
+                            displayAmountToQuota(amount),
                           );
                         }}
                         style={{ width: '100%' }}
                         showClear
                       />
-                    </div>
-                  </Col>
-                  <Col span={24}>
-                    <Form.Switch
-                      field='unlimited_quota'
-                      label={t('无限额度')}
-                      size='default'
-                      extraText={t(
-                        '令牌的额度仅用于限制令牌本身的最大额度使用量，实际的使用受到账户的剩余额度限制',
-                      )}
-                    />
-                  </Col>
+                    </Col>
+                  )}
+                  {values.quota_period === 'total' && (
+                    <Col span={24}>
+                      <div
+                        className='text-xs cursor-pointer mt-1'
+                        style={{ color: 'var(--semi-color-text-2)' }}
+                        onClick={() => setShowQuotaInput((v) => !v)}
+                      >
+                        {showQuotaInput
+                          ? `▾ ${t('收起原生额度输入')}`
+                          : `▸ ${t('使用原生额度输入')}`}
+                      </div>
+                      <div
+                        style={{ display: showQuotaInput ? 'block' : 'none' }}
+                        className='mt-2'
+                      >
+                        <Form.InputNumber
+                          field='remain_quota'
+                          label={t('额度')}
+                          placeholder={t('输入额度')}
+                          disabled={values.unlimited_quota}
+                          min={0}
+                          step={500000}
+                          rules={
+                            values.unlimited_quota
+                              ? []
+                              : [{ required: true, message: t('请输入额度') }]
+                          }
+                          onChange={(val) => {
+                            const quota = val === '' || val == null ? 0 : val;
+                            formApiRef.current?.setValue('remain_quota', quota);
+                            formApiRef.current?.setValue(
+                              'remain_amount',
+                              Number(quotaToDisplayAmount(quota).toFixed(6)),
+                            );
+                          }}
+                          style={{ width: '100%' }}
+                          showClear
+                        />
+                      </div>
+                    </Col>
+                  )}
+                  {values.quota_period === 'total' && (
+                    <Col span={24}>
+                      <Form.Switch
+                        field='unlimited_quota'
+                        label={t('无限额度')}
+                        size='default'
+                        extraText={t(
+                          '令牌的额度仅用于限制令牌本身的最大额度使用量，实际的使用受到账户的剩余额度限制',
+                        )}
+                      />
+                    </Col>
+                  )}
                 </Row>
               </Card>
 

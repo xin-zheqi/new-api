@@ -25,6 +25,8 @@ import {
 } from './section-registry.tsx'
 
 const defaultSecuritySettings: SecuritySettings = {
+  ContentAuditSettings:
+    '{"enabled":false,"retention_days":7}',
   GlobalApiRateLimitEnabled: true,
   GlobalApiRateLimitCount: 360,
   GlobalApiRateLimitDuration: 180,

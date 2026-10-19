@@ -34,6 +34,7 @@ import {
   CreditCard,
   Server,
   Activity,
+  ShieldCheck,
 } from 'lucide-react';
 
 import SystemSetting from '../../components/settings/SystemSetting';
@@ -48,6 +49,7 @@ import ChatsSetting from '../../components/settings/ChatsSetting';
 import DrawingSetting from '../../components/settings/DrawingSetting';
 import PaymentSetting from '../../components/settings/PaymentSetting';
 import InvoiceSetting from '../../components/settings/InvoiceSetting';
+import ContentAuditSetting from '../../components/settings/ContentAuditSetting';
 import ModelDeploymentSetting from '../../components/settings/ModelDeploymentSetting';
 import PerformanceSetting from '../../components/settings/PerformanceSetting';
 
@@ -188,6 +190,16 @@ const Setting = () => {
       ),
       content: <OtherSetting />,
       itemKey: 'other',
+    });
+    panes.push({
+      tab: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <ShieldCheck size={18} />
+          {t('Content audit')}
+        </span>
+      ),
+      content: <ContentAuditSetting />,
+      itemKey: 'content-audit',
     });
   }
   const onChangeTab = (key) => {

@@ -36,6 +36,9 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
     .object({
       name: z.string().min(1, t('Please enter a name')),
       remain_quota_dollars: z.number().optional(),
+      // Keep an explicit total value in the UI; the API uses an empty string.
+      quota_period: z.enum(['total', 'day', 'week', 'month']),
+      quota_period_limit_dollars: z.number().optional(),
       expired_time: z.date().optional(),
       unlimited_quota: z.boolean(),
       model_limits: z.array(z.string()),
@@ -84,6 +87,20 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
         }
       }
 
+      if (data.quota_period !== 'total') {
+        if (
+          data.quota_period_limit_dollars === undefined ||
+          data.quota_period_limit_dollars <= 0
+        ) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['quota_period_limit_dollars'],
+            message: t('Enter a positive periodic quota'),
+          })
+        }
+        return
+      }
+
       if (data.unlimited_quota) {
         return
       }
@@ -110,6 +127,8 @@ export type ApiKeyFormValues = z.infer<ReturnType<typeof getApiKeyFormSchema>>
 export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   name: '',
   remain_quota_dollars: 10,
+  quota_period: 'total',
+  quota_period_limit_dollars: 10,
   expired_time: undefined,
   unlimited_quota: true,
   model_limits: [],
@@ -145,15 +164,28 @@ export function getApiKeyFormDefaultValues(
 export function transformFormDataToPayload(
   data: ApiKeyFormValues
 ): ApiKeyFormData {
+  const selectedGroups = data.groups?.length
+    ? data.groups
+    : [data.group || ''].filter(Boolean)
+  const crossGroupRetry =
+    selectedGroups.length > 1 || selectedGroups[0] === 'auto'
+      ? !!data.cross_group_retry
+      : false
+
   return {
     name: data.name,
     remain_quota: data.unlimited_quota
       ? 0
       : parseQuotaFromDollars(data.remain_quota_dollars || 0),
+    quota_period: data.quota_period === 'total' ? '' : data.quota_period,
+    quota_period_limit: data.quota_period !== 'total'
+      ? parseQuotaFromDollars(data.quota_period_limit_dollars || 0)
+      : 0,
     expired_time: data.expired_time
       ? Math.floor(data.expired_time.getTime() / 1000)
       : -1,
-    unlimited_quota: data.unlimited_quota,
+    unlimited_quota:
+      data.quota_period !== 'total' ? true : data.unlimited_quota,
     model_limits_enabled: data.model_limits.length > 0,
     model_limits: data.model_limits.join(','),
     allow_ips: data.allow_ips || '',
@@ -166,12 +198,7 @@ export function transformFormDataToPayload(
       data.auto_groups_mode === 'custom'
         ? data.auto_groups
         : [],
-    cross_group_retry:
-      data.groups && data.groups.length > 1
-        ? !!data.cross_group_retry
-        : data.groups?.[0] === 'auto'
-          ? !!data.cross_group_retry
-          : false,
+    cross_group_retry: crossGroupRetry,
   }
 }
 
@@ -195,11 +222,15 @@ export function transformApiKeyToFormDefaults(
     remain_quota_dollars: apiKey.unlimited_quota
       ? 0
       : quotaUnitsToDollars(apiKey.remain_quota),
+    quota_period: apiKey.quota_period || 'total',
+    quota_period_limit_dollars: quotaUnitsToDollars(
+      apiKey.quota_period_limit || 0
+    ),
     expired_time:
       apiKey.expired_time > 0
         ? new Date(apiKey.expired_time * 1000)
         : undefined,
-    unlimited_quota: apiKey.unlimited_quota,
+    unlimited_quota: apiKey.quota_period ? true : apiKey.unlimited_quota,
     model_limits: apiKey.model_limits
       ? apiKey.model_limits.split(',').filter(Boolean)
       : [],

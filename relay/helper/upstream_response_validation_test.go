@@ -93,9 +93,33 @@ func TestValidateUpstreamTextResponseNonStream(t *testing.T) {
 			wantPass: true,
 		},
 		{
-			name:     "nonzero upstream usage is not empty",
+			name:     "nonzero output usage is not empty",
 			enabled:  true,
-			body:     `{"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":0,"total_tokens":12}}`,
+			body:     `{"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}`,
+			wantPass: true,
+		},
+		{
+			name:     "nested output usage is not empty",
+			enabled:  true,
+			body:     `{"text":"","usage":{"tokens":{"input_tokens":12,"output_tokens":3}}}`,
+			wantPass: true,
+		},
+		{
+			name:     "gemini thinking usage is generated output",
+			enabled:  true,
+			body:     `{"candidates":[],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":0,"thoughtsTokenCount":3,"totalTokenCount":15}}`,
+			wantPass: true,
+		},
+		{
+			name:     "ollama generated tokens are output",
+			enabled:  true,
+			body:     `{"message":{"content":""},"done":true,"prompt_eval_count":12,"eval_count":3}`,
+			wantPass: true,
+		},
+		{
+			name:     "actual content without usage is not empty",
+			enabled:  true,
+			body:     `{"choices":[{"message":{"content":"hello"}}]}`,
 			wantPass: true,
 		},
 		{
@@ -177,7 +201,7 @@ func TestValidateUpstreamTextResponseNonStream(t *testing.T) {
 		{
 			name:      "empty newline delimited response",
 			enabled:   true,
-			body:      "{\"message\":{\"content\":\"\"}}\n{\"done\":true,\"prompt_eval_count\":0,\"eval_count\":0}\n",
+			body:      "{\"message\":{\"content\":\"\"}}\n{\"done\":true,\"prompt_eval_count\":12,\"eval_count\":0}\n",
 			wantCode:  types.ErrorCodeEmptyResponse,
 			wantRetry: true,
 		},
@@ -210,6 +234,117 @@ func TestValidateUpstreamTextResponseNonStream(t *testing.T) {
 			require.NotNil(t, err)
 			assert.Equal(t, test.wantCode, err.GetErrorCode())
 			assert.Equal(t, test.wantRetry, !types.IsSkipRetryError(err))
+		})
+	}
+}
+
+func TestValidateUpstreamTextResponseInputUsageDoesNotProveOutput(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "chat zero completion tokens",
+			body: `{"choices":[{"message":{"content":""}}],"usage":{"prompt_tokens":12,"completion_tokens":0,"total_tokens":12}}`,
+		},
+		{
+			name: "chat missing completion tokens",
+			body: `{"choices":[],"usage":{"prompt_tokens":12,"total_tokens":12}}`,
+		},
+		{
+			name: "chat null completion tokens",
+			body: `{"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":null,"total_tokens":12}}`,
+		},
+		{
+			name: "missing usage",
+			body: `{"choices":[{"message":{"content":null}}]}`,
+		},
+		{
+			name: "total tokens alone",
+			body: `{"choices":[],"usage":{"total_tokens":12}}`,
+		},
+		{
+			name: "cached and audio input details alone",
+			body: `{"choices":[],"usage":{"prompt_tokens_details":{"cached_tokens":12,"audio_tokens":4}}}`,
+		},
+		{
+			name: "responses nested usage",
+			body: `{"type":"response.completed","response":{"output":[],"usage":{"input_tokens":12,"output_tokens":0,"total_tokens":12}}}`,
+		},
+		{
+			name: "claude message start input usage",
+			body: `{"type":"message_start","message":{"content":[],"usage":{"input_tokens":12,"cache_read_input_tokens":846,"output_tokens":0}}}`,
+		},
+		{
+			name: "gemini prompt usage",
+			body: `{"candidates":[],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":0,"totalTokenCount":12}}`,
+		},
+		{
+			name: "ollama prompt usage",
+			body: `{"message":{"content":""},"done":true,"prompt_eval_count":12,"eval_count":0}`,
+		},
+		{
+			name: "cohere nested input usage",
+			body: `{"text":"","usage":{"tokens":{"input_tokens":12,"output_tokens":0},"billed_units":{"input_tokens":12,"output_tokens":0}}}`,
+		},
+	}
+	for _, test := range tests {
+		for _, stream := range []bool{false, true} {
+			mode := "json"
+			body, contentType := test.body, "application/json"
+			if stream {
+				mode = "sse"
+				body, contentType = "data: "+body+"\n\ndata: [DONE]\n\n", "text/event-stream"
+			}
+			t.Run(test.name+"/"+mode, func(t *testing.T) {
+				resp := emptyResponseTestHTTPResponse(body, contentType)
+				err := ValidateUpstreamTextResponse(resp, emptyResponseTestInfo(true, stream))
+				require.NotNil(t, err)
+				assert.Equal(t, types.ErrorCodeEmptyResponse, err.GetErrorCode())
+				assert.Equal(t, http.StatusBadGateway, err.StatusCode)
+				assert.False(t, types.IsSkipRetryError(err))
+			})
+		}
+	}
+}
+
+func TestValidateUpstreamTextStreamWaitsPastInputUsage(t *testing.T) {
+	start := "data: {\"type\":\"message_start\",\"message\":{\"content\":[],\"usage\":{\"input_tokens\":12,\"output_tokens\":0}}}\n\n"
+	tests := []struct {
+		name     string
+		tail     string
+		wantCode types.ErrorCode
+	}{
+		{
+			name:     "empty end",
+			tail:     "data: {\"type\":\"message_stop\"}\n\n",
+			wantCode: types.ErrorCodeEmptyResponse,
+		},
+		{
+			name:     "cyber policy after input usage",
+			tail:     "data: {\"type\":\"error\",\"error\":{\"code\":\"cyber_policy\",\"message\":\"blocked\"}}\n\n",
+			wantCode: types.ErrorCodeCyberPolicy,
+		},
+		{
+			name: "text after input usage",
+			tail: "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\ndata: {\"type\":\"message_stop\"}\n\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := start + test.tail
+			resp := emptyResponseTestHTTPResponse(body, "text/event-stream")
+			err := ValidateUpstreamTextResponse(resp, emptyResponseTestInfo(true, true))
+			if test.wantCode != "" {
+				require.NotNil(t, err)
+				assert.Equal(t, test.wantCode, err.GetErrorCode())
+				assert.Equal(t, test.wantCode == types.ErrorCodeCyberPolicy, types.IsSkipRetryError(err))
+				return
+			}
+			require.Nil(t, err)
+			preserved, readErr := io.ReadAll(resp.Body)
+			require.NoError(t, readErr)
+			assert.Equal(t, body, string(preserved))
 		})
 	}
 }

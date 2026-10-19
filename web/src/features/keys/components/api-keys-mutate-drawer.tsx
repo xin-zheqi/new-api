@@ -62,6 +62,13 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
@@ -367,6 +374,9 @@ export function ApiKeysMutateDrawer({
   const showCrossGroupRetry = isAutoGroup || selectedGroupCount > 1
   const autoGroupsMode = form.watch('auto_groups_mode')
   const unlimitedQuota = form.watch('unlimited_quota')
+  const quotaPeriod = form.watch('quota_period')
+  const isPeriodicQuota = quotaPeriod !== 'total'
+  const showTotalQuotaInput = quotaPeriod === 'total' && !unlimitedQuota
 
   return (
     <Sheet
@@ -618,7 +628,73 @@ export function ApiKeysMutateDrawer({
                 icon={<WalletCards className='size-4' />}
                 iconTone='success'
               />
-              {!unlimitedQuota && (
+              <FormField
+                control={form.control}
+                name='quota_period'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Quota mode')}</FormLabel>
+                    <Select
+                      value={field.value || 'total'}
+                      onValueChange={(value) => {
+                        field.onChange(value as typeof field.value)
+                        form.setValue('unlimited_quota', value !== 'total', {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={t('Total quota')} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value='total'>{t('Total quota')}</SelectItem>
+                        <SelectItem value='day'>{t('Daily quota')}</SelectItem>
+                        <SelectItem value='week'>{t('Weekly quota')}</SelectItem>
+                        <SelectItem value='month'>{t('Monthly quota')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      {t(
+                        'Choose total quota or a quota that resets automatically. They cannot be used together.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {isPeriodicQuota && (
+                <FormField
+                  control={form.control}
+                  name='quota_period_limit_dollars'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Periodic quota limit')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min='0'
+                          step={tokensOnly ? 1 : 0.01}
+                          placeholder={quotaPlaceholder}
+                          onChange={(e) =>
+                            field.onChange(Number.parseFloat(e.target.value) || 0)
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('The used quota resets at the start of each selected period.')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {showTotalQuotaInput && (
                 <FormField
                   control={form.control}
                   name='remain_quota_dollars'
@@ -651,7 +727,7 @@ export function ApiKeysMutateDrawer({
                 />
               )}
 
-              <FormField
+              {quotaPeriod === 'total' && <FormField
                 control={form.control}
                 name='unlimited_quota'
                 render={({ field }) => (
@@ -672,7 +748,7 @@ export function ApiKeysMutateDrawer({
                     </FormControl>
                   </FormItem>
                 )}
-              />
+              />}
             </SideDrawerSection>
 
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>

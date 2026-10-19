@@ -43,6 +43,7 @@ import {
   ApiKeyCell,
   IpRestrictionsCell,
   ModelLimitsCell,
+  PeriodicQuotaBadge,
   UnlimitedQuotaBadge,
 } from './api-keys-cells'
 import { DataTableRowActions } from './data-table-row-actions'
@@ -146,6 +147,16 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
       header: t('Quota'),
       cell: ({ row }) => {
         const apiKey = row.original
+        if (apiKey.quota_period && (apiKey.quota_period_limit ?? 0) > 0) {
+          return (
+            <PeriodicQuotaBadge
+              period={apiKey.quota_period}
+              used={apiKey.quota_period_used ?? 0}
+              limit={apiKey.quota_period_limit ?? 0}
+              remaining={apiKey.period_remaining}
+            />
+          )
+        }
         if (apiKey.unlimited_quota) {
           return <UnlimitedQuotaBadge used={apiKey.used_quota} />
         }

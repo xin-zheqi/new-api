@@ -404,3 +404,67 @@ func TestUpdateOptionsBulkRollsBackTheWholePairBeforeUpdatingMemory(t *testing.T
 	assert.Equal(t, "https://old.example.com", common.OptionMap["MallURL"])
 	common.OptionMapRWMutex.RUnlock()
 }
+
+func TestContentAuditSettingsDoNotPersistSecret(t *testing.T) {
+	t.Setenv("CRYPTO_SECRET", "content-audit-option-test-secret-0123456789")
+	t.Setenv("SESSION_SECRET", "")
+
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "content-audit-options.db")), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&Option{}))
+	useOptionTestDB(t, db, common.DatabaseTypeSQLite)
+
+	previousSettings := common.GetContentAuditSettings()
+	common.OptionMapRWMutex.Lock()
+	previousOptionMap := common.OptionMap
+	common.OptionMap = make(map[string]string)
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		value, marshalErr := common.Marshal(previousSettings)
+		if marshalErr == nil {
+			_ = common.ApplyContentAuditSettings(string(value))
+		}
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptionMap
+		common.OptionMapRWMutex.Unlock()
+	})
+	require.NoError(t, common.ApplyContentAuditSettings(`{"enabled":false,"retention_days":7}`))
+
+	require.NoError(t, UpdateOption(common.ContentAuditOption, `{"enabled":true,"retention_days":7,"secret":"legacy-secret"}`))
+	var stored Option
+	require.NoError(t, db.Where(commonKeyCol+" = ?", common.ContentAuditOption).First(&stored).Error)
+	assert.NotContains(t, stored.Value, "legacy-secret")
+	settings, err := common.ParseContentAuditSettings(stored.Value)
+	require.NoError(t, err)
+	require.True(t, settings.Enabled)
+
+	public := common.PublicContentAuditSettings(stored.Value)
+	assert.NotContains(t, public, "legacy-secret")
+	publicSettings, err := common.ParseContentAuditSettings(public)
+	require.NoError(t, err)
+	assert.True(t, publicSettings.Enabled)
+
+	require.NoError(t, UpdateOption(common.ContentAuditOption, `{"enabled":true,"retention_days":14}`))
+	require.NoError(t, db.Where(commonKeyCol+" = ?", common.ContentAuditOption).First(&stored).Error)
+	retained, err := common.ParseContentAuditSettings(stored.Value)
+	require.NoError(t, err)
+	assert.True(t, retained.Enabled)
+	assert.Equal(t, 14, retained.RetentionDays)
+
+	sealed, err := common.SealContentAudit([]byte("database secret"), "option-test")
+	require.NoError(t, err)
+	opened, err := common.OpenContentAudit(sealed, "option-test")
+	require.NoError(t, err)
+	assert.Equal(t, "database secret", string(opened))
+
+	previousCryptoSecret := common.CryptoSecret
+	common.CryptoSecret = ""
+	t.Setenv("CRYPTO_SECRET", "")
+	t.Setenv("SESSION_SECRET", "")
+	t.Cleanup(func() { common.CryptoSecret = previousCryptoSecret })
+	require.Error(t, UpdateOption(common.ContentAuditOption, `{"enabled":true,"retention_days":30}`))
+	require.NoError(t, db.Where(commonKeyCol+" = ?", common.ContentAuditOption).First(&stored).Error)
+	retained, err = common.ParseContentAuditSettings(stored.Value)
+	require.NoError(t, err)
+	assert.Equal(t, 14, retained.RetentionDays)
+}

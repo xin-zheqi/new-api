@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -459,6 +460,23 @@ func TestGetAllTokensMasksKeyInResponse(t *testing.T) {
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("list response leaked raw token key: %s", recorder.Body.String())
 	}
+}
+
+func TestBuildMaskedTokenResponseRefreshesPeriodicQuota(t *testing.T) {
+	token := &model.Token{
+		Key:              "periodic-display-key",
+		QuotaPeriod:      model.QuotaPeriodDay,
+		QuotaPeriodLimit: 100,
+		QuotaPeriodUsed:  55,
+		QuotaPeriodStart: model.QuotaPeriodStart(model.QuotaPeriodDay, time.Now().AddDate(0, 0, -1)),
+		UnlimitedQuota:   true,
+	}
+
+	response := buildMaskedTokenResponse(token)
+	require.NotNil(t, response)
+	require.Equal(t, 0, response.QuotaPeriodUsed)
+	require.Equal(t, 100, response.PeriodRemaining)
+	require.Equal(t, 55, token.QuotaPeriodUsed, "the response should use a copy and leave the loaded model untouched")
 }
 
 func TestSearchTokensMasksKeyInResponse(t *testing.T) {

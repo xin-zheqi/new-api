@@ -102,12 +102,14 @@ func GetStatus(c *gin.Context) {
 		"stripe_unit_price": setting.StripeUnitPrice,
 
 		// 面板启用开关
-		"api_info_enabled":      cs.ApiInfoEnabled,
-		"uptime_kuma_enabled":   cs.UptimeKumaEnabled,
-		"announcements_enabled": cs.AnnouncementsEnabled,
-		"faq_enabled":           cs.FAQEnabled,
-		"lottery_enabled":       common.OptionMap["LotteryEnabled"] == "true",
-		"invoice_enabled":       common.OptionMap["InvoiceEnabled"] != "false",
+		"api_info_enabled":             cs.ApiInfoEnabled,
+		"uptime_kuma_enabled":          cs.UptimeKumaEnabled,
+		"announcements_enabled":        cs.AnnouncementsEnabled,
+		"faq_enabled":                  cs.FAQEnabled,
+		"lottery_enabled":              common.OptionMap["LotteryEnabled"] == "true",
+		"content_audit_enabled":        common.GetContentAuditSettings().Enabled,
+		"content_audit_retention_days": common.GetContentAuditSettings().RetentionDays,
+		"invoice_enabled":              common.OptionMap["InvoiceEnabled"] != "false",
 
 		// 模块管理配置
 		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],

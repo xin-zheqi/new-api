@@ -308,11 +308,22 @@ func SetApiRouter(router *gin.Engine) {
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")
+		auditRoute := apiRouter.Group("/content-audit", middleware.UserAuth(), middleware.SearchRateLimit())
+		{
+			auditRoute.GET("/policy", controller.GetContentAuditPolicy)
+			auditRoute.PUT("/policy", middleware.UserCriticalRateLimit("audit-policy"), controller.UpdateContentAuditPolicy)
+			auditRoute.POST("/test", middleware.UserCriticalRateLimit("audit-preview"), controller.TestContentAuditRules)
+			auditRoute.GET("/records", controller.ListContentAuditRecords)
+			auditRoute.GET("/records/:id", controller.GetContentAuditRecord)
+			auditRoute.DELETE("/records", controller.DeleteContentAuditRecords)
+			auditRoute.DELETE("/records/:id", controller.DeleteContentAuditRecords)
+		}
 		tokenRoute.Use(middleware.UserAuth())
 		{
 			tokenRoute.GET("/", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/usage/models", controller.GetTokenModelUsage)
+			tokenRoute.GET("/usage/export", middleware.CriticalRateLimit(), controller.ExportTokenUsage)
 			tokenRoute.GET("/auto-groups", controller.GetTokenAutoGroups)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)

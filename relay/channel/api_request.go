@@ -644,6 +644,13 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	if resp == nil {
 		return nil, errors.New("resp is nil")
 	}
+	// Non-stream responses have no scanner callback to record first-byte
+	// latency. Mark the completed HTTP response here so channel tests and
+	// consume logs never report the synthetic -1s latency for a successful
+	// non-stream request. Streaming paths keep their content-based timestamp.
+	if info != nil && !info.IsStream {
+		info.SetFirstResponseTime()
+	}
 	if common2.DebugEnabled && info != nil && req.URL != nil {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
 		logger.LogDebug(c, fmt.Sprintf(

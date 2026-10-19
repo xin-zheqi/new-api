@@ -9,8 +9,10 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	relaymedia "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/media"
 	sharedclaude "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/claude"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/toolconv"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
+	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 func convertOpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Meta, request any) (any, error) {
@@ -41,20 +43,24 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 	if req.MaxOutputTokens != nil && *req.MaxOutputTokens > 0 {
 		claudeRequest.MaxTokens = kitutil.GetPointer(*req.MaxOutputTokens)
 	}
-	functions, err := RequestFunctionDeclarations(req.Tools)
+	// Use the shared tool conversion pipeline for definitions and choices. The
+	// earlier Responses converter only copied function tools, which silently
+	// dropped computer_use, shell, apply_patch, web_search_preview and other
+	// native tools. Hosted history is handled below together with ordinary input
+	// so message ordering remains deterministic across multiple turns.
+	_, toolSet, err := toolconv.ExtractRequest(types.RelayFormatOpenAIResponses, req)
 	if err != nil {
 		return nil, err
 	}
-	if len(functions) > 0 {
-		claudeRequest.Tools = responsesFunctionDeclarationsToClaudeTools(functions)
-	}
-
-	toolChoice, err := RequestToolChoiceToChat(req.ToolChoice)
+	toolSet.History = nil
+	attached, _, err := toolconv.AttachRequest(types.RelayFormatClaude, claudeRequest, toolSet, convmeta.OptionsOf(info))
 	if err != nil {
 		return nil, err
 	}
-	if toolChoice != nil || RawJSONPresent(req.ParallelToolCalls) {
-		claudeRequest.ToolChoice = sharedclaude.MapOpenAIToolChoice(toolChoice, ParallelToolCalls(req.ParallelToolCalls))
+	var attachedOK bool
+	claudeRequest, attachedOK = attached.(*dto.ClaudeRequest)
+	if !attachedOK {
+		return nil, fmt.Errorf("expected Anthropic Messages request, got %T", attached)
 	}
 	sourceReasoning, err := reasoning.FromOpenAIResponses(req)
 	if err != nil {
@@ -83,6 +89,21 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 			})
 		}
 	}
+	// A literal prompt can be represented as additional system guidance. Prompt
+	// template/resource objects still have no local equivalent and are left out
+	// without failing the request.
+	if kitutil.GetJsonType(req.Prompt) == "string" {
+		prompt, err := JSONString(req.Prompt)
+		if err != nil {
+			return nil, fmt.Errorf("invalid prompt: %w", err)
+		}
+		if strings.TrimSpace(prompt) != "" {
+			systemMessages = append(systemMessages, dto.ClaudeMediaMessage{
+				Type: "text",
+				Text: kitutil.GetPointer(prompt),
+			})
+		}
+	}
 
 	inputItems, err := InputItems(req.Input)
 	if err != nil {
@@ -98,6 +119,14 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 		case ResponsesInputTypeFunctionCallOutput, ResponsesInputTypeCustomToolOutput:
 			claudeRequest.Messages = appendClaudeToolResult(claudeRequest.Messages, responsesFunctionOutputItemToClaudeToolResult(item))
 		default:
+			if nativeBlock, ok := responsesNativeToolItemToClaude(item); ok {
+				if nativeBlock.Type == "tool_result" || nativeBlock.Type == "mcp_tool_result" || nativeBlock.Type == "web_search_tool_result" {
+					claudeRequest.Messages = appendClaudeToolResult(claudeRequest.Messages, nativeBlock)
+				} else {
+					claudeRequest.Messages = appendClaudeToolUse(claudeRequest.Messages, nativeBlock)
+				}
+				continue
+			}
 			sourceRole := strings.TrimSpace(kitutil.Interface2String(item["role"]))
 			role := responsesClaudeRole(sourceRole)
 			parts, err := responsesInputContentToClaudeMediaMessages(c, item["content"])
@@ -136,6 +165,12 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 	if len(claudeRequest.Messages) > 0 || len(systemMessages) > 0 {
 		claudeRequest.Messages = ensureClaudeMessagesStartWithUser(claudeRequest.Messages)
 	}
+	if len(claudeRequest.Messages) == 0 {
+		// A state-only Responses request has no local history to replay. Claude
+		// still requires at least one message, so keep the request valid with a
+		// neutral placeholder rather than failing conversion.
+		claudeRequest.Messages = ensureClaudeMessagesStartWithUser(nil)
+	}
 	// Checked last so every injection path has had its chance to satisfy the
 	// required field.
 	if claudeRequest.MaxTokens == nil {
@@ -154,6 +189,83 @@ func responsesFunctionDeclarationsToClaudeTools(functions []dto.FunctionRequest)
 		})
 	}
 	return tools
+}
+
+// responsesNativeToolItemToClaude maps Responses client and hosted tool
+// continuation items into Claude content blocks. Messages has no dedicated
+// field for these items, but its tool-use/result blocks preserve the call id
+// and action payload so a later response conversion can reconstruct the
+// Responses conversation without rejecting the request.
+func responsesNativeToolItemToClaude(item map[string]any) (dto.ClaudeMediaMessage, bool) {
+	itemType := strings.TrimSpace(kitutil.Interface2String(item["type"]))
+	callID := CallID(item)
+	if callID == "" {
+		return dto.ClaudeMediaMessage{}, false
+	}
+
+	if strings.HasSuffix(itemType, "_output") {
+		resultType := "tool_result"
+		if itemType == "mcp_call_output" {
+			resultType = "mcp_tool_result"
+		} else if itemType == "web_search_call_output" {
+			resultType = "web_search_tool_result"
+		}
+		failed := strings.EqualFold(strings.TrimSpace(kitutil.Interface2String(item["status"])), "failed")
+		return dto.ClaudeMediaMessage{
+			Type:      resultType,
+			ToolUseId: callID,
+			Content:   responsesToolOutputValue(item["output"]),
+			IsError:   kitutil.GetPointer(failed),
+		}, true
+	}
+
+	name := strings.TrimSpace(kitutil.Interface2String(item["name"]))
+	blockType := "tool_use"
+	inputKey := "action"
+	switch itemType {
+	case "computer_call":
+		name = "computer"
+	case "local_shell_call":
+		name = "bash"
+	case "apply_patch_call":
+		name = "str_replace_editor"
+	case "web_search_call":
+		name = "web_search"
+		blockType = "server_tool_use"
+	case "mcp_call":
+		blockType = "mcp_tool_use"
+		inputKey = "arguments"
+	case "file_search_call":
+		name = "file_search"
+	case "code_interpreter_call":
+		name = "code_execution"
+	case "image_generation_call":
+		name = "image_generation"
+	default:
+		return dto.ClaudeMediaMessage{}, false
+	}
+	if name == "" {
+		name = itemType
+	}
+	return dto.ClaudeMediaMessage{
+		Type:       blockType,
+		Id:         callID,
+		Name:       name,
+		Input:      ObjectValue(item[inputKey], inputKey),
+		ServerName: strings.TrimSpace(kitutil.Interface2String(item["server_label"])),
+		Caller:     rawJSONValue(item["caller"]),
+	}, true
+}
+
+func rawJSONValue(value any) []byte {
+	if value == nil {
+		return nil
+	}
+	encoded, err := kitutil.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	return encoded
 }
 
 func responsesInputContentToClaudeMediaMessages(c context.Context, content any) ([]dto.ClaudeMediaMessage, error) {

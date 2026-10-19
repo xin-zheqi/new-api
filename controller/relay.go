@@ -80,6 +80,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	)
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
+		// Reject unsupported audited audio sessions before the HTTP upgrade.
+		if auditErr := service.AuditRelayContent(c); auditErr != nil {
+			c.JSON(auditErr.StatusCode, gin.H{"error": auditErr.ToOpenAIError()})
+			return
+		}
 		var err error
 		ws, err = upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
@@ -101,6 +106,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
+	if newAPIError = service.AuditRelayContent(c); newAPIError != nil {
+		return
+	}
 	request, err := helper.GetAndValidateRequest(c, relayFormat)
 	if err != nil {
 		// Map "request body too large" to 413 so clients can handle it correctly

@@ -87,9 +87,6 @@ function TimelineBar({ bucket }) {
           <div>
             {t('成功率')}: {formatRate(rate)}
           </div>
-          <div>
-            {t('成功请求')}: {bucket.success} / {bucket.total}
-          </div>
         </div>
       }
       position='top'

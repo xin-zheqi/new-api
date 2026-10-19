@@ -28,6 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { Progress } from '@/components/ui/progress'
 import {
   Tooltip,
   TooltipContent,
@@ -35,6 +36,7 @@ import {
 } from '@/components/ui/tooltip'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { formatQuota } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 import type { ApiKey } from '../types'
 import { useApiKeys } from './api-keys-provider'
@@ -173,6 +175,70 @@ export function UnlimitedQuotaBadge(props: UnlimitedQuotaBadgeProps) {
         </span>
       </PopoverContent>
     </Popover>
+  )
+}
+
+type PeriodicQuotaBadgeProps = {
+  period: 'day' | 'week' | 'month'
+  used: number
+  limit: number
+  remaining?: number | null
+}
+
+/** Displays the independent calendar-period quota before the legacy unlimited flag. */
+export function PeriodicQuotaBadge(props: PeriodicQuotaBadgeProps) {
+  const { t } = useTranslation()
+  const used = Math.max(0, Math.min(props.used || 0, props.limit))
+  const limit = Math.max(0, props.limit || 0)
+  const remaining = Math.max(
+    0,
+    Math.min(limit, props.remaining == null ? limit - used : props.remaining)
+  )
+  const percentage = limit > 0 ? (remaining / limit) * 100 : 0
+  const periodLabel =
+    props.period === 'day'
+      ? t('Daily quota')
+      : props.period === 'week'
+        ? t('Weekly quota')
+        : t('Monthly quota')
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<div className='w-[150px] space-y-1' />}>
+        <div className='flex items-center justify-between gap-2 text-xs'>
+          <span className='text-muted-foreground truncate'>{periodLabel}</span>
+          <span className='font-medium tabular-nums'>
+            {formatQuota(remaining)} / {formatQuota(limit)}
+          </span>
+        </div>
+        <Progress
+          value={percentage}
+          className={cn(
+            'h-1.5',
+            percentage <= 10
+              ? '[&_[data-slot=progress-indicator]]:bg-rose-500'
+              : percentage <= 30
+                ? '[&_[data-slot=progress-indicator]]:bg-amber-500'
+                : '[&_[data-slot=progress-indicator]]:bg-emerald-500'
+          )}
+        />
+      </TooltipTrigger>
+      <TooltipContent>
+        <div className='space-y-1 text-xs'>
+          <div>{periodLabel}</div>
+          <div>
+            {t('Used:')} {formatQuota(used)}
+          </div>
+          <div>
+            {t('Remaining:')} {formatQuota(remaining)} ({percentage.toFixed(1)}
+            %)
+          </div>
+          <div>
+            {t('Total:')} {formatQuota(limit)}
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 

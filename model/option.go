@@ -74,6 +74,8 @@ func AllOption() ([]*Option, error) {
 func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
+	common.OptionMap[common.ContentAuditOption] = `{"enabled":false,"retention_days":7}`
+	_ = common.ApplyContentAuditSettings(common.OptionMap[common.ContentAuditOption])
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -296,11 +298,28 @@ func loadOptionsFromDatabase() {
 	wechatUnitPriceLoaded := false
 	wechatMinTopUpLoaded := false
 	for _, option := range options {
-		if err := validateOptionValue(option.Key, option.Value); err != nil {
+		value := option.Value
+		if option.Key == common.ContentAuditOption {
+			// Drop the legacy database-stored secret as soon as the option is
+			// loaded. Encryption keys now come exclusively from the process
+			// environment and must never remain in the options table.
+			normalized, normalizeErr := common.NormalizeContentAuditSettings(value)
+			if normalizeErr != nil {
+				common.SysLog("ignored invalid persisted option " + option.Key + ": " + normalizeErr.Error())
+				continue
+			}
+			value = normalized
+			if value != option.Value {
+				if err := DB.Model(&Option{}).Where(commonKeyCol+" = ?", option.Key).Update("value", value).Error; err != nil {
+					common.SysLog("failed to remove legacy content audit secret: " + err.Error())
+				}
+			}
+		}
+		if err := validateOptionValue(option.Key, value); err != nil {
 			common.SysLog("ignored invalid persisted option " + option.Key + ": " + err.Error())
 			continue
 		}
-		err := updateOptionMapLocked(option.Key, option.Value)
+		err := updateOptionMapLocked(option.Key, value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
 			continue
@@ -342,6 +361,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == common.ContentAuditOption {
+		return common.ValidateContentAuditSettings(value)
+	}
 	value = normalizeOptionValue(key, value)
 	if _, recognized, err := common.NormalizeRouteRateLimitSetting(key, value); recognized {
 		return err
@@ -422,6 +444,13 @@ func normalizeOptionValue(key string, value string) string {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == common.ContentAuditOption {
+		normalized, err := common.NormalizeContentAuditSettings(value)
+		if err != nil {
+			return err
+		}
+		value = normalized
+	}
 	value = normalizeOptionValue(key, value)
 	if err := validateOptionValue(key, value); err != nil {
 		return err
@@ -450,6 +479,13 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 	normalizedValues := make(map[string]string, len(values))
 	for key, value := range values {
+		if key == common.ContentAuditOption {
+			normalized, err := common.NormalizeContentAuditSettings(value)
+			if err != nil {
+				return err
+			}
+			value = normalized
+		}
 		value = normalizeOptionValue(key, value)
 		if err := validateOptionValue(key, value); err != nil {
 			return err
@@ -498,6 +534,9 @@ func updateOptionMap(key string, value string) (err error) {
 func updateOptionMapLocked(key string, value string) (err error) {
 	value = normalizeOptionValue(key, value)
 	common.OptionMap[key] = value
+	if key == common.ContentAuditOption {
+		return common.ApplyContentAuditSettings(value)
+	}
 	if handled, applyErr := common.ApplyRouteRateLimitSetting(key, value); handled {
 		return applyErr
 	}

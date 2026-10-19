@@ -590,6 +590,14 @@ export const STATIC_I18N_KEYS = [
   'The upstream channel that served the requests',
 
   // Misc
+  'Email address',
+  'Mainland China mobile number',
+  'API key pattern',
+  'API key name',
+  'Matches',
+  'warn',
+  'replace',
+  'block',
   'Cancel',
   'Status',
   'Upgrade Group',

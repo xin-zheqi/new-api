@@ -30,6 +30,7 @@ import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authentica
 import { Route as AuthenticatedIdentityReviewsRouteImport } from './routes/_authenticated/identity-reviews'
 import { Route as AuthenticatedSystemSettingsRouteRouteImport } from './routes/_authenticated/system-settings/route'
 import { Route as AboutIndexRouteImport } from './routes/about/index'
+import { Route as BalanceIndexRouteImport } from './routes/balance/index'
 import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
 import { Route as PricingIndexRouteImport } from './routes/pricing/index'
 import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
@@ -37,6 +38,7 @@ import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
+import { Route as AuthenticatedContentAuditIndexRouteImport } from './routes/_authenticated/content-audit/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
@@ -182,6 +184,11 @@ const AboutIndexRoute = AboutIndexRouteImport.update({
   path: '/about/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BalanceIndexRoute = BalanceIndexRouteImport.update({
+  id: '/balance/',
+  path: '/balance/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OauthProviderRoute = OauthProviderRouteImport.update({
   id: '/oauth/$provider',
   path: '/oauth/$provider',
@@ -218,6 +225,12 @@ const AuthenticatedChatChatIdRoute = AuthenticatedChatChatIdRouteImport.update({
   path: '/chat/$chatId',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedContentAuditIndexRoute =
+  AuthenticatedContentAuditIndexRouteImport.update({
+    id: '/content-audit/',
+    path: '/content-audit/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDashboardIndexRoute =
   AuthenticatedDashboardIndexRouteImport.update({
     id: '/dashboard/',
@@ -471,6 +484,7 @@ export interface FileRoutesByFullPath {
   '/identity-reviews': typeof AuthenticatedIdentityReviewsRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
+  '/balance/': typeof BalanceIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -484,6 +498,7 @@ export interface FileRoutesByFullPath {
   '/support-tickets/admin': typeof AuthenticatedSupportTicketsAdminRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/content-audit/': typeof AuthenticatedContentAuditIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/invoice-center/': typeof AuthenticatedInvoiceCenterIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
@@ -537,6 +552,7 @@ export interface FileRoutesByTo {
   '/identity-reviews': typeof AuthenticatedIdentityReviewsRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about': typeof AboutIndexRoute
+  '/balance': typeof BalanceIndexRoute
   '/pricing': typeof PricingIndexRoute
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
@@ -550,6 +566,7 @@ export interface FileRoutesByTo {
   '/support-tickets/admin': typeof AuthenticatedSupportTicketsAdminRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
+  '/content-audit': typeof AuthenticatedContentAuditIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/invoice-center': typeof AuthenticatedInvoiceCenterIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
@@ -607,6 +624,7 @@ export interface FileRoutesById {
   '/_authenticated/identity-reviews': typeof AuthenticatedIdentityReviewsRoute
   '/oauth/$provider': typeof OauthProviderRoute
   '/about/': typeof AboutIndexRoute
+  '/balance/': typeof BalanceIndexRoute
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
@@ -620,6 +638,7 @@ export interface FileRoutesById {
   '/_authenticated/support-tickets/admin': typeof AuthenticatedSupportTicketsAdminRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/_authenticated/content-audit/': typeof AuthenticatedContentAuditIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/invoice-center/': typeof AuthenticatedInvoiceCenterIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
@@ -676,6 +695,7 @@ export interface FileRouteTypes {
     | '/identity-reviews'
     | '/oauth/$provider'
     | '/about/'
+    | '/balance/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
@@ -689,6 +709,7 @@ export interface FileRouteTypes {
     | '/support-tickets/admin'
     | '/usage-logs/$section'
     | '/channels/'
+    | '/content-audit/'
     | '/dashboard/'
     | '/invoice-center/'
     | '/keys/'
@@ -742,6 +763,7 @@ export interface FileRouteTypes {
     | '/identity-reviews'
     | '/oauth/$provider'
     | '/about'
+    | '/balance'
     | '/pricing'
     | '/rankings'
     | '/setup'
@@ -755,6 +777,7 @@ export interface FileRouteTypes {
     | '/support-tickets/admin'
     | '/usage-logs/$section'
     | '/channels'
+    | '/content-audit'
     | '/dashboard'
     | '/invoice-center'
     | '/keys'
@@ -811,6 +834,7 @@ export interface FileRouteTypes {
     | '/_authenticated/identity-reviews'
     | '/oauth/$provider'
     | '/about/'
+    | '/balance/'
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
@@ -824,6 +848,7 @@ export interface FileRouteTypes {
     | '/_authenticated/support-tickets/admin'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/channels/'
+    | '/_authenticated/content-audit/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/invoice-center/'
     | '/_authenticated/keys/'
@@ -871,6 +896,7 @@ export interface RootRouteChildren {
   errors503Route: typeof errors503Route
   OauthProviderRoute: typeof OauthProviderRoute
   AboutIndexRoute: typeof AboutIndexRoute
+  BalanceIndexRoute: typeof BalanceIndexRoute
   PricingIndexRoute: typeof PricingIndexRoute
   RankingsIndexRoute: typeof RankingsIndexRoute
   SetupIndexRoute: typeof SetupIndexRoute
@@ -1026,6 +1052,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AboutIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/balance/': {
+      id: '/balance/'
+      path: '/balance'
+      fullPath: '/balance/'
+      preLoaderRoute: typeof BalanceIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/oauth/$provider': {
       id: '/oauth/$provider'
       path: '/oauth/$provider'
@@ -1073,6 +1106,13 @@ declare module '@tanstack/react-router' {
       path: '/chat/$chatId'
       fullPath: '/chat/$chatId'
       preLoaderRoute: typeof AuthenticatedChatChatIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/content-audit/': {
+      id: '/_authenticated/content-audit/'
+      path: '/content-audit'
+      fullPath: '/content-audit/'
+      preLoaderRoute: typeof AuthenticatedContentAuditIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard/': {
@@ -1447,6 +1487,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSupportTicketsAdminRoute: typeof AuthenticatedSupportTicketsAdminRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
+  AuthenticatedContentAuditIndexRoute: typeof AuthenticatedContentAuditIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedInvoiceCenterIndexRoute: typeof AuthenticatedInvoiceCenterIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
@@ -1479,6 +1520,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSupportTicketsAdminRoute: AuthenticatedSupportTicketsAdminRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
+  AuthenticatedContentAuditIndexRoute: AuthenticatedContentAuditIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedInvoiceCenterIndexRoute: AuthenticatedInvoiceCenterIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
@@ -1514,6 +1556,7 @@ const rootRouteChildren: RootRouteChildren = {
   errors503Route: errors503Route,
   OauthProviderRoute: OauthProviderRoute,
   AboutIndexRoute: AboutIndexRoute,
+  BalanceIndexRoute: BalanceIndexRoute,
   PricingIndexRoute: PricingIndexRoute,
   RankingsIndexRoute: RankingsIndexRoute,
   SetupIndexRoute: SetupIndexRoute,

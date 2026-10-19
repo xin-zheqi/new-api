@@ -30,7 +30,7 @@ func (b *prefixedResponseBody) Close() error {
 }
 
 // ValidateUpstreamTextResponse keeps retry-safe response data private until an
-// enabled channel produces substantive output or reports non-zero token usage.
+// enabled channel produces substantive output or reports positive output token usage.
 func ValidateUpstreamTextResponse(resp *http.Response, info *relaycommon.RelayInfo) *types.NewAPIError {
 	if resp == nil || !shouldValidateUpstreamTextResponse(info) {
 		return nil
@@ -104,7 +104,7 @@ func ValidateUpstreamTextPayload(body []byte) *types.NewAPIError {
 	}
 	var payload any
 	if err := common.Unmarshal(body, &payload); err == nil {
-		if hasExplicitResponseError(payload) || hasSubstantiveResponse(payload) || hasNonZeroResponseUsage(payload) {
+		if hasExplicitResponseError(payload) || hasSubstantiveResponse(payload) || hasPositiveResponseOutputUsage(payload) {
 			return nil
 		}
 		return NewEmptyUpstreamResponseError()
@@ -125,7 +125,7 @@ func ValidateUpstreamTextPayload(body []byte) *types.NewAPIError {
 			return nil
 		}
 		parsedDocument = true
-		if hasExplicitResponseError(payload) || hasSubstantiveResponse(payload) || hasNonZeroResponseUsage(payload) {
+		if hasExplicitResponseError(payload) || hasSubstantiveResponse(payload) || hasPositiveResponseOutputUsage(payload) {
 			return nil
 		}
 	}
@@ -235,7 +235,7 @@ func validateUpstreamTextStream(resp *http.Response, info *relaycommon.RelayInfo
 				restorePrefixedResponseBody(resp, &prefix, reader, originalBody)
 				return nil
 			}
-			if hasSubstantiveResponse(value) || hasNonZeroResponseUsage(value) {
+			if hasSubstantiveResponse(value) || hasPositiveResponseOutputUsage(value) {
 				restorePrefixedResponseBody(resp, &prefix, reader, originalBody)
 				return nil
 			}
@@ -357,11 +357,11 @@ func responseErrorValueIsPresent(value any) bool {
 	}
 }
 
-func hasNonZeroResponseUsage(value any) bool {
+func hasPositiveResponseOutputUsage(value any) bool {
 	switch typed := value.(type) {
 	case []any:
 		for _, item := range typed {
-			if hasNonZeroResponseUsage(item) {
+			if hasPositiveResponseOutputUsage(item) {
 				return true
 			}
 		}
@@ -369,18 +369,18 @@ func hasNonZeroResponseUsage(value any) bool {
 		for key, item := range typed {
 			normalizedKey := normalizeResponseKey(key)
 			if normalizedKey == "usage" || normalizedKey == "usagemetadata" {
-				if usageContainsNonZeroTokens(item) {
+				if usageContainsOutputTokens(item) {
 					return true
 				}
 				continue
 			}
-			if (normalizedKey == "evalcount" || normalizedKey == "promptevalcount") && numericValueIsNonZero(item) {
+			if normalizedKey == "evalcount" && numericValueIsPositive(item) {
 				return true
 			}
 			if isResponseConfigurationKey(normalizedKey) {
 				continue
 			}
-			if hasNonZeroResponseUsage(item) {
+			if hasPositiveResponseOutputUsage(item) {
 				return true
 			}
 		}
@@ -388,49 +388,32 @@ func hasNonZeroResponseUsage(value any) bool {
 	return false
 }
 
-func usageContainsNonZeroTokens(value any) bool {
+func usageContainsOutputTokens(value any) bool {
 	switch typed := value.(type) {
 	case []any:
 		for _, item := range typed {
-			if usageContainsNonZeroTokens(item) {
+			if usageContainsOutputTokens(item) {
 				return true
 			}
 		}
 	case map[string]any:
-		// Main input/output counters are authoritative when a provider includes
-		// them. Anthropic reports cache counters separately, and those details
-		// must not override explicit zero primary counters on an empty response.
-		if nonZero, present := primaryUsageCountersAreNonZero(typed); present {
-			return nonZero
-		}
+		// Only output counters prove that generation occurred. Input, total and
+		// cache counters may be positive even when the model returns nothing.
 		for key, item := range typed {
-			if isTokenUsageCounterKey(normalizeResponseKey(key)) && numericValueIsNonZero(item) {
-				return true
+			switch normalizeResponseKey(key) {
+			case "outputtokens", "completiontokens", "outputtokencount", "completiontokencount",
+				"candidatestokencount", "thoughtstokencount":
+				// Gemini reports generated thinking separately from candidates.
+				if numericValueIsPositive(item) {
+					return true
+				}
 			}
-			if usageContainsNonZeroTokens(item) {
+			if usageContainsOutputTokens(item) {
 				return true
 			}
 		}
 	}
 	return false
-}
-
-func primaryUsageCountersAreNonZero(value map[string]any) (nonZero bool, present bool) {
-	for key, item := range value {
-		switch normalizeResponseKey(key) {
-		case "inputtokens", "outputtokens", "prompttokens", "completiontokens",
-			"inputtokencount", "outputtokencount", "prompttokencount", "candidatestokencount":
-			present = true
-			if numericValueIsNonZero(item) {
-				nonZero = true
-			}
-		}
-	}
-	return nonZero, present
-}
-
-func isTokenUsageCounterKey(key string) bool {
-	return strings.HasSuffix(key, "tokens") || strings.HasSuffix(key, "tokencount")
 }
 
 func isResponseConfigurationKey(key string) bool {
@@ -443,24 +426,24 @@ func isResponseConfigurationKey(key string) bool {
 	}
 }
 
-func numericValueIsNonZero(value any) bool {
+func numericValueIsPositive(value any) bool {
 	switch number := value.(type) {
 	case float64:
-		return number != 0
+		return number > 0
 	case float32:
-		return number != 0
+		return number > 0
 	case int:
-		return number != 0
+		return number > 0
 	case int64:
-		return number != 0
+		return number > 0
 	case int32:
-		return number != 0
+		return number > 0
 	case uint:
-		return number != 0
+		return number > 0
 	case uint64:
-		return number != 0
+		return number > 0
 	case uint32:
-		return number != 0
+		return number > 0
 	default:
 		return false
 	}
@@ -614,7 +597,7 @@ func normalizeResponseKey(value string) string {
 // non-HTTP channel transports.
 func NewEmptyUpstreamResponseError() *types.NewAPIError {
 	return types.NewOpenAIError(
-		errors.New("upstream returned an empty response with zero token usage"),
+		errors.New("upstream returned an empty response with zero or missing output token usage"),
 		types.ErrorCodeEmptyResponse,
 		http.StatusBadGateway,
 	)

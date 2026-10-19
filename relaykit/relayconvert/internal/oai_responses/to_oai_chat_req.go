@@ -112,22 +112,12 @@ func ResponsesRequestToChatCompletionsRequest(req *dto.OpenAIResponsesRequest) (
 }
 
 func validateResponsesRequestChatUnsupportedFields(req *dto.OpenAIResponsesRequest) error {
-	unsupported := make([]string, 0, 4)
-	if rawJSONPresent(req.Conversation) {
-		unsupported = append(unsupported, "conversation")
-	}
-	if strings.TrimSpace(req.PreviousResponseID) != "" {
-		unsupported = append(unsupported, "previous_response_id")
-	}
-	if rawJSONPresent(req.Prompt) {
-		unsupported = append(unsupported, "prompt")
-	}
-	if rawJSONPresent(req.ContextManagement) {
-		unsupported = append(unsupported, "context_management")
-	}
-	if len(unsupported) > 0 {
-		return fmt.Errorf("responses to chat conversion does not support stateful fields: %s", strings.Join(unsupported, ", "))
-	}
+	// Chat and Messages have no equivalent for Responses' server-side state
+	// handles. Keep conversion best-effort: the ordinary input history is still
+	// forwarded, while these optional handles are omitted instead of turning a
+	// usable request into a client-visible conversion error. The caller remains
+	// responsible for supplying the complete input history when targeting a
+	// stateless provider.
 	return nil
 }
 

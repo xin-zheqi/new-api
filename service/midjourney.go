@@ -119,7 +119,16 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 	if task.TokenId > 0 {
 		tokenKey := resolveTokenKey(ctx, task.TokenId, task.MjId)
 		if tokenKey != "" {
-			if err := model.IncreaseTokenQuota(task.TokenId, tokenKey, quota); err != nil {
+			token, tokenErr := model.GetTokenById(task.TokenId)
+			var err error
+			if tokenErr != nil {
+				err = tokenErr
+			} else if token.HasQuotaPeriod() {
+				err = model.AdjustTokenPeriodQuota(task.TokenId, tokenKey, token.QuotaPeriod, -quota)
+			} else {
+				err = model.IncreaseTokenQuota(task.TokenId, tokenKey, quota)
+			}
+			if err != nil {
 				logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 令牌额度失败 task %s: %s", task.MjId, err.Error()))
 			}
 		}

@@ -41,6 +41,9 @@ type tokenRequest struct {
 type tokenResponse struct {
 	*model.Token
 	AutoGroups []string `json:"auto_groups"`
+	// PeriodRemaining is calculated from the current calendar period so token
+	// list responses do not show yesterday's usage after a reset boundary.
+	PeriodRemaining int `json:"period_remaining"`
 }
 
 func maxTokenQuota() int {
@@ -53,11 +56,50 @@ func maxTokenQuota() int {
 	return quota
 }
 
+func normalizeAndValidateTokenQuota(c *gin.Context, token *model.Token) bool {
+	period := model.NormalizeQuotaPeriod(token.QuotaPeriod)
+	if token.QuotaPeriod != "" && period == "" {
+		common.ApiError(c, fmt.Errorf("无效的周期额度类型"))
+		return false
+	}
+	token.QuotaPeriod = period
+	if period != "" {
+		if token.QuotaPeriodLimit <= 0 || token.QuotaPeriodLimit > maxTokenQuota() {
+			common.ApiError(c, fmt.Errorf("周期额度必须在 1 到 %d 之间", maxTokenQuota()))
+			return false
+		}
+		// A periodic key has no legacy total quota. Keep the old fields in a
+		// canonical state so older clients cannot accidentally consume both.
+		token.UnlimitedQuota = true
+		token.RemainQuota = 0
+		token.QuotaPeriodUsed = 0
+		token.QuotaPeriodStart = 0
+		return true
+	}
+	token.QuotaPeriodLimit = 0
+	token.QuotaPeriodUsed = 0
+	token.QuotaPeriodStart = 0
+	if token.UnlimitedQuota {
+		token.RemainQuota = 0
+		return true
+	}
+	if token.RemainQuota < 0 {
+		common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
+		return false
+	}
+	if token.RemainQuota > maxTokenQuota() {
+		common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxTokenQuota()})
+		return false
+	}
+	return true
+}
+
 func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	if token == nil {
 		return nil
 	}
 	maskedToken := *token
+	periodRemaining := model.GetTokenPeriodRemaining(&maskedToken)
 	maskedToken.Key = token.GetMaskedKey()
 	autoGroups, err := token.GetAutoGroups()
 	if err != nil {
@@ -67,7 +109,11 @@ func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	if len(autoGroups) == 0 {
 		autoGroups = nil
 	}
-	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups}
+	return &tokenResponse{
+		Token:           &maskedToken,
+		AutoGroups:      autoGroups,
+		PeriodRemaining: periodRemaining,
+	}
 }
 
 func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
@@ -297,39 +343,39 @@ func GetTokenStatus(c *gin.Context) {
 	if expiredAt == -1 {
 		expiredAt = 0
 	}
+	periodRemaining := model.GetTokenPeriodRemaining(token)
 	c.JSON(http.StatusOK, gin.H{
-		"object":          "credit_summary",
-		"total_granted":   token.RemainQuota,
-		"total_used":      0, // not supported currently
-		"total_available": token.RemainQuota,
-		"expires_at":      expiredAt * 1000,
+		"object":           "credit_summary",
+		"total_granted":    token.RemainQuota,
+		"total_used":       0, // not supported currently
+		"total_available":  token.RemainQuota,
+		"quota_period":     token.QuotaPeriod,
+		"period_limit":     token.QuotaPeriodLimit,
+		"period_used":      token.QuotaPeriodUsed,
+		"period_remaining": periodRemaining,
+		"period_start":     token.QuotaPeriodStart,
+		"expires_at":       expiredAt * 1000,
 	})
 }
 
 func GetTokenUsage(c *gin.Context) {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "No Authorization header",
-		})
+	// This endpoint is public: TokenAuthReadOnly authenticates the API key and
+	// sets its owner without requiring a browser login or session cookie.
+	tokenID, userID, tokenKey := c.GetInt("token_id"), c.GetInt("id"), c.GetString("token_key")
+	if tokenID <= 0 || userID <= 0 || tokenKey == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid Bearer token"})
 		return
 	}
-
-	parts := strings.Split(authHeader, " ")
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid Bearer token",
-		})
-		return
-	}
-	tokenKey := parts[1]
-
-	token, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
+	// Keep the cache-aware lookup used by legacy balance queries, while using
+	// the normalized key from middleware so group suffixes resolve correctly.
+	token, err := model.GetTokenByKey(tokenKey, false)
 	if err != nil {
 		common.SysError("failed to get token by key: " + err.Error())
 		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
+		return
+	}
+	if token.Id != tokenID || token.UserId != userID {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "Invalid Bearer token"})
 		return
 	}
 
@@ -338,19 +384,33 @@ func GetTokenUsage(c *gin.Context) {
 		expiredAt = 0
 	}
 
+	periodRemaining := model.GetTokenPeriodRemaining(token)
+	recentRequests, recentRequestsErr := model.GetRecentTokenRequests(c.Request.Context(), token.UserId, token.Id)
+	if recentRequestsErr != nil {
+		common.SysError("failed to get recent token requests: " + recentRequestsErr.Error())
+		recentRequests = []model.TokenRecentRequest{}
+	}
+	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{
 		"code":    true,
 		"message": "ok",
 		"data": gin.H{
-			"object":               "token_usage",
-			"name":                 token.Name,
-			"total_granted":        token.RemainQuota + token.UsedQuota,
-			"total_used":           token.UsedQuota,
-			"total_available":      token.RemainQuota,
-			"unlimited_quota":      token.UnlimitedQuota,
-			"model_limits":         token.GetModelLimitsMap(),
-			"model_limits_enabled": token.ModelLimitsEnabled,
-			"expires_at":           expiredAt,
+			"object":                "token_usage",
+			"name":                  token.Name,
+			"total_granted":         token.RemainQuota + token.UsedQuota,
+			"total_used":            token.UsedQuota,
+			"total_available":       token.RemainQuota,
+			"unlimited_quota":       token.UnlimitedQuota,
+			"model_limits":          token.GetModelLimitsMap(),
+			"model_limits_enabled":  token.ModelLimitsEnabled,
+			"expires_at":            expiredAt,
+			"quota_period":          token.QuotaPeriod,
+			"period_limit":          token.QuotaPeriodLimit,
+			"period_used":           token.QuotaPeriodUsed,
+			"period_remaining":      periodRemaining,
+			"period_start":          token.QuotaPeriodStart,
+			"recent_requests":       recentRequests,
+			"recent_requests_error": recentRequestsErr != nil,
 		},
 	})
 }
@@ -371,16 +431,8 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	// 非无限额度时，检查额度值是否超出有效范围
-	if !token.UnlimitedQuota {
-		if token.RemainQuota < 0 {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
-			return
-		}
-		maxQuotaValue := maxTokenQuota()
-		if token.RemainQuota > maxQuotaValue {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
-			return
-		}
+	if !normalizeAndValidateTokenQuota(c, &token) {
+		return
 	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
@@ -419,6 +471,8 @@ func AddToken(c *gin.Context) {
 		ExpiredTime:        token.ExpiredTime,
 		RemainQuota:        token.RemainQuota,
 		UnlimitedQuota:     token.UnlimitedQuota,
+		QuotaPeriod:        token.QuotaPeriod,
+		QuotaPeriodLimit:   token.QuotaPeriodLimit,
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
@@ -468,16 +522,8 @@ func UpdateToken(c *gin.Context) {
 	if !normalizeAndValidateTokenGroup(c, &token) {
 		return
 	}
-	if !token.UnlimitedQuota {
-		if token.RemainQuota < 0 {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
-			return
-		}
-		maxQuotaValue := maxTokenQuota()
-		if token.RemainQuota > maxQuotaValue {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
-			return
-		}
+	if !normalizeAndValidateTokenQuota(c, &token) {
+		return
 	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
@@ -502,6 +548,12 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ExpiredTime = token.ExpiredTime
 		cleanToken.RemainQuota = token.RemainQuota
 		cleanToken.UnlimitedQuota = token.UnlimitedQuota
+		if cleanToken.QuotaPeriod != token.QuotaPeriod || cleanToken.QuotaPeriodLimit != token.QuotaPeriodLimit {
+			cleanToken.QuotaPeriodUsed = 0
+			cleanToken.QuotaPeriodStart = 0
+		}
+		cleanToken.QuotaPeriod = token.QuotaPeriod
+		cleanToken.QuotaPeriodLimit = token.QuotaPeriodLimit
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps

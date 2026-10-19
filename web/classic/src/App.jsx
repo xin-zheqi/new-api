@@ -42,6 +42,7 @@ import Chat2Link from './pages/Chat2Link';
 import MjProxy from './pages/Midjourney';
 import Pricing from './pages/Pricing';
 import GroupStatus from './pages/GroupStatus';
+import BalanceQuery from './pages/BalanceQuery';
 import Task from './pages/Task';
 import ModelPage from './pages/Model';
 import ModelDeploymentPage from './pages/ModelDeployment';
@@ -57,6 +58,7 @@ import InvoiceCenter from './pages/Invoice';
 import IdentityReviews from './pages/IdentityReviews';
 
 const Home = lazy(() => import('./pages/Home'));
+const ContentAudit = lazy(() => import('./pages/ContentAudit'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const About = lazy(() => import('./pages/About'));
 const UserAgreement = lazy(() => import('./pages/UserAgreement'));
@@ -284,11 +286,19 @@ function App() {
         />
         <Route
           path='/console/invoice'
-          element={<PrivateRoute><InvoiceCenter /></PrivateRoute>}
+          element={
+            <PrivateRoute>
+              <InvoiceCenter />
+            </PrivateRoute>
+          }
         />
         <Route
           path='/console/invoice/admin'
-          element={<AdminRoute><InvoiceCenter admin /></AdminRoute>}
+          element={
+            <AdminRoute>
+              <InvoiceCenter admin />
+            </AdminRoute>
+          }
         />
         <Route
           path='/console/ticket'
@@ -312,7 +322,11 @@ function App() {
         />
         <Route
           path='/console/identity-reviews'
-          element={<AdminRoute><IdentityReviews /></AdminRoute>}
+          element={
+            <AdminRoute>
+              <IdentityReviews />
+            </AdminRoute>
+          }
         />
         <Route
           path='/console/topup'
@@ -347,6 +361,16 @@ function App() {
           element={
             <PrivateRoute>
               <TokenUsage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/content-audit'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading />}>
+                <ContentAudit />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -407,6 +431,7 @@ function App() {
             </Suspense>
           }
         />
+        <Route path='/balance' element={<BalanceQuery />} />
         <Route
           path='/about'
           element={

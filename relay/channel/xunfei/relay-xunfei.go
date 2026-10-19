@@ -198,7 +198,7 @@ func xunfeiHandler(c *gin.Context, info *relaycommon.RelayInfo, textRequest dto.
 		case stop = <-stopChan:
 		}
 	}
-	if info.ChannelSetting.RejectEmptyResponse && strings.TrimSpace(content) == "" && !xunfeiUsageIsNonZero(usage) {
+	if info.ChannelSetting.RejectEmptyResponse && strings.TrimSpace(content) == "" && !xunfeiHasOutputUsage(usage) {
 		return nil, helper.NewEmptyUpstreamResponseError()
 	}
 	if len(xunfeiResponse.Payload.Choices.Text) == 0 {
@@ -226,11 +226,11 @@ func xunfeiResponseHasOutputOrUsage(response XunfeiChatResponse) bool {
 			return true
 		}
 	}
-	return xunfeiUsageIsNonZero(response.Payload.Usage.Text)
+	return xunfeiHasOutputUsage(response.Payload.Usage.Text)
 }
 
-func xunfeiUsageIsNonZero(usage dto.Usage) bool {
-	return usage.PromptTokens != 0 || usage.CompletionTokens != 0 || usage.TotalTokens != 0
+func xunfeiHasOutputUsage(usage dto.Usage) bool {
+	return usage.CompletionTokens > 0
 }
 
 func accumulateXunfeiUsage(usage *dto.Usage, response XunfeiChatResponse) {

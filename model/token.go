@@ -12,16 +12,23 @@ import (
 )
 
 type Token struct {
-	Id                 int            `json:"id"`
-	UserId             int            `json:"user_id" gorm:"index"`
-	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
-	Status             int            `json:"status" gorm:"default:1"`
-	Name               string         `json:"name" gorm:"index" `
-	CreatedTime        int64          `json:"created_time" gorm:"bigint"`
-	AccessedTime       int64          `json:"accessed_time" gorm:"bigint"`
-	ExpiredTime        int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
-	RemainQuota        int            `json:"remain_quota" gorm:"default:0"`
-	UnlimitedQuota     bool           `json:"unlimited_quota"`
+	Id             int    `json:"id"`
+	UserId         int    `json:"user_id" gorm:"index"`
+	Key            string `json:"key" gorm:"type:varchar(128);uniqueIndex"`
+	Status         int    `json:"status" gorm:"default:1"`
+	Name           string `json:"name" gorm:"index" `
+	CreatedTime    int64  `json:"created_time" gorm:"bigint"`
+	AccessedTime   int64  `json:"accessed_time" gorm:"bigint"`
+	ExpiredTime    int64  `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
+	RemainQuota    int    `json:"remain_quota" gorm:"default:0"`
+	UnlimitedQuota bool   `json:"unlimited_quota"`
+	// QuotaPeriod enables an independent rolling calendar quota. When set,
+	// the legacy total quota fields are ignored and period usage is tracked
+	// separately so existing total-quota keys keep their exact semantics.
+	QuotaPeriod        string         `json:"quota_period" gorm:"type:varchar(16);default:''"`
+	QuotaPeriodLimit   int            `json:"quota_period_limit" gorm:"default:0"`
+	QuotaPeriodUsed    int            `json:"quota_period_used" gorm:"default:0"`
+	QuotaPeriodStart   int64          `json:"quota_period_start" gorm:"bigint;default:0"`
 	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
 	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
@@ -286,7 +293,11 @@ func ValidateUserToken(key string) (token *Token, err error) {
 			}
 			return token, ErrTokenInvalid
 		}
-		if !token.UnlimitedQuota && token.RemainQuota <= 0 {
+		if token.HasQuotaPeriod() {
+			if GetTokenPeriodRemaining(token) <= 0 {
+				return token, ErrTokenInvalid
+			}
+		} else if !token.UnlimitedQuota && token.RemainQuota <= 0 {
 			if !common.RedisEnabled {
 				token.Status = common.TokenStatusExhausted
 				err := token.SelectUpdate()
@@ -364,6 +375,7 @@ func (token *Token) Update() (err error) {
 	}
 	token.NormalizeGroup()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
+		"quota_period", "quota_period_limit", "quota_period_used", "quota_period_start",
 		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "auto_groups").Updates(token).Error
 	return err
 }

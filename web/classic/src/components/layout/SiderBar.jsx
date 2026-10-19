@@ -28,11 +28,13 @@ import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime'
 import { isAdmin, isRoot, showError } from '../../helpers';
 import SkeletonWrapper from './components/SkeletonWrapper';
 import { UserContext } from '../../context/User';
+import { StatusContext } from '../../context/Status';
 
 import { Nav, Divider, Button } from '@douyinfe/semi-ui';
 
 const routerMap = {
   home: '/',
+  balance: '/balance',
   channel: '/console/channel',
   token: '/console/token',
   redemption: '/console/redemption',
@@ -44,6 +46,7 @@ const routerMap = {
   user_subscriptions: '/console/subscription/users',
   log: '/console/log',
   token_usage: '/console/token-usage',
+  content_audit: '/console/content-audit',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
   about: '/about',
@@ -63,6 +66,7 @@ const routerMap = {
 const SiderBar = ({ onNavigate = () => {} }) => {
   const { t } = useTranslation();
   const [userState] = useContext(UserContext);
+  const [statusState] = useContext(StatusContext);
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const {
     isModuleVisible,
@@ -107,6 +111,16 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         configKey: 'token',
         to: '/token-usage',
       },
+      ...(statusState?.status?.content_audit_enabled
+        ? [
+            {
+              text: t('Content audit'),
+              itemKey: 'content_audit',
+              configKey: 'token',
+              to: '/content-audit',
+            },
+          ]
+        : []),
       {
         text: t('使用日志'),
         itemKey: 'log',
@@ -146,6 +160,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     localStorage.getItem('enable_task'),
     t,
     isModuleVisible,
+    statusState?.status?.content_audit_enabled,
   ]);
 
   const financeItems = useMemo(() => {

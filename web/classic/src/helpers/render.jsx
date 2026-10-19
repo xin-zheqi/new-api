@@ -84,6 +84,7 @@ import {
   Trophy,
   FileText,
   Ticket,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -136,6 +137,8 @@ export function getLucideIcon(key, selected = false) {
       return <BarChart3 {...commonProps} color={iconColor} />;
     case 'token_usage':
       return <PieChart {...commonProps} color={iconColor} />;
+    case 'content_audit':
+      return <ShieldCheck {...commonProps} color={iconColor} />;
     case 'midjourney':
       return <ImageIcon {...commonProps} color={iconColor} />;
     case 'task':

@@ -43,7 +43,8 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 function unix(date) {
   if (!date) return undefined;
-  const value = date instanceof Date ? date.getTime() : new Date(date).getTime();
+  const value =
+    date instanceof Date ? date.getTime() : new Date(date).getTime();
   if (!Number.isFinite(value)) return undefined;
   return Math.floor(value / 1000);
 }
@@ -213,7 +214,44 @@ function ExpandedRow({ record }) {
 }
 
 export default function TokenUsage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const [exporting, setExporting] = useState(false);
+  const exportWorkbook = async () => {
+    setExporting(true);
+    try {
+      const response = await API.get('/api/token/usage/export', {
+        responseType: 'blob',
+        params: {
+          keyword: keyword.trim(),
+          start_timestamp: unix(range?.[0]),
+          end_timestamp: unix(range?.[1]),
+          lang: i18n.language,
+        },
+      });
+      const blob = response.data;
+      if (!blob.type.includes('spreadsheetml')) {
+        let message = t('Export failed');
+        try {
+          message = JSON.parse(await blob.text()).message || message;
+        } catch {
+          /* Not an XLSX response. */
+        }
+        throw new Error(message);
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'token-usage.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      showError(error.message || t('Export failed'));
+    } finally {
+      setExporting(false);
+    }
+  };
   const isMobile = useIsMobile();
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
@@ -362,7 +400,7 @@ export default function TokenUsage() {
   );
 
   const searchArea = (
-    <Space wrap>
+    <Space wrap style={{ width: '100%' }}>
       <Input
         prefix={<IconSearch />}
         placeholder={t('按令牌名称筛选')}
@@ -387,9 +425,7 @@ export default function TokenUsage() {
       <Button onClick={() => setRange(getPresetRange('yesterday'))}>
         {t('昨天')}
       </Button>
-      <Button onClick={() => setRange(getPresetRange('7d'))}>
-        {t('7天')}
-      </Button>
+      <Button onClick={() => setRange(getPresetRange('7d'))}>{t('7天')}</Button>
       <Button onClick={() => setRange(getPresetRange('30d'))}>
         {t('30天')}
       </Button>
@@ -407,6 +443,13 @@ export default function TokenUsage() {
         }}
       >
         {t('查询')}
+      </Button>
+      <Button
+        style={{ marginLeft: 'auto' }}
+        loading={exporting}
+        onClick={exportWorkbook}
+      >
+        {t('Export spreadsheet')}
       </Button>
     </Space>
   );

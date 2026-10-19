@@ -20,6 +20,10 @@ var (
 	PrintVersion = flag.Bool("version", false, "print version and exit")
 	PrintHelp    = flag.Bool("help", false, "print help and exit")
 	LogDir       = flag.String("log-dir", "./logs", "specify the log directory")
+	// ContentAuditDir stores encrypted content-audit details outside the main
+	// database. Keep this directory on persistent storage in multi-instance
+	// deployments so every instance can read and remove the same records.
+	ContentAuditDir = "./content-audit"
 )
 
 func printHelp() {
@@ -76,6 +80,20 @@ func InitEnv() {
 			log.Fatal(err)
 		}
 		if err := os.Chmod(*LogDir, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	ContentAuditDir = GetEnvOrDefaultString("CONTENT_AUDIT_DIR", ContentAuditDir)
+	if ContentAuditDir != "" {
+		var err error
+		ContentAuditDir, err = filepath.Abs(ContentAuditDir)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := os.MkdirAll(ContentAuditDir, 0700); err != nil {
+			log.Fatal(err)
+		}
+		if err := os.Chmod(ContentAuditDir, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}

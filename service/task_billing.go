@@ -125,8 +125,15 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 	if tokenKey == "" {
 		return
 	}
+	token, tokenErr := model.GetTokenById(task.PrivateData.TokenId)
+	if tokenErr != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("获取任务令牌配置失败 (task=%s): %s", task.TaskID, tokenErr.Error()))
+		return
+	}
 	var err error
-	if delta > 0 {
+	if token.HasQuotaPeriod() {
+		err = model.AdjustTokenPeriodQuota(task.PrivateData.TokenId, tokenKey, token.QuotaPeriod, delta)
+	} else if delta > 0 {
 		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, tokenKey, delta)
 	} else {
 		err = model.IncreaseTokenQuota(task.PrivateData.TokenId, tokenKey, -delta)

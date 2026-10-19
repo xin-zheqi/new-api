@@ -539,8 +539,12 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	c.Set("token_id", token.Id)
 	c.Set("token_key", token.Key)
 	c.Set("token_name", token.Name)
-	c.Set("token_unlimited_quota", token.UnlimitedQuota)
-	if !token.UnlimitedQuota {
+	periodic := token.HasQuotaPeriod()
+	// Periodic keys use their independent counter; keep the legacy total
+	// quota context unset so old billing paths cannot consume it accidentally.
+	c.Set("token_unlimited_quota", token.UnlimitedQuota && !periodic)
+	common.SetContextKey(c, constant.ContextKeyTokenQuotaPeriod, token.QuotaPeriod)
+	if !token.UnlimitedQuota && !periodic {
 		c.Set("token_quota", token.RemainQuota)
 	}
 	if token.ModelLimitsEnabled {

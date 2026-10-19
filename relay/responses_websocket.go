@@ -215,8 +215,28 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 		if parseErr != nil {
 			return newResponsesWSInvalidRequestError(parseErr)
 		}
+		// Rate-limit middleware may have cached the outer WS envelope. Audit
+		// and relay only the normalized response.create body for this turn.
+		common.CleanupBodyStorage(c)
+		c.Set(common.KeyRequestBody, nil)
 		c.Request.Body = io.NopCloser(bytes.NewReader(create.Body))
 		c.Request.ContentLength = int64(len(create.Body))
+		if auditErr := service.AuditRelayContent(c); auditErr != nil {
+			return auditErr
+		}
+		if c.GetBool("content_audit_completed") {
+			storage, err := common.GetBodyStorage(c)
+			if err != nil {
+				return newResponsesWSInvalidRequestError(err)
+			}
+			create.Body, err = storage.Bytes()
+			if err != nil {
+				return newResponsesWSInvalidRequestError(err)
+			}
+			if err := common.Unmarshal(create.Body, &create.Request); err != nil {
+				return newResponsesWSInvalidRequestError(err)
+			}
+		}
 		return s.runCall(c, state, create)
 	})
 	if apiErr != nil && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden) {

@@ -42,6 +42,7 @@ export default function SettingsHeaderNavModules(props) {
   const [headerNavModules, setHeaderNavModules] = useState({
     home: true,
     console: true,
+    balance: true,
     pricing: {
       enabled: true,
       requireAuth: false, // 默认不需要登录鉴权
@@ -54,6 +55,7 @@ export default function SettingsHeaderNavModules(props) {
   const buildDefaultHeaderNavModules = () => ({
     home: true,
     console: true,
+    balance: true,
     pricing: {
       enabled: true,
       requireAuth: false,
@@ -180,6 +182,11 @@ export default function SettingsHeaderNavModules(props) {
       key: 'console',
       title: t('控制台'),
       description: t('用户控制面板，管理账户'),
+    },
+    {
+      key: 'balance',
+      title: t('余额查询'),
+      description: t('公开查询 API Key 的额度与使用情况'),
     },
     {
       key: 'pricing',

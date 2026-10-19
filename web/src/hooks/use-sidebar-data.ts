@@ -31,6 +31,7 @@ import {
   Radio,
   ServerCog,
   Settings,
+  ShieldCheck,
   Ticket,
   Trophy,
   User,
@@ -98,6 +99,15 @@ export function useSidebarData(): SidebarData {
             url: '/token-usage',
             icon: PieChart,
           },
+          ...(status?.content_audit_enabled
+            ? [
+                {
+                  title: t('Content audit'),
+                  url: '/content-audit',
+                  icon: ShieldCheck,
+                },
+              ]
+            : []),
           {
             title: t('Usage Logs'),
             url: '/usage-logs/common',

@@ -422,10 +422,10 @@ func TestChannelTestRejectsEmptyResponseWhenEnabled(t *testing.T) {
 		requestPaths <- r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/v1/responses" {
-			_, _ = w.Write([]byte(`{"id":"resp-empty","object":"response","status":"completed","output":[],"usage":{"input_tokens":0,"input_tokens_details":{"cached_tokens":0},"output_tokens":0,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":0}}`))
+			_, _ = w.Write([]byte(`{"id":"resp-empty","object":"response","status":"completed","output":[],"usage":{"input_tokens":12,"input_tokens_details":{"cached_tokens":0},"output_tokens":0,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":12}}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":""}}],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":""}}],"usage":{"prompt_tokens":12,"completion_tokens":0,"total_tokens":12}}`))
 	}))
 	t.Cleanup(upstream.Close)
 

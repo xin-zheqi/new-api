@@ -188,6 +188,7 @@ import {
 import { ParamOverrideEditorDialog } from '../dialogs/param-override-editor-dialog'
 import { StatusCodeRiskDialog } from '../dialogs/status-code-risk-dialog'
 import { ModelMappingEditor } from '../model-mapping-editor'
+import { ResponsesWebSocketSetting } from '../responses-websocket-setting'
 import {
   ChannelAdvancedSection,
   ChannelApiAccessSection,
@@ -196,7 +197,6 @@ import {
   ChannelEditorLoadingState,
   ChannelModelsSection,
 } from './sections'
-import { ResponsesWebSocketSetting } from '../responses-websocket-setting'
 
 type ChannelMutateDrawerProps = {
   open: boolean
@@ -4276,7 +4276,7 @@ export function ChannelMutateDrawer({
                                       </FormLabel>
                                       <FormDescription>
                                         {t(
-                                          'Retry another channel when a text response has no content and reports zero token usage. OpenAI cyber_policy blocks are logged and never retried.'
+                                          'Retry another channel when a text response has no content and output token usage is zero or missing. Input and cache tokens do not count as output. OpenAI cyber_policy blocks are logged and never retried.'
                                         )}
                                       </FormDescription>
                                     </div>

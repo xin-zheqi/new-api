@@ -53,7 +53,11 @@ import {
   ERROR_MESSAGES,
 } from '../constants'
 import type { ApiKey } from '../types'
-import { ApiKeyCell, UnlimitedQuotaBadge } from './api-keys-cells'
+import {
+  ApiKeyCell,
+  PeriodicQuotaBadge,
+  UnlimitedQuotaBadge,
+} from './api-keys-cells'
 import { useApiKeysColumns } from './api-keys-columns'
 import { useApiKeys } from './api-keys-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
@@ -167,7 +171,14 @@ function ApiKeysMobileList({
 
             <div className='flex items-center justify-between gap-2 text-xs'>
               <span className='text-muted-foreground'>{t('Quota')}</span>
-              {apiKey.unlimited_quota ? (
+              {apiKey.quota_period && (apiKey.quota_period_limit ?? 0) > 0 ? (
+                <PeriodicQuotaBadge
+                  period={apiKey.quota_period}
+                  used={apiKey.quota_period_used ?? 0}
+                  limit={apiKey.quota_period_limit ?? 0}
+                  remaining={apiKey.period_remaining}
+                />
+              ) : apiKey.unlimited_quota ? (
                 <UnlimitedQuotaBadge used={apiKey.used_quota} />
               ) : (
                 <span className='font-medium tabular-nums'>

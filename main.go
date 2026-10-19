@@ -119,6 +119,7 @@ func main() {
 
 	// 热更新配置
 	go model.SyncOptions(common.SyncFrequency)
+	go service.RunContentAuditRetention(context.Background())
 	go controller.SyncTaskPlugins()
 
 	// 周期性重载授权策略，保证多节点/多 master 部署下权限变更能传播到每个实例
@@ -332,6 +333,15 @@ func InitResources() error {
 	if err != nil {
 		common.FatalLog("failed to initialize database: " + err.Error())
 		return err
+	}
+	// Move any legacy encrypted audit payloads to the file store before the
+	// server begins accepting requests. New installations have nothing to move;
+	// the operation is retryable and does not decrypt user content.
+	if err := model.MigrateContentAuditDetailsToFiles(context.Background()); err != nil {
+		common.SysError("failed to migrate content audit details to files: " + err.Error())
+	}
+	if err := model.PruneOrphanContentAuditDetails(context.Background()); err != nil {
+		common.SysError("failed to prune orphan content audit details: " + err.Error())
 	}
 	if err = authz.Init(model.DB); err != nil {
 		common.FatalLog("failed to initialize authorization: " + err.Error())

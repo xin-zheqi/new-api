@@ -342,6 +342,62 @@ const renderQuotaUsage = (text, record, t) => {
   const used = parseInt(record.used_quota) || 0;
   const remain = parseInt(record.remain_quota) || 0;
   const total = used + remain;
+  const periodLimit = parseInt(record.quota_period_limit) || 0;
+  if (record.quota_period && periodLimit > 0) {
+    const periodUsed = Math.max(
+      0,
+      Math.min(parseInt(record.quota_period_used) || 0, periodLimit),
+    );
+    const periodRemain = Math.max(
+      0,
+      Math.min(
+        periodLimit,
+        record.period_remaining == null
+          ? periodLimit - periodUsed
+          : parseInt(record.period_remaining) || 0,
+      ),
+    );
+    const percent = (periodRemain / periodLimit) * 100;
+    const periodLabel =
+      record.quota_period === 'day'
+        ? t('每天')
+        : record.quota_period === 'week'
+          ? t('每周')
+          : t('每月');
+    const popoverContent = (
+      <div className='text-xs p-2'>
+        <Paragraph>{periodLabel}</Paragraph>
+        <Paragraph copyable={{ content: renderQuota(periodUsed) }}>
+          {t('已用额度')}: {renderQuota(periodUsed)}
+        </Paragraph>
+        <Paragraph copyable={{ content: renderQuota(periodRemain) }}>
+          {t('剩余额度')}: {renderQuota(periodRemain)} ({percent.toFixed(0)}%)
+        </Paragraph>
+        <Paragraph copyable={{ content: renderQuota(periodLimit) }}>
+          {t('总额度')}: {renderQuota(periodLimit)}
+        </Paragraph>
+      </div>
+    );
+    return (
+      <Popover content={popoverContent} position='top'>
+        <Tag color='white' shape='circle'>
+          <div className='flex flex-col items-end'>
+            <span className='text-xs leading-none'>
+              {periodLabel}: {renderQuota(periodRemain)} /{' '}
+              {renderQuota(periodLimit)}
+            </span>
+            <Progress
+              percent={percent}
+              stroke={getProgressColor(percent)}
+              aria-label={periodLabel}
+              format={() => `${percent.toFixed(0)}%`}
+              style={{ width: '100%', marginTop: '1px', marginBottom: 0 }}
+            />
+          </div>
+        </Tag>
+      </Popover>
+    );
+  }
   if (record.unlimited_quota) {
     const popoverContent = (
       <div className='text-xs p-2'>

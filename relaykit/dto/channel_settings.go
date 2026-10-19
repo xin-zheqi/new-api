@@ -25,7 +25,7 @@ type ChannelSettings struct {
 	// disable rules.
 	FirstResponseTimeoutAutoBan bool `json:"first_response_timeout_auto_ban,omitempty"`
 	// RejectEmptyResponse treats text-generation responses with no substantive
-	// output and zero upstream token usage as retryable upstream failures.
+	// output and zero or missing upstream output tokens as retryable failures.
 	RejectEmptyResponse bool `json:"reject_empty_response,omitempty"`
 	// HTTPProtocol controls outbound HTTP version negotiation for this channel.
 	// Accepted values: "", "auto" (default), "http1".

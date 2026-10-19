@@ -447,11 +447,41 @@ func attachClaudeHostedResponse(response any, set HostedResponseSet) (any, []typ
 			name = item.Name
 		}
 		if name == "" {
-			diagnostics = append(diagnostics, responseSemanticLoss(
-				fmt.Sprintf("hosted_tools[%d]", index),
-				"hosted_tool_unrepresentable",
-				fmt.Sprintf("Claude has no lossless response mapping for %q", item.NativeType),
-			))
+			name = responsesNativeHostedResponseToolName(item)
+			if name == "" {
+				diagnostics = append(diagnostics, responseSemanticLoss(
+					fmt.Sprintf("hosted_tools[%d]", index),
+					"hosted_tool_unrepresentable",
+					fmt.Sprintf("Claude has no lossless response mapping for %q", item.NativeType),
+				))
+				continue
+			}
+		}
+		if strings.HasSuffix(item.NativeType, "_output") {
+			resultID := item.CallID
+			if resultID == "" {
+				resultID = item.ID
+			}
+			result := item.Output
+			if len(result) == 0 {
+				result = item.Results
+			}
+			var content any = ""
+			if len(result) > 0 {
+				if err := kitutil.Unmarshal(result, &content); err != nil {
+					return nil, diagnostics, fmt.Errorf("hosted_tools[%d].output: %w", index, err)
+				}
+			}
+			isError := hostedItemFailed(item)
+			hostedContent = append(hostedContent, positionedClaudeBlocks{
+				position: item.Position,
+				blocks: []dto.ClaudeMediaMessage{{
+					Type:      "tool_result",
+					ToolUseId: resultID,
+					Content:   content,
+					IsError:   &isError,
+				}},
+			})
 			continue
 		}
 		var input any = map[string]any{}
@@ -482,7 +512,10 @@ func attachClaudeHostedResponse(response any, set HostedResponseSet) (any, []typ
 				return nil, diagnostics, fmt.Errorf("hosted_tools[%d].action: %w", index, err)
 			}
 		}
-		callType := "server_tool_use"
+		callType := "tool_use"
+		if item.Kind == KindWebSearch {
+			callType = "server_tool_use"
+		}
 		if item.Kind == KindMCP {
 			callType = "mcp_tool_use"
 		}
@@ -520,8 +553,12 @@ func attachClaudeHostedResponse(response any, set HostedResponseSet) (any, []typ
 				return nil, diagnostics, fmt.Errorf("hosted_tools[%d].results: %w", index, err)
 			}
 			isError := hostedItemFailed(item)
+			resultType := claudeResultTypeFromHostedKind(item.Kind)
+			if resultType == "_tool_result" {
+				resultType = "tool_result"
+			}
 			blocks = append(blocks, dto.ClaudeMediaMessage{
-				Type:      claudeResultTypeFromHostedKind(item.Kind),
+				Type:      resultType,
 				ToolUseId: item.ID,
 				Content:   content,
 				IsError:   &isError,
@@ -759,6 +796,54 @@ func claudeNameFromHostedKind(kind Kind) string {
 		return ""
 	case KindMCP:
 		return "mcp"
+	default:
+		return ""
+	}
+}
+
+// responsesNativeHistoryToolName gives client-side Responses tools a stable
+// Claude tool name when the two protocols do not share a hosted-tool block
+// type. The name is also used by the reverse converter to restore the native
+// Responses call item where possible.
+func responsesNativeHistoryToolName(history HostedHistoryItem) string {
+	nativeType := strings.ToLower(strings.TrimSpace(history.NativeType))
+	switch {
+	case strings.Contains(nativeType, "computer"):
+		return "computer"
+	case nativeType == "shell" || strings.Contains(nativeType, "local_shell") || strings.HasPrefix(nativeType, "bash"):
+		return "bash"
+	case nativeType == "apply_patch" || strings.Contains(nativeType, "text_editor"):
+		return "str_replace_editor"
+	case strings.Contains(nativeType, "code_interpreter") || strings.Contains(nativeType, "code_execution"):
+		return "code_interpreter"
+	case strings.Contains(nativeType, "image_generation"):
+		return "image_generation"
+	case strings.Contains(nativeType, "file_search"):
+		return "file_search"
+	case strings.Contains(nativeType, "url_context"):
+		return "url_context"
+	default:
+		return ""
+	}
+}
+
+func responsesNativeHostedResponseToolName(item HostedResponseItem) string {
+	nativeType := strings.ToLower(strings.TrimSpace(item.NativeType))
+	switch {
+	case strings.Contains(nativeType, "computer"):
+		return "computer"
+	case nativeType == "shell" || strings.Contains(nativeType, "local_shell") || strings.HasPrefix(nativeType, "bash"):
+		return "bash"
+	case nativeType == "apply_patch" || strings.Contains(nativeType, "text_editor"):
+		return "str_replace_editor"
+	case strings.Contains(nativeType, "code_interpreter") || strings.Contains(nativeType, "code_execution"):
+		return "code_interpreter"
+	case strings.Contains(nativeType, "image_generation"):
+		return "image_generation"
+	case strings.Contains(nativeType, "file_search"):
+		return "file_search"
+	case strings.Contains(nativeType, "url_context"):
+		return "url_context"
 	default:
 		return ""
 	}

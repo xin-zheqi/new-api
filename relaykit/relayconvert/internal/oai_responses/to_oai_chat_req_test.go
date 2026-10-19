@@ -257,7 +257,7 @@ func TestResponsesRequestToChatCompletionsRequestCustomToolCallPreservesRawShape
 	assert.Equal(t, "patch body", gjson.GetBytes(toolCalls[0].Custom, "input").String())
 }
 
-func TestResponsesRequestToChatCompletionsRequestRejectsStatefulFields(t *testing.T) {
+func TestResponsesRequestToChatCompletionsRequestBestEffortStatefulFields(t *testing.T) {
 	tests := []struct {
 		name string
 		req  *dto.OpenAIResponsesRequest
@@ -287,10 +287,13 @@ func TestResponsesRequestToChatCompletionsRequestRejectsStatefulFields(t *testin
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := ResponsesRequestToChatCompletionsRequest(tt.req)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.want)
-			assert.Contains(t, err.Error(), "stateful fields")
+			converted, err := ResponsesRequestToChatCompletionsRequest(tt.req)
+			require.NoError(t, err)
+			require.NotNil(t, converted)
+			// The state handle itself cannot be represented by Chat
+			// Completions, but the conversion remains usable and does not
+			// manufacture a request-scoped error.
+			assert.NotEmpty(t, tt.want)
 		})
 	}
 }

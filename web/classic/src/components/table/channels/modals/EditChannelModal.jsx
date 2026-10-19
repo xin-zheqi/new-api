@@ -76,6 +76,7 @@ import {
   collectInvalidStatusCodeEntries,
   collectNewDisallowedStatusCodeRedirects,
 } from './statusCodeRiskGuard';
+
 import {
   IconSave,
   IconClose,
@@ -2943,7 +2944,7 @@ const EditChannelModal = (props) => {
                       )
                     }
                     extraText={t(
-                      '文本响应没有有效内容且上游报告 Token 用量全为 0 时，按错误切换渠道重试；OpenAI cyber_policy 拦截只记录日志，不重试。',
+                      '文本响应没有有效内容且输出 Token 为 0 或缺失时，按错误切换渠道重试；输入和缓存 Token 不算输出。OpenAI cyber_policy 拦截只记录日志，不重试。',
                     )}
                   />
 

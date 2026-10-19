@@ -285,6 +285,22 @@ func attachClaudeRequest(request any, set Set, options *convmeta.Options) (any, 
 				tools = append(tools, tool)
 				continue
 			}
+			// Responses has several client-side tools whose wire schemas do not
+			// have a one-to-one Claude equivalent. Prefer Claude's native tool
+			// shape where it is well-known; otherwise expose a normal function
+			// tool so the request remains usable instead of silently dropping the
+			// definition. The fallback deliberately uses an open object schema:
+			// preserving the action payload is safer than inventing a narrower
+			// schema that rejects a later tool call.
+			if nativeTool, ok := responsesNativeToolToClaude(definition); ok {
+				tools = append(tools, nativeTool)
+				continue
+			}
+			fallback := responsesNativeFunctionTool(definition)
+			if fallback != nil {
+				tools = append(tools, fallback)
+				continue
+			}
 			diagnostics = append(diagnostics, semanticLoss(
 				fmt.Sprintf("tools[%d]", index),
 				"unsupported_hosted_tool",
@@ -306,6 +322,85 @@ func attachClaudeRequest(request any, set Set, options *convmeta.Options) (any, 
 	}
 	diagnostics = append(diagnostics, historyDiagnostics...)
 	return target, diagnostics, nil
+}
+
+// responsesNativeToolToClaude maps the Responses client tools that have a
+// close Anthropic native representation. It intentionally does not forward
+// the original type verbatim: providers reject unknown tool types, whereas
+// these stable Claude names are accepted by Anthropic-compatible adaptors.
+func responsesNativeToolToClaude(definition Definition) (map[string]any, bool) {
+	nativeType := strings.ToLower(strings.TrimSpace(definition.NativeType))
+	switch {
+	case definition.Kind == KindComputerUse || strings.Contains(nativeType, "computer_use") || strings.Contains(nativeType, "computer"):
+		tool := map[string]any{
+			"type": "computer_20250124",
+			"name": "computer",
+		}
+		if fields, ok := rawToolObject(definition.Raw); ok {
+			copyNumberField(fields, tool, "display_width_px", "display_width")
+			copyNumberField(fields, tool, "display_height_px", "display_height")
+			copyNumberField(fields, tool, "display_number_of_monitors", "display_number_of_monitors")
+		}
+		return tool, true
+	case nativeType == "shell" || strings.Contains(nativeType, "local_shell") || strings.HasPrefix(nativeType, "bash"):
+		return map[string]any{"type": "bash_20250124", "name": "bash"}, true
+	case nativeType == "apply_patch" || strings.Contains(nativeType, "text_editor"):
+		return map[string]any{"type": "text_editor_20250124", "name": "str_replace_editor"}, true
+	default:
+		return nil, false
+	}
+}
+
+func responsesNativeFunctionTool(definition Definition) *dto.Tool {
+	name := strings.TrimSpace(definition.Name)
+	if name == "" {
+		name = strings.TrimSpace(definition.NativeType)
+	}
+	if name == "" {
+		return nil
+	}
+	name = normalizeFallbackToolName(name)
+	return &dto.Tool{
+		Name:        name,
+		Description: fmt.Sprintf("Compatibility wrapper for Responses tool %q", definition.NativeType),
+		InputSchema: map[string]any{"type": "object", "additionalProperties": true},
+	}
+}
+
+func rawToolObject(raw json.RawMessage) (map[string]any, bool) {
+	if len(raw) == 0 {
+		return nil, false
+	}
+	var value map[string]any
+	if err := kitutil.Unmarshal(raw, &value); err != nil {
+		return nil, false
+	}
+	return value, true
+}
+
+func copyNumberField(source, target map[string]any, targetKey, sourceKey string) {
+	if value, ok := source[sourceKey]; ok {
+		switch value.(type) {
+		case float64, float32, int, int32, int64, uint, uint32, uint64:
+			target[targetKey] = value
+		}
+	}
+}
+
+func normalizeFallbackToolName(value string) string {
+	var builder strings.Builder
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || character == '_' {
+			builder.WriteRune(character)
+		} else {
+			builder.WriteByte('_')
+		}
+	}
+	name := builder.String()
+	if name == "" {
+		return "responses_tool"
+	}
+	return name
 }
 
 func attachGeminiRequest(request any, set Set) (any, []types.ConversionDiagnostic, error) {
@@ -873,16 +968,40 @@ func appendHostedHistoryToClaude(target *dto.ClaudeRequest, set Set) ([]types.Co
 		}
 		name := claudeNameFromHostedKind(history.Kind)
 		if name == "" {
-			diagnostics = append(diagnostics, semanticLoss(
-				fmt.Sprintf("hosted_history[%d]", index),
-				"hosted_tool_history_unsupported",
-				fmt.Sprintf("%s cannot preserve hosted-tool continuation item %q", types.RelayFormatClaude, history.NativeType),
-			))
-			continue
+			name = responsesNativeHistoryToolName(history)
+			if name == "" {
+				diagnostics = append(diagnostics, semanticLoss(
+					fmt.Sprintf("hosted_history[%d]", index),
+					"hosted_tool_history_unsupported",
+					fmt.Sprintf("%s cannot preserve hosted-tool continuation item %q", types.RelayFormatClaude, history.NativeType),
+				))
+				continue
+			}
 		}
 		id := history.ID
 		if id == "" {
 			id = history.CallID
+		}
+		if strings.HasSuffix(history.NativeType, "_output") {
+			resultID := history.CallID
+			if resultID == "" {
+				resultID = id
+			}
+			content := any("")
+			if len(history.Results) > 0 {
+				if err := kitutil.Unmarshal(history.Results, &content); err != nil {
+					return nil, fmt.Errorf("hosted_history[%d].results: %w", index, err)
+				}
+			}
+			isError := history.Status == "failed"
+			blocks = append(blocks, map[string]any{
+				"type":        "tool_result",
+				"tool_use_id": resultID,
+				"content":     content,
+				"is_error":    isError,
+			})
+			blocksBySourceIndex[history.MessageIndex] = append(blocksBySourceIndex[history.MessageIndex], blocks...)
+			continue
 		}
 		var input any = map[string]any{}
 		if history.Kind == KindWebSearch {
@@ -901,8 +1020,12 @@ func appendHostedHistoryToClaude(target *dto.ClaudeRequest, set Set) ([]types.Co
 				return nil, fmt.Errorf("hosted_history[%d].action: %w", index, err)
 			}
 		}
+		callType := "tool_use"
+		if history.Kind == KindWebSearch {
+			callType = "server_tool_use"
+		}
 		call := map[string]any{
-			"type":  "server_tool_use",
+			"type":  callType,
 			"id":    id,
 			"name":  name,
 			"input": input,
@@ -920,8 +1043,12 @@ func appendHostedHistoryToClaude(target *dto.ClaudeRequest, set Set) ([]types.Co
 			if err := kitutil.Unmarshal(history.Results, &content); err != nil {
 				return nil, fmt.Errorf("hosted_history[%d].results: %w", index, err)
 			}
+			resultType := claudeResultTypeFromHostedKind(history.Kind)
+			if resultType == "_tool_result" {
+				resultType = "tool_result"
+			}
 			blocks = append(blocks, map[string]any{
-				"type":        claudeResultTypeFromHostedKind(history.Kind),
+				"type":        resultType,
 				"tool_use_id": id,
 				"content":     content,
 			})
@@ -955,6 +1082,9 @@ func appendHostedHistoryToClaude(target *dto.ClaudeRequest, set Set) ([]types.Co
 				if history.MessageIndex == sourceIndex && history.Role != "" {
 					role = history.Role
 					break
+				}
+				if history.MessageIndex == sourceIndex && strings.HasSuffix(history.NativeType, "_output") {
+					role = "user"
 				}
 			}
 			if !mixedBySourceIndex[sourceIndex] {

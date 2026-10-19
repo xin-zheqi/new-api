@@ -126,6 +126,10 @@ func claudeSystemToResponsesInstructions(request *dto.ClaudeRequest) (json.RawMe
 
 func claudeMessagesToResponsesInput(messages []dto.ClaudeMessage) (json.RawMessage, error) {
 	input := make([]map[string]any, 0, len(messages))
+	// Keep the native client-tool kind across the Claude pivot so a Codex-like
+	// client can continue its computer/shell/apply_patch loop. Ordinary tools
+	// still use the stable function_call representation.
+	nativeToolCalls := make(map[string]string)
 	for messageIndex := range messages {
 		message := messages[messageIndex]
 		role := strings.TrimSpace(message.Role)
@@ -191,28 +195,67 @@ func claudeMessagesToResponsesInput(messages []dto.ClaudeMessage) (json.RawMessa
 				if block.Input == nil {
 					arguments = []byte("{}")
 				}
-				input = append(input, map[string]any{
-					"type":      "function_call",
-					"call_id":   block.Id,
-					"name":      block.Name,
-					"arguments": string(arguments),
-				})
+				if nativeType := claudeNativeResponsesCallType(block.Name); nativeType != "" {
+					nativeToolCalls[block.Id] = nativeType
+					item := map[string]any{
+						"type":    nativeType,
+						"id":      block.Id,
+						"call_id": block.Id,
+						"status":  "in_progress",
+					}
+					var action any
+					if err := kitutil.Unmarshal(arguments, &action); err == nil {
+						item["action"] = action
+					} else {
+						item["action"] = string(arguments)
+					}
+					input = append(input, item)
+				} else {
+					input = append(input, map[string]any{
+						"type":      "function_call",
+						"call_id":   block.Id,
+						"name":      block.Name,
+						"arguments": string(arguments),
+					})
+				}
 			case "tool_result":
 				flushContent()
 				output, err := claudeToolResultToResponsesOutput(block.Content)
 				if err != nil {
 					return nil, fmt.Errorf("messages[%d].content[%d].content: %w", messageIndex, blockIndex, err)
 				}
-				input = append(input, map[string]any{
-					"type":    "function_call_output",
-					"call_id": block.ToolUseId,
-					"output":  output,
-				})
+				if nativeType := nativeToolCalls[block.ToolUseId]; nativeType != "" {
+					input = append(input, map[string]any{
+						"type":    nativeType + "_output",
+						"call_id": block.ToolUseId,
+						"output":  output,
+						"status":  "completed",
+					})
+				} else {
+					input = append(input, map[string]any{
+						"type":    "function_call_output",
+						"call_id": block.ToolUseId,
+						"output":  output,
+					})
+				}
 			}
 		}
 		flushContent()
 	}
 	return kitutil.Marshal(input)
+}
+
+func claudeNativeResponsesCallType(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "computer", "computer_use", "computer_use_preview":
+		return "computer_call"
+	case "bash", "shell", "local_shell":
+		return "local_shell_call"
+	case "str_replace_editor", "text_editor", "apply_patch":
+		return "apply_patch_call"
+	default:
+		return ""
+	}
 }
 
 func claudeToolsToResponsesTools(value any) (json.RawMessage, error) {

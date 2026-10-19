@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import {
@@ -39,23 +38,16 @@ import {
   Sigma,
   type LucideIcon,
 } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import dayjs from '@/lib/dayjs'
-import {
-  formatNumber,
-  formatQuota,
-  formatTimestampToDate,
-  formatTokens,
-} from '@/lib/format'
-import { cn } from '@/lib/utils'
-import { useDebounce } from '@/hooks'
-import { SectionPageLayout } from '@/components/layout'
+
 import {
   DataTablePage,
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
 } from '@/components/data-table'
+import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -75,6 +67,18 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useDebounce } from '@/hooks'
+import { api } from '@/lib/api'
+import dayjs from '@/lib/dayjs'
+import { downloadWorkbook } from '@/lib/download-workbook'
+import {
+  formatNumber,
+  formatQuota,
+  formatTimestampToDate,
+  formatTokens,
+} from '@/lib/format'
+import { cn } from '@/lib/utils'
+
 import { getTokenModelUsage } from './api'
 import type {
   TokenModelUsageItem,
@@ -193,7 +197,7 @@ function TokenUsagePie({ models }: { models: TokenModelUsageModel[] }) {
 
   if (!data.length) {
     return (
-      <div className='border-border/60 bg-muted/20 flex aspect-[4/3] min-h-44 items-center justify-center rounded-lg border text-sm text-muted-foreground'>
+      <div className='border-border/60 bg-muted/20 text-muted-foreground flex aspect-[4/3] min-h-44 items-center justify-center rounded-lg border text-sm'>
         {t('No usage data')}
       </div>
     )
@@ -235,7 +239,7 @@ function ModelUsageTable({ models }: { models: TokenModelUsageModel[] }) {
 
   if (!models.length) {
     return (
-      <div className='rounded-lg border p-6 text-center text-sm text-muted-foreground'>
+      <div className='text-muted-foreground rounded-lg border p-6 text-center text-sm'>
         {t('No model usage in selected range')}
       </div>
     )
@@ -316,8 +320,8 @@ function TokenUsageMobileList({
   if (isLoading) {
     return (
       <div className='divide-border overflow-hidden rounded-lg border'>
-        {Array.from({ length: 5 }).map((_, index) => (
-          <div key={index} className='space-y-3 border-b p-3 last:border-b-0'>
+        {['one', 'two', 'three', 'four', 'five'].map((key) => (
+          <div key={key} className='space-y-3 border-b p-3 last:border-b-0'>
             <Skeleton className='h-4 w-36' />
             <Skeleton className='h-3 w-full' />
             <Skeleton className='h-3 w-2/3' />
@@ -330,7 +334,7 @@ function TokenUsageMobileList({
   const rows = table.getRowModel().rows
   if (!rows.length) {
     return (
-      <div className='rounded-lg border p-8 text-center text-sm text-muted-foreground'>
+      <div className='text-muted-foreground rounded-lg border p-8 text-center text-sm'>
         {t('No API key usage found')}
       </div>
     )
@@ -415,7 +419,27 @@ function FilterBar({
   end?: number
   onRangeChange: (range: { start?: number; end?: number }) => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const [exporting, setExporting] = useState(false)
+  const exportWorkbook = async () => {
+    setExporting(true)
+    try {
+      const response = await api.get<Blob>('/api/token/usage/export', {
+        responseType: 'blob',
+        params: {
+          keyword: keyword.trim(),
+          start_timestamp: start,
+          end_timestamp: end,
+          lang: i18n.language,
+        },
+      })
+      await downloadWorkbook(response.data)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('Export failed'))
+    } finally {
+      setExporting(false)
+    }
+  }
   const presets: Array<{ value: RangePreset; label: string }> = [
     { value: 'today', label: 'Today' },
     { value: 'yesterday', label: 'Yesterday' },
@@ -468,6 +492,14 @@ function FilterBar({
           </Button>
         ))}
       </div>
+      <Button
+        className='sm:ml-auto'
+        variant='outline'
+        disabled={exporting}
+        onClick={() => void exportWorkbook()}
+      >
+        {exporting ? t('Exporting...') : t('Export spreadsheet')}
+      </Button>
     </div>
   )
 }
@@ -644,8 +676,7 @@ export function TokenUsage() {
     manualPagination: true,
     pageCount: Math.ceil((data?.total || 0) / pagination.pageSize),
     onPaginationChange: (updater) => {
-      const next =
-        typeof updater === 'function' ? updater(pagination) : updater
+      const next = typeof updater === 'function' ? updater(pagination) : updater
       void navigate({
         search: (prev) => ({
           ...prev,
@@ -744,9 +775,7 @@ export function TokenUsage() {
                 <TableRow
                   data-state={row.getIsSelected() && 'selected'}
                   className={
-                    row.original.status !== 1
-                      ? DISABLED_ROW_DESKTOP
-                      : undefined
+                    row.original.status !== 1 ? DISABLED_ROW_DESKTOP : undefined
                   }
                 >
                   {row.getVisibleCells().map((cell) => (
@@ -758,9 +787,7 @@ export function TokenUsage() {
                     </TableCell>
                   ))}
                 </TableRow>
-                {row.getIsExpanded() && (
-                  <ExpandedUsage item={row.original} />
-                )}
+                {row.getIsExpanded() && <ExpandedUsage item={row.original} />}
               </Fragment>
             )}
           />

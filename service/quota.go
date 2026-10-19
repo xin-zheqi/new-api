@@ -437,6 +437,16 @@ func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
 	if relayInfo.IsPlayground {
 		return nil
 	}
+	if relayInfo.TokenQuotaPeriod != "" {
+		reserved, err := model.TryReserveTokenPeriodQuota(relayInfo.TokenId, relayInfo.TokenKey, relayInfo.TokenQuotaPeriod, quota)
+		if err != nil {
+			return err
+		}
+		if !reserved {
+			return fmt.Errorf("token periodic quota is not enough")
+		}
+		return nil
+	}
 	// 原子预扣：检查与扣减在同一操作中完成，并发请求不可能同时通过检查后超扣。
 	reserved, err := model.TryReserveTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota, relayInfo.TokenUnlimited)
 	if err != nil {
@@ -499,9 +509,17 @@ func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 
 	if !relayInfo.IsPlayground {
 		if quota > 0 {
-			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
+			if relayInfo.TokenQuotaPeriod != "" {
+				err = model.AdjustTokenPeriodQuota(relayInfo.TokenId, relayInfo.TokenKey, relayInfo.TokenQuotaPeriod, quota)
+			} else {
+				err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
+			}
 		} else {
-			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota)
+			if relayInfo.TokenQuotaPeriod != "" {
+				err = model.AdjustTokenPeriodQuota(relayInfo.TokenId, relayInfo.TokenKey, relayInfo.TokenQuotaPeriod, quota)
+			} else {
+				err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota)
+			}
 		}
 		if err != nil {
 			return result, err

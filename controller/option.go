@@ -237,6 +237,9 @@ func GetOptions(c *gin.Context) {
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
 		value := common.Interface2String(v)
+		if k == common.ContentAuditOption {
+			value = common.PublicContentAuditSettings(value)
+		}
 		if isSensitiveOptionKey(k) {
 			continue
 		}

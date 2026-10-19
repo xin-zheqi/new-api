@@ -1,8 +1,8 @@
 package service
 
 import (
+	"context"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -14,6 +14,7 @@ import (
 // notifyLimitStore is used for in-memory rate limiting when Redis is disabled
 var (
 	notifyLimitStore sync.Map
+	notifyLimitMu    sync.Mutex
 	cleanupOnce      sync.Once
 )
 
@@ -24,6 +25,11 @@ type limitCount struct {
 
 func getDuration() time.Duration {
 	minute := constant.NotificationLimitDurationMinute
+	// Never create an immortal counter, including when a malformed value was
+	// assigned outside environment initialization or overflows time.Duration.
+	if minute <= 0 || int64(minute) > int64((1<<63-1)/time.Minute) {
+		minute = 10
+	}
 	return time.Duration(minute) * time.Minute
 }
 
@@ -36,7 +42,7 @@ func startCleanupTask() {
 			notifyLimitStore.Range(func(key, value interface{}) bool {
 				if limit, ok := value.(limitCount); ok {
 					if now.Sub(limit.Timestamp) >= getDuration() {
-						notifyLimitStore.Delete(key)
+						notifyLimitStore.CompareAndDelete(key, limit)
 					}
 				}
 				return true
@@ -48,6 +54,9 @@ func startCleanupTask() {
 // CheckNotificationLimit checks if the user has exceeded their notification limit
 // Returns true if the user can send notification, false if limit exceeded
 func CheckNotificationLimit(userId int, notifyType string) (bool, error) {
+	if constant.NotifyLimitCount <= 0 {
+		return false, nil
+	}
 	if common.RedisEnabled {
 		return checkRedisLimit(userId, notifyType)
 	}
@@ -55,43 +64,29 @@ func CheckNotificationLimit(userId int, notifyType string) (bool, error) {
 }
 
 func checkRedisLimit(userId int, notifyType string) (bool, error) {
-	key := fmt.Sprintf("notify_limit:%d:%s:%s", userId, notifyType, time.Now().Format("2006010215"))
-
-	// Get current count
-	count, err := common.RedisGet(key)
-	if err != nil && err.Error() != "redis: nil" {
-		return false, fmt.Errorf("failed to get notification count: %w", err)
-	}
-
-	// If key doesn't exist, initialize it
-	if count == "" {
-		err = common.RedisSet(key, "1", getDuration())
-		return true, err
-	}
-
-	currentCount, _ := strconv.Atoi(count)
-	limit := constant.NotifyLimitCount
-
-	// Check if limit is already reached
-	if currentCount >= limit {
-		return false, nil
-	}
-
-	// Only increment if under limit
-	err = common.RedisIncr(key, 1)
-	if err != nil {
+	ctx := context.Background()
+	key := fmt.Sprintf("notify_limit:%d:%s", userId, notifyType)
+	// One transaction starts a fixed window and reserves a slot atomically.
+	// INCR preserves the initial TTL; neither clock hours nor later attempts
+	// reset the window. TxPipeline also avoids replaying an uncertain EXEC.
+	pipe := common.RDB.TxPipeline()
+	pipe.SetNX(ctx, key, 0, getDuration())
+	count := pipe.Incr(ctx, key)
+	if _, err := pipe.Exec(ctx); err != nil {
 		return false, fmt.Errorf("failed to increment notification count: %w", err)
 	}
-
-	return true, nil
+	return count.Val() <= int64(constant.NotifyLimitCount), nil
 }
 
 func checkMemoryLimit(userId int, notifyType string) (bool, error) {
 	// Ensure cleanup task is started
 	cleanupOnce.Do(startCleanupTask)
 
-	key := fmt.Sprintf("%d:%s:%s", userId, notifyType, time.Now().Format("2006010215"))
+	key := fmt.Sprintf("%d:%s", userId, notifyType)
 	now := time.Now()
+	// sync.Map alone does not make the load/check/store sequence atomic.
+	notifyLimitMu.Lock()
+	defer notifyLimitMu.Unlock()
 
 	// Get current limit count or initialize new one
 	var currentLimit limitCount
@@ -105,7 +100,10 @@ func checkMemoryLimit(userId int, notifyType string) (bool, error) {
 		currentLimit = limitCount{Count: 0, Timestamp: now}
 	}
 
-	// Increment count
+	if currentLimit.Count >= constant.NotifyLimitCount {
+		return false, nil
+	}
+	// Saturate at the limit, so denied attempts cannot overflow the counter.
 	currentLimit.Count++
 
 	// Check against limits

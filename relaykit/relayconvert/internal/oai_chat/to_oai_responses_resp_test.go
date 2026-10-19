@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -192,6 +193,10 @@ func TestChatCompletionsStreamToResponsesReasoningSummaryPartLifecycle(t *testin
 		}},
 	})
 	assert.Equal(t, responsesEventReasoningSummaryPartAdded, events[2].Type)
+	// Even the first item, before any summary deltas, must have summary: [].
+	itemAdded, err := kitutil.Marshal(events[1].Payload)
+	require.NoError(t, err)
+	assert.Contains(t, string(itemAdded), `"summary":[]`)
 
 	finalEvents := FinalizeChatCompletionsStreamToResponses(state)
 	var sawPartDone bool

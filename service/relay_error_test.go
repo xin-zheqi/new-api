@@ -101,7 +101,7 @@ func TestProcessChannelErrorMasksDisableReasonAndNotification(t *testing.T) {
 	require.NoError(t, err)
 	root := &model.User{Username: "notification-test-root", Role: common.RoleRootUser, Status: common.UserStatusEnabled, Setting: string(settings)}
 	require.NoError(t, database.Create(root).Error)
-	notifyKey := fmt.Sprintf("%d:%s:%s", root.Id, formatNotifyType(channel.Id, common.ChannelStatusAutoDisabled), time.Now().Format("2006010215"))
+	notifyKey := fmt.Sprintf("%d:%s", root.Id, formatNotifyType(channel.Id, common.ChannelStatusAutoDisabled))
 	notifyLimitStore.Delete(notifyKey)
 	t.Cleanup(func() { notifyLimitStore.Delete(notifyKey) })
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())

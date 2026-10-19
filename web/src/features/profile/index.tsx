@@ -62,6 +62,7 @@ export function Profile() {
                   profile={profile}
                   loading={loading}
                   onProfileUpdate={refreshProfile}
+                  quotaRemindEnabled={status?.quota_remind_enabled}
                 />
                 <LanguagePreferencesCard
                   profile={profile}

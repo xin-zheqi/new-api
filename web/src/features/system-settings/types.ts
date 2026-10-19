@@ -411,6 +411,7 @@ export type OperationsSettings = {
   InvoiceRedemptionSubscriptionEnabled: boolean
   ChannelDisableThreshold: string
   QuotaRemindThreshold: string
+  QuotaRemindEnabled: boolean
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean
   AutomaticDisableKeywords: string

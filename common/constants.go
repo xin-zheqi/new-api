@@ -153,6 +153,9 @@ var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false
 var QuotaRemindThreshold = 1000
+
+// QuotaRemindEnabled controls balance reminders only, never security emails.
+var QuotaRemindEnabled = true
 var PreConsumedQuota = 500
 
 var RetryTimes = 0

@@ -16,13 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useCallback } from 'react'
 import { Bell, Loader2, Mail, Server, ShieldCheck, Webhook } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { PasswordInput } from '@/components/password-input'
 import { Button } from '@/components/ui/button'
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -30,10 +37,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { ROLE } from '@/lib/roles'
 
 import { updateUserSettings } from '../../api'
-import {
-  DEFAULT_QUOTA_WARNING_THRESHOLD,
-  NOTIFICATION_METHODS,
-} from '../../constants'
+import { NOTIFICATION_METHODS } from '../../constants'
 import { parseUserSettings } from '../../lib'
 import type { UserProfile, UserSettings, NotifyType } from '../../types'
 
@@ -62,15 +66,22 @@ function normalizeNotifyType(value: unknown): NotifyType {
 interface NotificationTabProps {
   profile: UserProfile | null
   onUpdate: () => void
+  quotaRemindEnabled?: boolean
 }
 
-export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
+export function NotificationTab({
+  profile,
+  onUpdate,
+  quotaRemindEnabled = true,
+}: NotificationTabProps) {
   const { t } = useTranslation()
   const isAdmin = (profile?.role ?? 0) >= ROLE.ADMIN
   const [loading, setLoading] = useState(false)
   const [settings, setSettings] = useState<UserSettings>({
     notify_type: 'email',
-    quota_warning_threshold: DEFAULT_QUOTA_WARNING_THRESHOLD,
+    quota_warning_threshold: 0,
+    quota_warning_enabled: true,
+    channel_notify_enabled: profile?.role === ROLE.SUPER_ADMIN,
     notification_email: '',
     webhook_url: '',
     webhook_secret: '',
@@ -92,12 +103,14 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   )
 
   useEffect(() => {
-    if (profile?.setting) {
+    if (profile) {
       const parsed = parseUserSettings(profile.setting)
       setSettings({
         notify_type: normalizeNotifyType(parsed.notify_type),
-        quota_warning_threshold:
-          parsed.quota_warning_threshold ?? DEFAULT_QUOTA_WARNING_THRESHOLD,
+        quota_warning_threshold: parsed.quota_warning_threshold ?? 0,
+        quota_warning_enabled: parsed.quota_warning_enabled ?? true,
+        channel_notify_enabled:
+          parsed.channel_notify_enabled ?? profile.role === ROLE.SUPER_ADMIN,
         notification_email: parsed.notification_email ?? '',
         webhook_url: parsed.webhook_url ?? '',
         webhook_secret: parsed.webhook_secret ?? '',
@@ -115,6 +128,13 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   }, [profile])
 
   const handleSave = async () => {
+    if (
+      !Number.isFinite(settings.quota_warning_threshold) ||
+      (settings.quota_warning_threshold ?? 0) < 0
+    ) {
+      toast.error(t('Reminder threshold must be a non-negative number'))
+      return
+    }
     try {
       setLoading(true)
       const response = await updateUserSettings(settings)
@@ -125,7 +145,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
       } else {
         toast.error(response.message || t('Failed to update settings'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to update settings'))
     } finally {
       setLoading(false)
@@ -136,6 +156,50 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
 
   return (
     <div className='space-y-4 sm:space-y-6'>
+      <FieldGroup>
+        <Field orientation='horizontal'>
+          <FieldContent>
+            <FieldLabel htmlFor='quota-warning-enabled'>
+              {t('Low balance reminder')}
+            </FieldLabel>
+            {!quotaRemindEnabled && (
+              <FieldDescription>
+                {t('Low balance reminders are disabled by the administrator.')}
+              </FieldDescription>
+            )}
+          </FieldContent>
+          <Switch
+            id='quota-warning-enabled'
+            checked={settings.quota_warning_enabled ?? true}
+            disabled={!quotaRemindEnabled}
+            onCheckedChange={(value) =>
+              updateField('quota_warning_enabled', value)
+            }
+          />
+        </Field>
+        {isAdmin && (
+          <Field orientation='horizontal'>
+            <FieldLabel htmlFor='channel-notify-enabled'>
+              {t('Channel notifications')}
+            </FieldLabel>
+            <Switch
+              id='channel-notify-enabled'
+              checked={
+                settings.channel_notify_enabled ??
+                profile?.role === ROLE.SUPER_ADMIN
+              }
+              onCheckedChange={(value) =>
+                updateField('channel_notify_enabled', value)
+              }
+            />
+          </Field>
+        )}
+        <FieldDescription>
+          {t(
+            'Notification switches do not affect verification codes or account security emails.'
+          )}
+        </FieldDescription>
+      </FieldGroup>
       {/* Notification Type */}
       <div className='space-y-2.5'>
         <Label>{t('Notification Method')}</Label>
@@ -143,8 +207,9 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
           value={[notifyType]}
           onValueChange={(value) => {
             const nextValue = value.find((item) => item !== notifyType)
-            if (nextValue)
+            if (nextValue) {
               updateField('notify_type', normalizeNotifyType(nextValue))
+            }
           }}
           aria-label={t('Notification Method')}
           variant='outline'
@@ -176,6 +241,10 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
         <Input
           id='threshold'
           type='number'
+          min={0}
+          disabled={
+            !quotaRemindEnabled || settings.quota_warning_enabled === false
+          }
           className='h-9'
           value={settings.quota_warning_threshold}
           onChange={(e) =>
@@ -184,7 +253,9 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
           placeholder={t('Enter threshold')}
         />
         <p className='text-muted-foreground text-xs'>
-          {t('Get notified when balance falls below this value')}
+          {t(
+            'Use 0 for the site default. Reminders are sent when the balance crosses below the threshold.'
+          )}
         </p>
       </div>
 

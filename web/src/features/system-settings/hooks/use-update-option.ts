@@ -31,6 +31,8 @@ const STATUS_RELATED_KEYS = new Set([
   'Notice',
   'LogConsumeEnabled',
   'QuotaPerUnit',
+  'QuotaRemindEnabled',
+  'QuotaRemindThreshold',
   'USDExchangeRate',
   'DisplayInCurrencyEnabled',
   'DisplayTokenStatEnabled',

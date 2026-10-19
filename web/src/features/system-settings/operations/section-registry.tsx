@@ -53,9 +53,12 @@ const OPERATIONS_SECTIONS = [
           InvoiceLookbackDays: settings.InvoiceLookbackDays,
           InvoiceMonthlyLimit: settings.InvoiceMonthlyLimit,
           InvoiceSystemRechargeEnabled: settings.InvoiceSystemRechargeEnabled,
-          InvoiceRedemptionRechargeEnabled: settings.InvoiceRedemptionRechargeEnabled,
-          InvoiceSystemSubscriptionEnabled: settings.InvoiceSystemSubscriptionEnabled,
-          InvoiceRedemptionSubscriptionEnabled: settings.InvoiceRedemptionSubscriptionEnabled,
+          InvoiceRedemptionRechargeEnabled:
+            settings.InvoiceRedemptionRechargeEnabled,
+          InvoiceSystemSubscriptionEnabled:
+            settings.InvoiceSystemSubscriptionEnabled,
+          InvoiceRedemptionSubscriptionEnabled:
+            settings.InvoiceRedemptionSubscriptionEnabled,
         }}
       />
     ),
@@ -79,6 +82,7 @@ const OPERATIONS_SECTIONS = [
       <MonitoringSettingsSection
         defaultValues={{
           QuotaRemindThreshold: settings.QuotaRemindThreshold,
+          QuotaRemindEnabled: settings.QuotaRemindEnabled,
           'perf_metrics_setting.enabled':
             settings['perf_metrics_setting.enabled'] ?? true,
           'perf_metrics_setting.flush_interval':

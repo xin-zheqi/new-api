@@ -85,7 +85,9 @@ const PersonalSetting = () => {
   ] = useState(null);
   const [notificationSettings, setNotificationSettings] = useState({
     warningType: 'email',
-    warningThreshold: 100000,
+    warningThreshold: 0,
+    quotaWarningEnabled: true,
+    channelNotifyEnabled: false,
     webhookUrl: '',
     webhookSecret: '',
     notificationEmail: '',
@@ -181,11 +183,19 @@ const PersonalSetting = () => {
   }, [disableButton, countdown]);
 
   useEffect(() => {
-    if (userState?.user?.setting) {
-      const settings = JSON.parse(userState.user.setting);
+    if (userState?.user) {
+      let settings = {};
+      try {
+        settings = JSON.parse(userState.user.setting || '{}');
+      } catch {
+        // Older accounts may not yet have valid serialized preferences.
+      }
       setNotificationSettings({
         warningType: settings.notify_type || 'email',
-        warningThreshold: settings.quota_warning_threshold || 500000,
+        warningThreshold: settings.quota_warning_threshold ?? 0,
+        quotaWarningEnabled: settings.quota_warning_enabled ?? true,
+        channelNotifyEnabled:
+          settings.channel_notify_enabled ?? userState.user.role === 100,
         webhookUrl: settings.webhook_url || '',
         webhookSecret: settings.webhook_secret || '',
         notificationEmail: settings.notification_email || '',
@@ -201,7 +211,7 @@ const PersonalSetting = () => {
         recordIpLog: settings.record_ip_log || false,
       });
     }
-  }, [userState?.user?.setting]);
+  }, [userState?.user?.setting, userState?.user?.role]);
 
   const handleInputChange = (name, value) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
@@ -527,12 +537,17 @@ const PersonalSetting = () => {
   };
 
   const saveNotificationSettings = async () => {
+    const threshold = Number(notificationSettings.warningThreshold);
+    if (!Number.isFinite(threshold) || threshold < 0) {
+      showError(t('Reminder threshold must be a non-negative number'));
+      return;
+    }
     try {
       const res = await API.put('/api/user/setting', {
         notify_type: notificationSettings.warningType,
-        quota_warning_threshold: parseFloat(
-          notificationSettings.warningThreshold,
-        ),
+        quota_warning_threshold: threshold,
+        quota_warning_enabled: notificationSettings.quotaWarningEnabled,
+        channel_notify_enabled: notificationSettings.channelNotifyEnabled,
         webhook_url: notificationSettings.webhookUrl,
         webhook_secret: notificationSettings.webhookSecret,
         notification_email: notificationSettings.notificationEmail,

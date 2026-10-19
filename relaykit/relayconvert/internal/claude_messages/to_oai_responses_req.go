@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
+	relaymedia "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/media"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 )
@@ -177,6 +178,7 @@ func claudeMessagesToResponsesInput(messages []dto.ClaudeMessage) (json.RawMessa
 					contentParts = append(contentParts, map[string]any{
 						"type":      "input_image",
 						"image_url": source,
+						"detail":    relaymedia.ResponsesImageDetail(""),
 					})
 				}
 			case "document":
@@ -337,7 +339,7 @@ func claudeToolResultToResponsesOutput(content any) (any, error) {
 			parts = append(parts, map[string]any{"type": "input_text", "text": block.GetText()})
 		case "image":
 			if source := claudeSourceURL(block.Source); source != "" {
-				parts = append(parts, map[string]any{"type": "input_image", "image_url": source})
+				parts = append(parts, map[string]any{"type": "input_image", "image_url": source, "detail": relaymedia.ResponsesImageDetail("")})
 			}
 		case "document":
 			if source := claudeSourceURL(block.Source); source != "" {

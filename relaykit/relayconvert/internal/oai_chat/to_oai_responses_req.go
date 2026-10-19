@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	relaymedia "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/media"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/samber/lo"
@@ -212,6 +213,24 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 		}
 
 		parts := msg.ParseContent()
+		// ParseContent supplies high detail for token estimation. Recover the
+		// original image hints for forwarding, including when that cache was
+		// populated before conversion; do not change the estimator's defaults.
+		var sourceImages []dto.MediaContent
+		if sourceParts, ok := msg.Content.([]any); ok {
+			for _, source := range sourceParts {
+				switch value := source.(type) {
+				case map[string]any:
+					if value["type"] == dto.ContentTypeImageURL {
+						sourceImages = append(sourceImages, dto.MediaContent{Type: dto.ContentTypeImageURL, ImageUrl: value["image_url"]})
+					}
+				case dto.MediaContent:
+					if value.Type == dto.ContentTypeImageURL {
+						sourceImages = append(sourceImages, value)
+					}
+				}
+			}
+		}
 		contentParts := make([]map[string]any, 0, len(parts))
 		for _, part := range parts {
 			switch part.Type {
@@ -225,9 +244,18 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 					"text": part.Text,
 				})
 			case dto.ContentTypeImageURL:
+				var sourceDetail string
+				sourceImage := part
+				if len(sourceImages) > 0 {
+					sourceImage, sourceImages = sourceImages[0], sourceImages[1:]
+				}
+				if img := sourceImage.GetImageMedia(); img != nil {
+					sourceDetail = img.Detail
+				}
 				contentParts = append(contentParts, map[string]any{
 					"type":      "input_image",
 					"image_url": normalizeChatImageURLToString(part.ImageUrl),
+					"detail":    relaymedia.ResponsesImageDetail(sourceDetail),
 				})
 			case dto.ContentTypeInputAudio:
 				contentParts = append(contentParts, map[string]any{

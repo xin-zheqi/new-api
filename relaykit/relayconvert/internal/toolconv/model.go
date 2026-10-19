@@ -75,6 +75,8 @@ type Choice struct {
 }
 
 type Set struct {
+	// Model is the actual upstream model, used for target schema capabilities.
+	Model            string
 	Source           types.RelayFormat
 	Definitions      []Definition
 	Choice           *Choice

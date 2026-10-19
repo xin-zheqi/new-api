@@ -13,41 +13,54 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 )
 
-func NotifyRootUser(t string, subject string, content string) {
-	user := model.GetRootUser()
-	err := NotifyUser(user.Id, user.Email, user.GetSetting(), dto.NewNotify(t, subject, content, nil))
-	if err != nil {
-		common.SysLog(fmt.Sprintf("failed to notify root user: %s", err.Error()))
-	}
+// Old configurations notify root only; other administrators explicitly opt in.
+func NotifyChannelWatchers(notifyType string, subject string, content string) {
+	notifyAdmins(dto.NewNotify(notifyType, subject, content, nil), func(user model.User, setting dto.UserSetting) bool {
+		if setting.ChannelNotifyEnabled != nil {
+			return *setting.ChannelNotifyEnabled
+		}
+		return user.Role == common.RoleRootUser
+	})
 }
 
 func NotifyUpstreamModelUpdateWatchers(subject string, content string) {
+	notifyAdmins(dto.NewNotify(dto.NotifyTypeChannelUpdate, subject, content, nil), func(_ model.User, setting dto.UserSetting) bool {
+		return setting.UpstreamModelUpdateNotifyEnabled
+	})
+}
+
+func notifyAdmins(notification dto.Notify, receives func(model.User, dto.UserSetting) bool) {
 	var users []model.User
 	if err := model.DB.
 		Select("id", "email", "role", "status", "setting").
 		Where("status = ? AND role >= ?", common.UserStatusEnabled, common.RoleAdminUser).
 		Find(&users).Error; err != nil {
-		common.SysLog(fmt.Sprintf("failed to query upstream update notification users: %s", err.Error()))
+		common.SysLog(fmt.Sprintf("failed to query notification administrators: %s", err.Error()))
 		return
 	}
 
-	notification := dto.NewNotify(dto.NotifyTypeChannelUpdate, subject, content, nil)
 	sentCount := 0
 	for _, user := range users {
 		userSetting := user.GetSetting()
-		if !userSetting.UpstreamModelUpdateNotifyEnabled {
+		if !receives(user, userSetting) {
 			continue
 		}
 		if err := NotifyUser(user.Id, user.Email, userSetting, notification); err != nil {
-			common.SysLog(fmt.Sprintf("failed to notify user %d for upstream model update: %s", user.Id, err.Error()))
+			common.SysLog(fmt.Sprintf("failed to notify user %d for %s: %s", user.Id, notification.Type, err.Error()))
 			continue
 		}
 		sentCount++
 	}
-	common.SysLog(fmt.Sprintf("upstream model update notifications sent: %d", sentCount))
+	common.SysLog(fmt.Sprintf("%s notifications sent: %d", notification.Type, sentCount))
 }
 
 func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data dto.Notify) error {
+	// Security mail uses its existing direct mail path. Category switches only
+	// govern reminders and must be checked before consuming a rate-limit slot.
+	if data.Type == dto.NotifyTypeQuotaExceed && (!common.QuotaRemindEnabled ||
+		(userSetting.QuotaWarningEnabled != nil && !*userSetting.QuotaWarningEnabled)) {
+		return nil
+	}
 	notifyType := userSetting.NotifyType
 	if notifyType == "" {
 		notifyType = dto.NotifyTypeEmail

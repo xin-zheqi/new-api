@@ -59,6 +59,8 @@ const NotificationSettings = ({
   const [statusState] = useContext(StatusContext);
   const [userState] = useContext(UserContext);
   const isAdminOrRoot = (userState?.user?.role || 0) >= 10;
+  const quotaRemindEnabled =
+    statusState?.status?.quota_remind_enabled !== false;
 
   // 左侧边栏设置相关状态
   const [sidebarLoading, setSidebarLoading] = useState(false);
@@ -447,7 +449,35 @@ const NotificationSettings = ({
                   <Radio value='gotify'>{t('Gotify通知')}</Radio>
                 </Form.RadioGroup>
 
+                <Form.Switch
+                  field='quotaWarningEnabled'
+                  label={t('Low balance reminder')}
+                  aria-label={t('Low balance reminder')}
+                  disabled={!quotaRemindEnabled}
+                  onChange={(value) =>
+                    handleFormChange('quotaWarningEnabled', value)
+                  }
+                  extraText={t(
+                    quotaRemindEnabled
+                      ? 'Notification switches do not affect verification codes or account security emails.'
+                      : 'Low balance reminders are disabled by the administrator.',
+                  )}
+                />
+                {isAdminOrRoot && (
+                  <Form.Switch
+                    field='channelNotifyEnabled'
+                    label={t('Channel notifications')}
+                    aria-label={t('Channel notifications')}
+                    onChange={(value) =>
+                      handleFormChange('channelNotifyEnabled', value)
+                    }
+                  />
+                )}
                 <Form.AutoComplete
+                  disabled={
+                    !quotaRemindEnabled ||
+                    notificationSettings.quotaWarningEnabled === false
+                  }
                   field='warningThreshold'
                   label={
                     <span>
@@ -467,7 +497,7 @@ const NotificationSettings = ({
                   onChange={(val) => handleFormChange('warningThreshold', val)}
                   prefix={<IconBell />}
                   extraText={t(
-                    '当钱包或订阅剩余额度低于此数值时，系统将通过选择的方式发送通知',
+                    'Use 0 for the site default. Reminders are sent when the balance crosses below the threshold.',
                   )}
                   style={{ width: '100%', maxWidth: '300px' }}
                   rules={[
@@ -475,8 +505,12 @@ const NotificationSettings = ({
                     {
                       validator: (rule, value) => {
                         const numValue = Number(value);
-                        if (isNaN(numValue) || numValue <= 0) {
-                          return Promise.reject(t('预警阈值必须为正数'));
+                        if (!Number.isFinite(numValue) || numValue < 0) {
+                          return Promise.reject(
+                            t(
+                              'Reminder threshold must be a non-negative number',
+                            ),
+                          );
                         }
                         return Promise.resolve();
                       },
@@ -491,7 +525,10 @@ const NotificationSettings = ({
                     checkedText={t('开')}
                     uncheckedText={t('关')}
                     onChange={(value) =>
-                      handleFormChange('upstreamModelUpdateNotifyEnabled', value)
+                      handleFormChange(
+                        'upstreamModelUpdateNotifyEnabled',
+                        value,
+                      )
                     }
                     extraText={t(
                       '仅管理员可用。开启后，当系统定时检测全部渠道发现上游模型变更或检测异常时，将按你选择的通知方式发送汇总通知；渠道或模型过多时会自动省略部分明细。',

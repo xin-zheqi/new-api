@@ -123,6 +123,8 @@ export interface SystemStatus {
     self_use_mode_enabled?: boolean
     display_in_currency?: boolean
     display_token_stat_enabled?: boolean
+    quota_remind_enabled?: boolean
+    quota_remind_threshold?: number
     quota_per_unit?: number
     quota_display_type?: string
     usd_exchange_rate?: number
@@ -172,6 +174,8 @@ export interface SystemStatus {
   self_use_mode_enabled?: boolean
   display_in_currency?: boolean
   display_token_stat_enabled?: boolean
+  quota_remind_enabled?: boolean
+  quota_remind_threshold?: number
   quota_per_unit?: number
   quota_display_type?: string
   usd_exchange_rate?: number

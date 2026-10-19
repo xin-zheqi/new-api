@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useContext, useEffect, useState, useRef } from 'react';
 import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
 import {
   compareObjects,
@@ -26,16 +26,20 @@ import {
   showSuccess,
   showWarning,
   parseHttpStatusCodeRules,
+  setStatusData,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import HttpStatusCodeRulesInput from '../../../components/settings/HttpStatusCodeRulesInput';
+import { StatusContext } from '../../../context/Status';
 
 export default function SettingsMonitoring(props) {
   const { t } = useTranslation();
+  const [, statusDispatch] = useContext(StatusContext);
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     ChannelDisableThreshold: '',
     QuotaRemindThreshold: '',
+    QuotaRemindEnabled: true,
     AutomaticDisableChannelEnabled: false,
     AutomaticEnableChannelEnabled: false,
     AutomaticDisableKeywords: '',
@@ -102,12 +106,28 @@ export default function SettingsMonitoring(props) {
     });
     setLoading(true);
     Promise.all(requestQueue)
-      .then((res) => {
+      .then(async (res) => {
         if (requestQueue.length === 1) {
           if (res.includes(undefined)) return;
         } else if (requestQueue.length > 1) {
           if (res.includes(undefined))
             return showError(t('部分保存失败，请重试'));
+        }
+        if (res.some((response) => !response?.data?.success)) {
+          return showError(t('部分保存失败，请重试'));
+        }
+        if (
+          updateArray.some(
+            (item) =>
+              item.key === 'QuotaRemindEnabled' ||
+              item.key === 'QuotaRemindThreshold',
+          )
+        ) {
+          const status = await API.get('/api/status');
+          if (status.data.success) {
+            statusDispatch({ type: 'set', payload: status.data.data });
+            setStatusData(status.data.data);
+          }
         }
         showSuccess(t('保存成功'));
         props.refresh();
@@ -121,14 +141,15 @@ export default function SettingsMonitoring(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
+    const currentInputs = { QuotaRemindEnabled: true };
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
         currentInputs[key] = props.options[key];
       }
     }
     const channelTestMode =
-      currentInputs['monitor_setting.channel_test_mode'] === 'passive_recovery' ||
+      currentInputs['monitor_setting.channel_test_mode'] ===
+        'passive_recovery' ||
       currentInputs['monitor_setting.auto_test_only_auto_disabled'] === true
         ? 'passive_recovery'
         : 'scheduled_all';
@@ -240,12 +261,28 @@ export default function SettingsMonitoring(props) {
                 />
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field='QuotaRemindEnabled'
+                  label={t('Site-wide low balance reminders')}
+                  aria-label={t('Site-wide low balance reminders')}
+                  extraText={t(
+                    'Notification switches do not affect verification codes or account security emails.',
+                  )}
+                  onChange={(value) =>
+                    setInputs((current) => ({
+                      ...current,
+                      QuotaRemindEnabled: value,
+                    }))
+                  }
+                />
                 <Form.InputNumber
                   label={t('额度提醒阈值')}
                   step={1}
                   min={0}
                   suffix={'Token'}
-                  extraText={t('低于此额度时将发送邮件提醒用户')}
+                  extraText={t(
+                    'Send a reminder when the wallet or subscription balance crosses below this threshold.',
+                  )}
                   placeholder={''}
                   field={'QuotaRemindThreshold'}
                   onChange={(value) =>

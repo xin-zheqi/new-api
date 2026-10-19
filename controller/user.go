@@ -1547,6 +1547,8 @@ func TopUp(c *gin.Context) {
 }
 
 type UpdateUserSettingRequest struct {
+	QuotaWarningEnabled              *bool   `json:"quota_warning_enabled,omitempty"`
+	ChannelNotifyEnabled             *bool   `json:"channel_notify_enabled,omitempty"`
 	QuotaWarningType                 string  `json:"notify_type"`
 	QuotaWarningThreshold            float64 `json:"quota_warning_threshold"`
 	WebhookUrl                       string  `json:"webhook_url,omitempty"`
@@ -1574,9 +1576,9 @@ func UpdateUserSetting(c *gin.Context) {
 		return
 	}
 
-	// 验证预警阈值
-	if req.QuotaWarningThreshold <= 0 {
-		common.ApiErrorI18n(c, i18n.MsgQuotaThresholdGtZero)
+	// Zero selects the site default; omitted switches keep their saved values.
+	if req.QuotaWarningThreshold < 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 
@@ -1648,20 +1650,28 @@ func UpdateUserSetting(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	existingSettings := user.GetSetting()
-	upstreamModelUpdateNotifyEnabled := existingSettings.UpstreamModelUpdateNotifyEnabled
-	if user.Role >= common.RoleAdminUser && req.UpstreamModelUpdateNotifyEnabled != nil {
-		upstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
+	// Merge only this form's fields. Language, sidebar and billing preferences
+	// must survive saves from both frontends and from older clients.
+	settings := user.GetSetting()
+	settings.NotifyType = req.QuotaWarningType
+	settings.QuotaWarningThreshold = req.QuotaWarningThreshold
+	settings.AcceptUnsetRatioModel = req.AcceptUnsetModelRatioModel
+	settings.RecordIpLog = true // Preserve the local always-record-IP policy.
+	if req.QuotaWarningEnabled != nil {
+		settings.QuotaWarningEnabled = req.QuotaWarningEnabled
 	}
-
-	// 构建设置
-	settings := dto.UserSetting{
-		NotifyType:                       req.QuotaWarningType,
-		QuotaWarningThreshold:            req.QuotaWarningThreshold,
-		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
-		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
-		RecordIpLog:                      true,
+	if user.Role >= common.RoleAdminUser {
+		if req.UpstreamModelUpdateNotifyEnabled != nil {
+			settings.UpstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
+		}
+		if req.ChannelNotifyEnabled != nil {
+			settings.ChannelNotifyEnabled = req.ChannelNotifyEnabled
+		}
 	}
+	// Keep the existing rule: credentials for unselected transports are cleared.
+	settings.WebhookUrl, settings.WebhookSecret = "", ""
+	settings.NotificationEmail, settings.BarkUrl = "", ""
+	settings.GotifyUrl, settings.GotifyToken, settings.GotifyPriority = "", "", 0
 
 	// 如果是webhook类型,添加webhook相关设置
 	if req.QuotaWarningType == dto.NotifyTypeWebhook {

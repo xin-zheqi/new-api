@@ -37,12 +37,14 @@ interface ProfileSettingsCardProps {
   profile: UserProfile | null
   loading: boolean
   onProfileUpdate: () => void
+  quotaRemindEnabled?: boolean
 }
 
 export function ProfileSettingsCard({
   profile,
   loading,
   onProfileUpdate,
+  quotaRemindEnabled,
 }: ProfileSettingsCardProps) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('bindings')
@@ -99,7 +101,11 @@ export function ProfileSettingsCard({
         </TabsContent>
 
         <TabsContent value='settings' className='mt-4 sm:mt-6'>
-          <NotificationTab profile={profile} onUpdate={onProfileUpdate} />
+          <NotificationTab
+            profile={profile}
+            onUpdate={onProfileUpdate}
+            quotaRemindEnabled={quotaRemindEnabled}
+          />
         </TabsContent>
       </Tabs>
     </TitledCard>

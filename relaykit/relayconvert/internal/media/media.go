@@ -2,6 +2,7 @@ package media
 
 import (
 	"errors"
+	"strings"
 	"sync"
 
 	"context"
@@ -11,6 +12,17 @@ import (
 type MediaResolver struct {
 	GetBase64Data        func(c context.Context, source types.FileSource, reason ...string) (string, string, error)
 	DecodeBase64FileData func(base64String string) (string, string, error)
+}
+
+// ResponsesImageDetail preserves supported hints. Protocols without a hint
+// use auto explicitly, as required by strict Responses input validators.
+func ResponsesImageDetail(detail string) string {
+	switch normalized := strings.ToLower(strings.TrimSpace(detail)); normalized {
+	case "low", "high", "auto", "original":
+		return normalized
+	default:
+		return "auto"
+	}
 }
 
 var (

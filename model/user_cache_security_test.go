@@ -13,6 +13,8 @@ func TestUserSettingForCacheExcludesNotificationCredentials(t *testing.T) {
 	raw, err := common.Marshal(dto.UserSetting{
 		NotifyType:            dto.NotifyTypeWebhook,
 		QuotaWarningThreshold: 123,
+		QuotaWarningEnabled:   common.GetPointer(false),
+		ChannelNotifyEnabled:  common.GetPointer(true),
 		WebhookUrl:            "https://user:password@example.com/hook?token=secret",
 		WebhookSecret:         "webhook-secret",
 		NotificationEmail:     "private@example.com",
@@ -30,6 +32,10 @@ func TestUserSettingForCacheExcludesNotificationCredentials(t *testing.T) {
 
 	assert.Equal(t, dto.NotifyTypeWebhook, setting.NotifyType)
 	assert.Equal(t, float64(123), setting.QuotaWarningThreshold)
+	require.NotNil(t, setting.QuotaWarningEnabled)
+	assert.False(t, *setting.QuotaWarningEnabled)
+	require.NotNil(t, setting.ChannelNotifyEnabled)
+	assert.True(t, *setting.ChannelNotifyEnabled)
 	assert.Equal(t, "subscription", setting.BillingPreference)
 	assert.Equal(t, "zh", setting.Language)
 	assert.Empty(t, setting.WebhookUrl)

@@ -41,6 +41,7 @@ const defaultOperationsSettings: OperationsSettings = {
   InvoiceRedemptionSubscriptionEnabled: true,
   ChannelDisableThreshold: '',
   QuotaRemindThreshold: '',
+  QuotaRemindEnabled: true,
   AutomaticDisableChannelEnabled: false,
   AutomaticEnableChannelEnabled: false,
   AutomaticDisableKeywords: '',

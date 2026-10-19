@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"sort"
 	"strconv"
@@ -288,6 +289,13 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
+	requestPolicyOptionMutex.Lock()
+	defer requestPolicyOptionMutex.Unlock()
+	defer func() {
+		if err := refreshRequestPolicySnapshot(); err != nil {
+			common.SysError("invalid request policy: " + err.Error())
+		}
+	}()
 	options, err := AllOption()
 	if err != nil {
 		common.SysError("failed to load options from database: " + err.Error())
@@ -444,6 +452,9 @@ func normalizeOptionValue(key string, value string) string {
 }
 
 func UpdateOption(key string, value string) error {
+	if IsRequestPolicyOption(key) {
+		return UpdateRequestPolicyOptions(map[string]string{key: value})
+	}
 	if key == common.ContentAuditOption {
 		normalized, err := common.NormalizeContentAuditSettings(value)
 		if err != nil {
@@ -497,6 +508,26 @@ func UpdateOptionsBulk(values map[string]string) error {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	var policySnapshot *RequestPolicySnapshot
+	for key := range values {
+		if IsRequestPolicyOption(key) {
+			requestPolicyOptionMutex.Lock()
+			defer requestPolicyOptionMutex.Unlock()
+			options := maps.Clone(CurrentRequestPolicy().Options)
+			for key, value := range values {
+				if IsRequestPolicyOption(key) {
+					options[key] = value
+				}
+			}
+			var err error
+			policySnapshot, err = BuildRequestPolicy(options)
+			if err != nil {
+				return err
+			}
+			break
+		}
+	}
+
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for _, k := range keys {
 			v := normalizedValues[k]
@@ -521,6 +552,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 		if err := updateOptionMapLocked(key, normalizedValues[key]); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("publish option %q: %w", key, err)
 		}
+	}
+	if firstErr == nil && policySnapshot != nil {
+		requestPolicySnapshot.Store(policySnapshot)
 	}
 	return firstErr
 }

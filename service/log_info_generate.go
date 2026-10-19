@@ -71,6 +71,7 @@ func appendRequestPath(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other
 
 func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, modelRatio, groupRatio, completionRatio float64,
 	cacheTokens int, cacheRatio float64, modelPrice float64, userGroupRatio float64) map[string]interface{} {
+	MarkRequestPolicySuccess(ctx, relayInfo.StreamStatus)
 	other := make(map[string]interface{})
 	other["model_ratio"] = modelRatio
 	other["group_ratio"] = groupRatio
@@ -333,4 +334,26 @@ func InjectTieredBillingInfo(other map[string]interface{}, relayInfo *relaycommo
 			other["request_rules"] = result.RequestRules
 		}
 	}
+}
+
+// AppendRelayLogAdminInfo is shared by task and error logs. Keep policy traces
+// under admin_info so existing non-admin log filtering removes them as a unit.
+func AppendRelayLogAdminInfo(ctx *gin.Context, info *relaycommon.RelayInfo, other map[string]interface{}) {
+	if other == nil {
+		return
+	}
+	adminInfo, _ := other["admin_info"].(map[string]interface{})
+	if adminInfo == nil {
+		adminInfo = make(map[string]interface{})
+	}
+	if ctx != nil {
+		adminInfo["use_channel"] = ctx.GetStringSlice("use_channel")
+	}
+	if info != nil {
+		if diagnostics := info.ConversionDiagnostics(); len(diagnostics) > 0 {
+			adminInfo["conversion_diagnostics"] = diagnostics
+		}
+	}
+	AppendChannelAffinityAdminInfo(ctx, adminInfo)
+	other["admin_info"] = adminInfo
 }

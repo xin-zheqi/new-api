@@ -4,19 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 )
-
-const maxNewAPIBalanceResponseBytes = 256 << 10
 
 // New API exposes quota units, not dollars. Match the upstream's balance
 // semantics: a limited key can spend at most the smaller of its own quota and
@@ -35,7 +30,7 @@ func updateChannelNewAPIBalance(channel *model.Channel) (float64, error) {
 	// bodies, even when the relay client's streaming timeout is unlimited.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	body, err := getNewAPIBalanceResponse(ctx, channel, baseURL+"/api/usage/token/", GetAuthHeader(key))
+	body, err := getChannelBalanceResponse(ctx, channel, baseURL+"/api/usage/token/", GetAuthHeader(key), "New API")
 	if err != nil {
 		return 0, err
 	}
@@ -79,7 +74,7 @@ func updateChannelNewAPIBalance(channel *model.Channel) (float64, error) {
 	}
 
 	// /api/status is public: do not forward the channel's credential to it.
-	body, err = getNewAPIBalanceResponse(ctx, channel, baseURL+"/api/status", nil)
+	body, err = getChannelBalanceResponse(ctx, channel, baseURL+"/api/status", nil, "New API")
 	if err != nil {
 		return 0, err
 	}
@@ -105,34 +100,4 @@ func updateChannelNewAPIBalance(channel *model.Channel) (float64, error) {
 	}
 	channel.Balance, channel.BalanceUpdatedTime = updated.Balance, updated.BalanceUpdatedTime
 	return balance, nil
-}
-
-// Both balance endpoints use the channel proxy and bounded response bodies.
-// Keep these management limits separate from general streaming relay requests.
-func getNewAPIBalanceResponse(ctx context.Context, channel *model.Channel, requestURL string, headers http.Header) ([]byte, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
-	if err != nil {
-		return nil, sanitizeFetchModelsError(err, channel.Key)
-	}
-	request.Header = headers.Clone()
-	client, err := service.GetHttpClientWithProxy(channel.GetSetting().Proxy)
-	if err != nil {
-		return nil, sanitizeFetchModelsError(err, channel.Key)
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, sanitizeFetchModelsError(err, channel.Key)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("New API balance query returned HTTP %d", response.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxNewAPIBalanceResponseBytes+1))
-	if err != nil {
-		return nil, sanitizeFetchModelsError(err, channel.Key)
-	}
-	if len(body) > maxNewAPIBalanceResponseBytes {
-		return nil, errors.New("New API balance response is too large")
-	}
-	return body, nil
 }

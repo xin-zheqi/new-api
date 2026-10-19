@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
@@ -77,11 +78,12 @@ func PrepareTaskPluginRoute() gin.HandlerFunc {
 		if err != nil {
 			logger.LogWarn(
 				c,
-				"task_plugin subsystem=route event=prepare_rejected generation=%d plugin=%q stage=request_decode reason=invalid_request",
+				"task_plugin subsystem=route event=prepare_rejected generation=%d plugin=%q stage=request_decode reason=invalid_request err=%q",
 				generation,
 				pinned.Plugin.Meta.Key,
+				err.Error(),
 			)
-			status := http.StatusBadRequest
+			status := invalidRequestStatus(err)
 			if errors.Is(err, errTaskPluginUnsupportedMediaType) {
 				status = http.StatusUnsupportedMediaType
 			}
@@ -326,7 +328,7 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 		modelRequest, err := getModelFromRequest(c)
 		if err != nil {
 			if _, _, protocolPath := pluginruntime.LookupHostProtocolOperation(c.Request.Method, c.Request.URL.Path); protocolPath {
-				abortWithOpenAiMessage(c, http.StatusBadRequest, "Invalid task protocol request")
+				abortWithOpenAiMessage(c, invalidRequestStatus(err), i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 				return
 			}
 			c.Next()
@@ -537,11 +539,12 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 		if err != nil {
 			logger.LogWarn(
 				c,
-				"task_plugin subsystem=endpoint event=prepare_rejected generation=%d plugin=%q stage=request_decode reason=invalid_request",
+				"task_plugin subsystem=endpoint event=prepare_rejected generation=%d plugin=%q stage=request_decode reason=invalid_request err=%q",
 				pinned.Generation.Number,
 				pinned.Plugin.Meta.Key,
+				err.Error(),
 			)
-			status := http.StatusBadRequest
+			status := invalidRequestStatus(err)
 			if errors.Is(err, errTaskPluginUnsupportedMediaType) {
 				status = http.StatusUnsupportedMediaType
 			}
@@ -1414,7 +1417,7 @@ func PrepareTaskPluginSubmit() gin.HandlerFunc {
 		)
 		var requestBody map[string]any
 		if err := common.UnmarshalBodyReusable(c, &requestBody); err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": err.Error(), "type": "invalid_request_error"}})
+			c.AbortWithStatusJSON(invalidRequestStatus(err), gin.H{"error": gin.H{"message": err.Error(), "type": "invalid_request_error"}})
 			return
 		}
 		modelName, _ := requestBody["model"].(string)

@@ -24,7 +24,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-func newAPIBalanceTestDB(t *testing.T, dialect string) *gorm.DB {
+func channelBalanceTestDB(t *testing.T, dialect string) *gorm.DB {
 	t.Helper()
 	var driver gorm.Dialector
 	switch dialect {
@@ -71,7 +71,7 @@ func newAPIBalanceTestDB(t *testing.T, dialect string) *gorm.DB {
 func TestNewAPIBalanceDatabaseMatrix(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
-			db := newAPIBalanceTestDB(t, dialect)
+			db := channelBalanceTestDB(t, dialect)
 			for _, tc := range []struct {
 				name       string
 				usage      string
@@ -238,7 +238,7 @@ func TestNewAPIBalanceDatabaseMatrix(t *testing.T) {
 }
 
 func TestNewAPIBalanceProxyAndDatabaseFailure(t *testing.T) {
-	db := newAPIBalanceTestDB(t, "sqlite")
+	db := channelBalanceTestDB(t, "sqlite")
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "newapi.invalid", r.URL.Host)
 		if r.URL.Path == "/api/usage/token/" {
@@ -279,6 +279,6 @@ func TestNewAPIBalanceRejectsInvalidConfiguration(t *testing.T) {
 	require.ErrorContains(t, err, "missing an API key")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = getNewAPIBalanceResponse(ctx, &model.Channel{}, "http://newapi.invalid/api/status", nil)
+	_, err = getChannelBalanceResponse(ctx, &model.Channel{}, "http://newapi.invalid/api/status", nil, "New API")
 	require.ErrorContains(t, err, "context canceled")
 }

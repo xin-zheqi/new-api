@@ -58,3 +58,16 @@ export function getServerErrorMessageKey(value: unknown): string | null {
     ] ?? null
   )
 }
+
+/** Reject business failures so a failed save cannot be shown as successful. */
+export function requireServerSuccess<T>(response: T): T {
+  if (isRecord(response) && response.success === false) {
+    throw new Error(
+      typeof response.message === 'string'
+        ? response.message
+        : 'Something went wrong!',
+      { cause: response }
+    )
+  }
+  return response
+}

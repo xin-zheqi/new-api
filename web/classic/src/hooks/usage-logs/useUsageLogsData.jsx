@@ -41,6 +41,8 @@ import {
 } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import ToolSurchargeDetails from '../../components/table/usage-logs/components/ToolSurchargeDetails';
+import PolicyDecisionRecord from '../../components/table/usage-logs/components/PolicyDecisionRecord';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 
 function renderStructuredLogContent(other, fallback, t) {
@@ -419,6 +421,18 @@ export const useLogsData = () => {
           value: logs[i].request_id,
         });
       }
+      if (
+        isAdminUser &&
+        Array.isArray(other?.admin_info?.request_policy) &&
+        other.admin_info.request_policy.length
+      ) {
+        expandDataLocal.push({
+          key: t('Request decision flow'),
+          value: (
+            <PolicyDecisionRecord events={other.admin_info.request_policy} />
+          ),
+        });
+      }
       if (isAdminUser && other?.admin_info) {
         const requestIp = other.admin_info.request_ip;
         const userAgent = other.admin_info.user_agent;
@@ -620,7 +634,21 @@ export const useLogsData = () => {
             displayMode: billingDisplayMode,
           };
           const isTaskLog = other?.is_task === true || other?.task_id != null;
-          if (isTaskLog && other?.model_price === -1) {
+          if (
+            Array.isArray(other?.tool_surcharges) &&
+            other.tool_surcharges.length
+          ) {
+            // The legacy formula only knows a few tools. For structured charges,
+            // display the recorded total instead of an incomplete client estimate.
+            content = (
+              <div className='space-y-2'>
+                <ToolSurchargeDetails items={other.tool_surcharges} />
+                <p>
+                  {t('Total Cost')}: {renderQuota(logs[i].quota)}
+                </p>
+              </div>
+            );
+          } else if (isTaskLog && other?.model_price === -1) {
             content = renderTaskBillingProcess(other, logs[i].content);
           } else if (other?.ws || other?.audio) {
             content = renderAudioModelPrice(logOpts);
@@ -638,6 +666,16 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('Reasoning Effort'),
             value: other.reasoning_effort,
+          });
+        }
+        if (
+          other?.billing_mode === 'tiered_expr' &&
+          Array.isArray(other?.tool_surcharges) &&
+          other.tool_surcharges.length
+        ) {
+          expandDataLocal.push({
+            key: t('Tool identifier'),
+            value: <ToolSurchargeDetails items={other.tool_surcharges} />,
           });
         }
         if (other?.billing_mode === 'tiered_expr' && other?.expr_b64) {

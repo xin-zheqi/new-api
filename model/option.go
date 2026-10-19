@@ -509,12 +509,12 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 	sort.Strings(keys)
 	var policySnapshot *RequestPolicySnapshot
-	for key := range values {
+	for key := range normalizedValues {
 		if IsRequestPolicyOption(key) {
 			requestPolicyOptionMutex.Lock()
 			defer requestPolicyOptionMutex.Unlock()
 			options := maps.Clone(CurrentRequestPolicy().Options)
-			for key, value := range values {
+			for key, value := range normalizedValues {
 				if IsRequestPolicyOption(key) {
 					options[key] = value
 				}

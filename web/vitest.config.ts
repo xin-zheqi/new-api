@@ -38,7 +38,13 @@ export default defineConfig({
     server: {
       deps: {
         // Bun's externalized CJS interop drops Zod's named `z` export.
-        inline: ['zod'],
+        inline: [
+          'zod',
+          '@lobehub/icons',
+          '@lobehub/ui',
+          '@emoji-mart/react',
+          '@emoji-mart/data',
+        ],
       },
     },
   },

@@ -18,7 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { getGroups as getUserGroups } from '@/features/users/api'
 import { api, type ApiRequestConfig } from '@/lib/api'
+import { requireServerSuccess } from '@/lib/server-error-message'
 
+import type { PriorityMove, PriorityOrder } from './lib/channel-priority-order'
 import type {
   AddChannelRequest,
   BatchDeleteParams,
@@ -47,6 +49,24 @@ const channelActionConfig = (
   skipBusinessError: true,
   skipErrorHandler: true,
 })
+
+export async function getChannelPriorityOrder(): Promise<PriorityOrder> {
+  const response = await api.get<{ success: boolean; data: PriorityOrder }>(
+    '/api/channel/priority/order',
+    { disableDuplicate: true }
+  )
+  return requireServerSuccess(response.data).data
+}
+
+export async function reorderChannelPriority(
+  move: PriorityMove
+): Promise<PriorityOrder> {
+  const response = await api.post<{ success: boolean; data: PriorityOrder }>(
+    '/api/channel/priority/reorder',
+    move
+  )
+  return requireServerSuccess(response.data).data
+}
 
 export type TaskPluginOption = { key: string; name: string; models: string[] }
 
@@ -118,8 +138,13 @@ export async function getChannel(id: number): Promise<GetChannelResponse> {
 /**
  * Get channel operations summary for administrators
  */
-export async function getChannelOps(): Promise<ChannelOpsResponse> {
-  const res = await api.get('/api/channel/ops', channelActionConfig())
+export async function getChannelOps(
+  autoBan?: boolean
+): Promise<ChannelOpsResponse> {
+  const res = await api.get('/api/channel/ops', {
+    ...channelActionConfig(),
+    params: autoBan === undefined ? undefined : { auto_ban: autoBan },
+  })
   return res.data
 }
 

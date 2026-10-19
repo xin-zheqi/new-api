@@ -51,6 +51,7 @@ import PaymentSetting from '../../components/settings/PaymentSetting';
 import InvoiceSetting from '../../components/settings/InvoiceSetting';
 import ContentAuditSetting from '../../components/settings/ContentAuditSetting';
 import ModelDeploymentSetting from '../../components/settings/ModelDeploymentSetting';
+import RequestPolicySetting from './RequestPolicy';
 import PerformanceSetting from '../../components/settings/PerformanceSetting';
 
 const Setting = () => {
@@ -61,6 +62,11 @@ const Setting = () => {
   let panes = [];
 
   if (isRoot()) {
+    panes.push({
+      tab: t('Request policies'),
+      content: <RequestPolicySetting />,
+      itemKey: 'request-policies',
+    });
     panes.push({
       tab: (
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>

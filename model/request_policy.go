@@ -15,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"gorm.io/gorm"
 )
 
 // RequestPolicySnapshot is the validated read model behind the request policy
@@ -69,7 +68,7 @@ func IsRequestPolicyOption(key string) bool {
 		return true
 	}
 	switch key {
-	case "CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "SensitiveWords", "AutomaticEnableChannelEnabled", "ChannelDisableThreshold", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes", "monitor_setting.channel_test_concurrency", "monitor_setting.channel_test_mode", "RetryTimes", "AutomaticRetryStatusCodes", "AutomaticDisableChannelEnabled", "AutomaticDisableStatusCodes", "AutomaticDisableKeywords":
+	case "monitor_setting.auto_test_channel_time_range", "monitor_setting.auto_test_only_auto_disabled", "CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "SensitiveWords", "AutomaticEnableChannelEnabled", "ChannelDisableThreshold", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes", "monitor_setting.channel_test_concurrency", "monitor_setting.channel_test_mode", "RetryTimes", "AutomaticRetryStatusCodes", "AutomaticDisableChannelEnabled", "AutomaticDisableStatusCodes", "AutomaticDisableKeywords":
 		return true
 	}
 	return false
@@ -143,7 +142,7 @@ func BuildRequestPolicy(options map[string]string) (*RequestPolicySnapshot, erro
 		return nil, err
 	}
 	snapshot.DisableKeywords = strings.Split(raw["AutomaticDisableKeywords"], "\n")
-	for _, key := range []string{"CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "AutomaticEnableChannelEnabled", "monitor_setting.auto_test_channel_enabled"} {
+	for _, key := range []string{"CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "AutomaticEnableChannelEnabled", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_only_auto_disabled"} {
 		if _, err := strconv.ParseBool(raw[key]); err != nil {
 			return nil, fmt.Errorf("invalid boolean: %s", key)
 		}
@@ -155,6 +154,9 @@ func BuildRequestPolicy(options map[string]string) (*RequestPolicySnapshot, erro
 		}
 	}
 	if err := operation_setting.ValidateChannelTestConcurrency(raw["monitor_setting.channel_test_concurrency"]); err != nil {
+		return nil, err
+	}
+	if _, _, err := operation_setting.ParseAutoTestChannelTimeRange(raw["monitor_setting.auto_test_channel_time_range"]); err != nil {
 		return nil, err
 	}
 	for _, key := range []string{"ChannelDisableThreshold", "monitor_setting.auto_test_channel_minutes"} {
@@ -221,38 +223,12 @@ func refreshRequestPolicySnapshot() error {
 // UpdateRequestPolicyOptions validates the entire resulting policy before any
 // write. Unknown JSON rule fields stay in the original option string.
 func UpdateRequestPolicyOptions(values map[string]string) error {
-	requestPolicyOptionMutex.Lock()
-	defer requestPolicyOptionMutex.Unlock()
-	options := maps.Clone(CurrentRequestPolicy().Options)
-	for key, value := range values {
+	for key := range values {
 		if !IsRequestPolicyOption(key) {
 			return fmt.Errorf("not a request policy option: %s", key)
 		}
-		options[key] = value
 	}
-	snapshot, err := BuildRequestPolicy(options)
-	if err != nil {
-		return err
-	}
-	if err := DB.Transaction(func(tx *gorm.DB) error {
-		for key, value := range values {
-			option := Option{Key: key}
-			if err := tx.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
-				return err
-			}
-			if err := tx.Model(&option).Update("value", value).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	for key, value := range values {
-		if err := updateOptionMap(key, value); err != nil {
-			return err
-		}
-	}
-	requestPolicySnapshot.Store(snapshot)
-	return nil
+	// Share validation, the transaction and the single-lock publication with the
+	// existing bulk API. Publishing individual keys would expose a partial policy.
+	return UpdateOptionsBulk(values)
 }

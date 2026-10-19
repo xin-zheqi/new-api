@@ -95,6 +95,13 @@ func TestRequestPolicyDatabaseMatrix(t *testing.T) {
 			snapshot := CurrentRequestPolicy()
 			assert.Error(t, UpdateRequestPolicyOptions(map[string]string{"channel_affinity_setting.session_mode": "unknown"}))
 			assert.Same(t, snapshot, CurrentRequestPolicy())
+			for key, value := range map[string]string{
+				"monitor_setting.auto_test_channel_time_range": "24:00-25:00",
+				"monitor_setting.auto_test_only_auto_disabled": "maybe",
+			} {
+				assert.Error(t, UpdateRequestPolicyOptions(map[string]string{key: value, "RetryTimes": "8"}))
+				assert.Same(t, snapshot, CurrentRequestPolicy(), "invalid local monitor settings must reject the whole policy")
+			}
 			for _, value := range []string{"-1", "1.5", "bad", strconv.Itoa(math.MaxInt)} {
 				assert.Error(t, UpdateRequestPolicyOptions(map[string]string{"RetryTimes": value}))
 				assert.Same(t, snapshot, CurrentRequestPolicy())

@@ -42,9 +42,11 @@ const SENSITIVE_MASK = '••••'
 function ChannelCardComponent({
   row,
   isSelected,
+  reorderEnabled = false,
 }: {
   row: Row<Channel>
   isSelected: boolean
+  reorderEnabled?: boolean
 }) {
   const { t } = useTranslation()
   const { sensitiveVisible } = useChannels()
@@ -67,6 +69,7 @@ function ChannelCardComponent({
 
   const groups = parseGroupsList(row.original.group ?? '')
 
+  const reorderCell = reorderEnabled ? renderCell('reorder') : null
   const selectCell = renderCell('select')
   const typeCell = renderCell('type')
   const nameCell = renderCell('name')
@@ -97,6 +100,7 @@ function ChannelCardComponent({
         {/* Row 1: selection + type, with status badge + actions menu */}
         <div className='flex items-center justify-between gap-2'>
           <div className='flex min-w-0 flex-1 items-center gap-2'>
+            {reorderCell}
             {!isTagRow && selectCell && (
               <span className='shrink-0'>{selectCell}</span>
             )}
@@ -139,7 +143,9 @@ function ChannelCardComponent({
           <div className='grid shrink-0 grid-cols-[auto_auto] items-center gap-x-3 gap-y-1'>
             <span className={labelClass}>{t('Priority')}</span>
             <span className={labelClass}>{t('Weight')}</span>
-            <div className='flex justify-start'>{priorityCell}</div>
+            <div data-column-id='priority' className='flex justify-start'>
+              {priorityCell}
+            </div>
             <div className='flex justify-start'>{weightCell}</div>
             <span className={cn('mt-2', labelClass)}>
               {fieldLabels.response_time}

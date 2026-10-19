@@ -58,6 +58,7 @@ export const CHANNEL_OPTIONS = [
   },
   { value: 39, color: 'grey', label: 'Cloudflare' },
   { value: 43, color: 'blue', label: 'DeepSeek' },
+  { value: 58, color: 'blue', label: 'Advanced Custom' },
   {
     value: 15,
     color: 'blue',

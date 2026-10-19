@@ -163,4 +163,19 @@ describe('usage facts billing details', () => {
     expect(screen.queryByText('seconds')).toBeNull()
     expect(screen.getByText('Total Cost')).toBeInTheDocument()
   })
+
+  test('provider tool usage shows the charged call count and per-call price', () => {
+    queryClients.push(
+      renderDetails({
+        tool_surcharges: [
+          { name: 'deepseek_search', count: 2, price: 0.75 },
+          { name: 'google_search_grounded_prompt', count: 1, price: 35 },
+          { name: 'free_tool', count: 1, price: 0 },
+        ],
+      })
+    )
+    expect(rowValue('deepseek_search')).toBe('2 × $0.00075')
+    expect(rowValue('google_search_grounded_prompt')).toBe('1 × $0.035')
+    expect(screen.queryByText('free_tool')).not.toBeInTheDocument()
+  })
 })

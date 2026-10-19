@@ -21,6 +21,7 @@ import React from 'react';
 import { Banner } from '@douyinfe/semi-ui';
 import { IconAlertTriangle } from '@douyinfe/semi-icons';
 import CardPro from '../../common/ui/CardPro';
+import ChannelPriorityOrder from './ChannelPriorityOrder';
 import ChannelsTable from './ChannelsTable';
 import ChannelsActions from './ChannelsActions';
 import ChannelsFilters from './ChannelsFilters';
@@ -94,7 +95,15 @@ const ChannelsPage = () => {
       <CardPro
         type='type3'
         tabsArea={<ChannelsTabs {...channelsData} />}
-        actionsArea={<ChannelsActions {...channelsData} />}
+        actionsArea={
+          <div className='space-y-2'>
+            <ChannelPriorityOrder
+              channels={channelsData.channels}
+              refresh={channelsData.refresh}
+            />
+            <ChannelsActions {...channelsData} />
+          </div>
+        }
         searchArea={<ChannelsFilters {...channelsData} />}
         paginationArea={createCardProPagination({
           currentPage: channelsData.activePage,

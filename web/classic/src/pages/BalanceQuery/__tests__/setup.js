@@ -17,8 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { vi } from 'vitest';
+import '@douyinfe/semi-ui/lib/es/react19-adapter';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.stubGlobal(
+  'ResizeObserver',
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
 
 // Semi's icon bundle probes canvas during import; jsdom does not implement it.
 vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({

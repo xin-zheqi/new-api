@@ -52,6 +52,13 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Sheet,
   SheetClose,
   SheetContent,
@@ -62,13 +69,7 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { RelatedPolicyLink } from '@/features/system-settings/request-policies/related-policy-link'
 import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
@@ -517,6 +518,7 @@ export function ApiKeysMutateDrawer({
                           {t(
                             'When enabled, if channels in the current group fail, it will try channels in the next group in order.'
                           )}
+                          <RelatedPolicyLink section='routing' />
                         </FormDescription>
                       </div>
                       <FormControl>
@@ -650,10 +652,16 @@ export function ApiKeysMutateDrawer({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value='total'>{t('Total quota')}</SelectItem>
+                        <SelectItem value='total'>
+                          {t('Total quota')}
+                        </SelectItem>
                         <SelectItem value='day'>{t('Daily quota')}</SelectItem>
-                        <SelectItem value='week'>{t('Weekly quota')}</SelectItem>
-                        <SelectItem value='month'>{t('Monthly quota')}</SelectItem>
+                        <SelectItem value='week'>
+                          {t('Weekly quota')}
+                        </SelectItem>
+                        <SelectItem value='month'>
+                          {t('Monthly quota')}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                     <FormDescription>
@@ -681,12 +689,16 @@ export function ApiKeysMutateDrawer({
                           step={tokensOnly ? 1 : 0.01}
                           placeholder={quotaPlaceholder}
                           onChange={(e) =>
-                            field.onChange(Number.parseFloat(e.target.value) || 0)
+                            field.onChange(
+                              Number.parseFloat(e.target.value) || 0
+                            )
                           }
                         />
                       </FormControl>
                       <FormDescription>
-                        {t('The used quota resets at the start of each selected period.')}
+                        {t(
+                          'The used quota resets at the start of each selected period.'
+                        )}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -727,28 +739,30 @@ export function ApiKeysMutateDrawer({
                 />
               )}
 
-              {quotaPeriod === 'total' && <FormField
-                control={form.control}
-                name='unlimited_quota'
-                render={({ field }) => (
-                  <FormItem className={sideDrawerSwitchItemClassName()}>
-                    <div className='flex flex-col gap-0.5'>
-                      <FormLabel className='text-sm'>
-                        {t('Unlimited Quota')}
-                      </FormLabel>
-                      <FormDescription className='text-xs'>
-                        {t('Enable unlimited quota for this API key')}
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />}
+              {quotaPeriod === 'total' && (
+                <FormField
+                  control={form.control}
+                  name='unlimited_quota'
+                  render={({ field }) => (
+                    <FormItem className={sideDrawerSwitchItemClassName()}>
+                      <div className='flex flex-col gap-0.5'>
+                        <FormLabel className='text-sm'>
+                          {t('Unlimited Quota')}
+                        </FormLabel>
+                        <FormDescription className='text-xs'>
+                          {t('Enable unlimited quota for this API key')}
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
             </SideDrawerSection>
 
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>

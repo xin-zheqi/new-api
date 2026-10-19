@@ -60,6 +60,8 @@ import {
 } from '../../../constants/channel-affinity-template.constants';
 import ParamOverrideEditorModal from '../../../components/table/channels/modals/ParamOverrideEditorModal';
 
+const KEY_SESSION_MODE = 'channel_affinity_setting.session_mode';
+
 const KEY_ENABLED = 'channel_affinity_setting.enabled';
 const KEY_SWITCH_ON_SUCCESS = 'channel_affinity_setting.switch_on_success';
 const KEY_KEEP_ON_CHANNEL_DISABLED =
@@ -207,6 +209,7 @@ const buildChannelAffinityRulePayload = ({
   paramOverrideTemplate,
 }) => ({
   id: isEdit ? editingRuleId : rulesLength,
+  session_mode: values?.session_mode || 'inherit',
   name: (values?.name || '').trim(),
   model_regex: modelRegex,
   path_regex: pathRegex,
@@ -242,6 +245,7 @@ export default function SettingsChannelAffinity(props) {
 
   const [inputs, setInputs] = useState({
     [KEY_ENABLED]: false,
+    [KEY_SESSION_MODE]: '',
     [KEY_SWITCH_ON_SUCCESS]: true,
     [KEY_KEEP_ON_CHANNEL_DISABLED]: false,
     [KEY_MAX_ENTRIES]: 100000,
@@ -279,6 +283,7 @@ export default function SettingsChannelAffinity(props) {
       user_agent_include_text: (r.user_agent_include || []).join('\n'),
       value_regex: r.value_regex || '',
       ttl_seconds: Number(r.ttl_seconds || 0),
+      session_mode: r.session_mode || 'inherit',
       skip_retry_on_failure: !!r.skip_retry_on_failure,
       include_using_group: r.include_using_group ?? true,
       include_model_name: !!r.include_model_name,
@@ -574,6 +579,17 @@ export default function SettingsChannelAffinity(props) {
       render: (v) => <Text>{Number(v || 0) || '-'}</Text>,
     },
     {
+      title: t('Session behavior'),
+      dataIndex: 'session_mode',
+      render: (mode) => {
+        if (mode === 'strict') return t('Require the original channel');
+        if (mode === 'prefer')
+          return t('Prefer the original channel, allow switching');
+        if (mode === 'off') return t('Do not keep sessions');
+        return t('Inherit global default');
+      },
+    },
+    {
       title: t('失败后是否重试'),
       dataIndex: 'skip_retry_on_failure',
       render: (value) => (
@@ -775,7 +791,11 @@ export default function SettingsChannelAffinity(props) {
           );
         }
         if (idx < 0) return showError(t('规则未找到，请刷新后重试'));
-        next[idx] = rulePayload;
+        // Preserve future/advanced JSON fields when editing known visual fields.
+        next[idx] = { ...next[idx], ...rulePayload };
+        if (!userAgentInclude.length) delete next[idx].user_agent_include;
+        if (!paramTemplateValidation.value)
+          delete next[idx].param_override_template;
       } else {
         next.push(rulePayload);
       }
@@ -826,32 +846,26 @@ export default function SettingsChannelAffinity(props) {
       return showError(t('规则 JSON 格式不正确'));
     }
 
-    const requestQueue = updateArray.map((item) => {
-      let value = '';
-      if (item.key === KEY_RULES) {
-        value = compactRules;
-      } else if (typeof inputs[item.key] === 'boolean') {
-        value = String(inputs[item.key]);
-      } else {
-        value = String(inputs[item.key] ?? '');
-      }
-      return API.put('/api/option/', { key: item.key, value });
-    });
-
+    const options = Object.fromEntries(
+      updateArray.map(({ key }) => [
+        key,
+        key === KEY_RULES ? compactRules : String(inputs[key] ?? ''),
+      ]),
+    );
     setLoading(true);
-    Promise.all(requestQueue)
-      .then((res) => {
-        if (requestQueue.length === 1) {
-          if (res.includes(undefined)) return;
-        } else if (requestQueue.length > 1) {
-          if (res.includes(undefined))
-            return showError(t('部分保存失败，请重试'));
-        }
-        showSuccess(t('保存成功'));
-        props.refresh();
-      })
-      .catch(() => showError(t('保存失败，请重试')))
-      .finally(() => setLoading(false));
+    try {
+      // One atomic write keeps the global mode and its rules consistent.
+      const { data } = await API.patch('/api/option/request_policy', {
+        options,
+      });
+      if (!data.success) throw new Error(data.message || t('保存失败，请重试'));
+      showSuccess(t('保存成功'));
+      await props.refresh();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -859,6 +873,7 @@ export default function SettingsChannelAffinity(props) {
     for (let key in props.options) {
       if (
         ![
+          KEY_SESSION_MODE,
           KEY_ENABLED,
           KEY_SWITCH_ON_SUCCESS,
           KEY_KEEP_ON_CHANNEL_DISABLED,
@@ -868,7 +883,9 @@ export default function SettingsChannelAffinity(props) {
         ].includes(key)
       )
         continue;
-      if (key === KEY_ENABLED)
+      if (key === KEY_SESSION_MODE)
+        currentInputs[key] = props.options[key] || '';
+      else if (key === KEY_ENABLED)
         currentInputs[key] = toBoolean(props.options[key]);
       else if (key === KEY_SWITCH_ON_SUCCESS)
         currentInputs[key] = toBoolean(props.options[key]);
@@ -935,6 +952,25 @@ export default function SettingsChannelAffinity(props) {
             <Divider style={{ marginTop: 12, marginBottom: 12 }} />
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  field={KEY_SESSION_MODE}
+                  label={t('Session behavior')}
+                  optionList={[
+                    { value: '', label: t('Keep legacy behavior') },
+                    { value: 'off', label: t('Do not keep sessions') },
+                    {
+                      value: 'prefer',
+                      label: t('Prefer the original channel, allow switching'),
+                    },
+                    {
+                      value: 'strict',
+                      label: t('Require the original channel'),
+                    },
+                  ]}
+                  onChange={(value) =>
+                    setInputs({ ...inputs, [KEY_SESSION_MODE]: value })
+                  }
+                />
                 <Form.Switch
                   field={KEY_ENABLED}
                   label={t('启用')}
@@ -1160,6 +1196,19 @@ export default function SettingsChannelAffinity(props) {
 
           <Row gutter={16} style={{ marginTop: 12 }}>
             <Col xs={24} sm={12}>
+              <Form.Select
+                field='session_mode'
+                label={t('Session behavior')}
+                optionList={[
+                  { value: 'inherit', label: t('Inherit global default') },
+                  { value: 'off', label: t('Do not keep sessions') },
+                  {
+                    value: 'prefer',
+                    label: t('Prefer the original channel, allow switching'),
+                  },
+                  { value: 'strict', label: t('Require the original channel') },
+                ]}
+              />
               <Form.Switch
                 field='skip_retry_on_failure'
                 label={t('失败后不重试')}

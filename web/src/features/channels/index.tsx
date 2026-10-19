@@ -44,7 +44,7 @@ export function Channels() {
   )
   const channelOpsQuery = useQuery({
     queryKey: ['channel-ops'],
-    queryFn: getChannelOps,
+    queryFn: () => getChannelOps(),
     retry: false,
     staleTime: 5 * 60 * 1000,
   })
@@ -63,8 +63,8 @@ export function Channels() {
               aria-label={t('Retry Settings')}
               render={
                 <Link
-                  to='/system-settings/models/$section'
-                  params={{ section: 'routing-reliability' }}
+                  to='/system-settings/request-policies/$section'
+                  params={{ section: 'routing' }}
                 />
               }
             />

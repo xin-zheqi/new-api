@@ -71,6 +71,7 @@ import ChannelKeyDisplay from '../../../common/ui/ChannelKeyDisplay';
 import { useSecureVerification } from '../../../../hooks/common/useSecureVerification';
 import { parseChannelConnectionString } from '../../../../helpers/token';
 import { createApiCalls } from '../../../../services/secureVerification';
+import AdvancedCustomRoutes from './AdvancedCustomRoutes';
 import { UserContext } from '../../../../context/User';
 import {
   collectInvalidStatusCodeEntries,
@@ -122,6 +123,7 @@ const SENSITIVE_UPDATE_FIELDS = [
   'header_override',
   'setting',
   'settings',
+  'advanced_custom_json',
   'other',
 ];
 
@@ -939,6 +941,11 @@ const EditChannelModal = (props) => {
       if (data.settings) {
         try {
           const parsedSettings = JSON.parse(data.settings);
+          data.advanced_custom_json = JSON.stringify(
+            parsedSettings.advanced_custom || { advanced_routes: [] },
+            null,
+            2,
+          );
           data.azure_responses_version =
             parsedSettings.azure_responses_version || '';
           // 读取 Vertex 密钥格式
@@ -1849,6 +1856,25 @@ const EditChannelModal = (props) => {
       }
     }
 
+    if (localInputs.type === 58) {
+      try {
+        const config = JSON.parse(
+          localInputs.advanced_custom_json || '{"advanced_routes":[]}',
+        );
+        if (
+          !config ||
+          Array.isArray(config) ||
+          !Array.isArray(config.advanced_routes)
+        )
+          throw new Error();
+        settings.advanced_custom = config;
+      } catch {
+        showError(t('Advanced routes JSON is invalid'));
+        return;
+      }
+    }
+    delete localInputs.advanced_custom_json;
+
     // type === 20: 设置企业账户标识，无论是true还是false都要传到后端
     if (localInputs.type === 20) {
       settings.openrouter_enterprise =
@@ -2184,9 +2210,9 @@ const EditChannelModal = (props) => {
       CHANNEL_OPTIONS.map((opt) => ({
         ...opt,
         // 保持 label 为纯文本以支持搜索
-        label: opt.label,
+        label: opt.value === 58 ? t('Advanced Custom') : opt.label,
       })),
-    [],
+    [t],
   );
 
   const renderChannelOption = (renderProps) => {
@@ -2757,6 +2783,17 @@ const EditChannelModal = (props) => {
                         )}
                       />
                     </>
+                  )}
+
+                  {inputs.type === 58 && (
+                    <AdvancedCustomRoutes
+                      value={
+                        inputs.advanced_custom_json || '{"advanced_routes":[]}'
+                      }
+                      onChange={(value) =>
+                        handleInputChange('advanced_custom_json', value)
+                      }
+                    />
                   )}
 
                   {inputs.type === 14 && (

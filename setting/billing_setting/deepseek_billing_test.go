@@ -1,6 +1,8 @@
 package billing_setting_test
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -55,10 +57,21 @@ func TestDeepSeekBuiltinBilling(t *testing.T) {
 			assert.Equal(t, billing_setting.BillingModeTieredExpr, billing_setting.GetBillingMode(model))
 			expression, ok := billing_setting.GetBillingExpr(model)
 			require.True(t, ok)
-			for name, usage := range map[string]*dto.Usage{"chat": chat, "responses": responses, "anthropic": anthropic} {
-				result := quota(expression, usage)
-				require.Contains(t, want, result.MatchedTier, name)
-				assert.Equal(t, want[result.MatchedTier], result.ActualQuotaAfterGroup, name)
+			for _, clock := range []struct {
+				weekday, hour int
+				tier          string
+			}{
+				{1, 9, "peak"}, {5, 17, "peak"}, {1, 12, "off_peak"}, {5, 18, "off_peak"}, {6, 10, "off_peak"},
+			} {
+				// Replace only external clock calls; evaluate the actual configured
+				// expression and its boundary conditions through the billing engine.
+				pinned := strings.ReplaceAll(expression, `weekday("Asia/Shanghai")`, strconv.Itoa(clock.weekday))
+				pinned = strings.ReplaceAll(pinned, `hour("Asia/Shanghai")`, strconv.Itoa(clock.hour))
+				for name, usage := range map[string]*dto.Usage{"chat": chat, "responses": responses, "anthropic": anthropic} {
+					result := quota(pinned, usage)
+					assert.Equal(t, clock.tier, result.MatchedTier, name)
+					assert.Equal(t, want[clock.tier], result.ActualQuotaAfterGroup, name)
+				}
 			}
 		})
 	}

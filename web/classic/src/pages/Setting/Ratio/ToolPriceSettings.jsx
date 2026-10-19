@@ -45,6 +45,27 @@ const DEFAULT_PRICES = {
   'web_search_preview:gpt-4.1-mini*': 25.0,
   file_search: 2.5,
   google_search: 14.0,
+  'google_search:gemini-2.5*': 0.0,
+  'google_search:gemini-2.0*': 0.0,
+  'google_search:gemini-1.5*': 0.0,
+  'google_search_grounded_prompt:gemini-2.5*': 35.0,
+  'google_search_grounded_prompt:gemini-2.0*': 35.0,
+  'google_search_grounded_prompt:gemini-1.5*': 35.0,
+  image_generation: 150.0,
+  search_std: 10.0,
+  search_pro: 30.0,
+  search_pro_sogou: 50.0,
+  search_pro_quark: 50.0,
+  search_strategy_turbo: 3.0,
+  search_strategy_max: 4.0,
+  search_strategy_agent: 4.0,
+  search_strategy_agent_max: 4.0,
+  bing_web_search: 14.0,
+  'web_search:grok*': 5.0,
+  x_search_posts: 5.0,
+  x_search_profiles: 10.0,
+  deepseek_search: 0.75,
+  deepseek_fetch: 0.75,
 };
 
 function rowsToObject(rows) {
@@ -52,7 +73,7 @@ function rowsToObject(rows) {
   for (const row of rows) {
     const k = row.key.trim();
     if (!k) continue;
-    prices[k] = Number(row.price) || 0;
+    prices[k] = Number(row.price);
   }
   return prices;
 }
@@ -88,6 +109,8 @@ export default function ToolPriceSettings({ options }) {
       prices = { ...DEFAULT_PRICES };
     }
 
+    // Newly supported tools appear without replacing explicit custom/zero prices.
+    prices = { ...DEFAULT_PRICES, ...prices };
     setRows(objectToRows(prices));
     setJsonText(JSON.stringify(prices, null, 2));
   }, [options]);
@@ -102,8 +125,21 @@ export default function ToolPriceSettings({ options }) {
     setJsonText(text);
     try {
       const parsed = JSON.parse(text);
-      if (typeof parsed !== 'object' || Array.isArray(parsed) || parsed === null) {
-        setJsonError(t('JSON 必须是对象'));
+      if (
+        typeof parsed !== 'object' ||
+        Array.isArray(parsed) ||
+        parsed === null
+      ) {
+        setJsonError(t('JSON must be an object'));
+        return;
+      }
+      if (
+        Object.values(parsed).some(
+          (value) =>
+            typeof value !== 'number' || !Number.isFinite(value) || value < 0,
+        )
+      ) {
+        setJsonError(t('Tool prices must be finite non-negative numbers'));
         return;
       }
       setRows(objectToRows(parsed));
@@ -132,6 +168,19 @@ export default function ToolPriceSettings({ options }) {
   const currentPrices = useMemo(() => rowsToObject(rows), [rows]);
 
   const handleSave = async () => {
+    if (
+      jsonError ||
+      rows.some(
+        (row) =>
+          row.key.trim() &&
+          (row.price === '' ||
+            !Number.isFinite(Number(row.price)) ||
+            Number(row.price) < 0),
+      )
+    ) {
+      showError(t('Tool prices must be finite non-negative numbers'));
+      return;
+    }
     setSaving(true);
     try {
       const res = await API.put('/api/option/', {
@@ -152,7 +201,7 @@ export default function ToolPriceSettings({ options }) {
 
   const columns = [
     {
-      title: t('工具标识'),
+      title: t('Tool identifier'),
       dataIndex: 'key',
       render: (text, record) => (
         <Input
@@ -172,7 +221,7 @@ export default function ToolPriceSettings({ options }) {
           value={val}
           min={0}
           step={0.5}
-          onChange={(v) => updateRow(record.id, 'price', v ?? 0)}
+          onChange={(v) => updateRow(record.id, 'price', v ?? '')}
           style={{ width: '100%' }}
         />
       ),
@@ -198,11 +247,16 @@ export default function ToolPriceSettings({ options }) {
         type='info'
         description={
           <>
-            <div>{t('配置各工具的调用价格（$/1K次调用）。按次计费模型不额外收取工具费用。')}</div>
+            <div>
+              {t(
+                'Configure per-tool unit prices ($/1K calls). Per-request models do not incur additional tool fees.',
+              )}
+            </div>
             <div style={{ marginTop: 4 }}>
-              <Text strong>{t('格式')}：</Text>
-              <code>web_search_preview</code> {t('为默认价格')}，
-              <code>web_search_preview:gpt-4o*</code> {t('为模型前缀覆盖')}
+              <Text strong>{t('Format')}：</Text>
+              <code>web_search_preview</code> {t('is the default price; ')}，
+              <code>web_search_preview:gpt-4o*</code>{' '}
+              {t('overrides for matching model prefix.')}
             </div>
           </>
         }
@@ -234,7 +288,7 @@ export default function ToolPriceSettings({ options }) {
               {t('添加')}
             </Button>
             <Button theme='borderless' onClick={resetToDefault}>
-              {t('恢复默认')}
+              {t('Restore defaults')}
             </Button>
           </div>
         </>
@@ -247,7 +301,11 @@ export default function ToolPriceSettings({ options }) {
             style={{ fontFamily: 'monospace', fontSize: 13 }}
           />
           {jsonError && (
-            <Text type='danger' size='small' style={{ display: 'block', marginTop: 4 }}>
+            <Text
+              type='danger'
+              size='small'
+              style={{ display: 'block', marginTop: 4 }}
+            >
               {jsonError}
             </Text>
           )}
@@ -256,18 +314,22 @@ export default function ToolPriceSettings({ options }) {
               icon={<IconCopy />}
               size='small'
               theme='borderless'
-              onClick={() => { copy(jsonText, t('JSON')); }}
+              onClick={() => {
+                copy(jsonText, t('JSON'));
+              }}
             >
               {t('复制')}
             </Button>
             <Button size='small' theme='borderless' onClick={resetToDefault}>
-              {t('恢复默认')}
+              {t('Restore defaults')}
             </Button>
           </div>
         </>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}
+      >
         <Button
           theme='solid'
           type='primary'

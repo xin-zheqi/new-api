@@ -41,6 +41,7 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
+import { PolicyDecisionRecord } from '@/features/system-settings/request-policies/decision-record'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
@@ -363,6 +364,26 @@ function BillingBreakdown(props: {
       label: t('Audio Input Price'),
       value: fmtPrice(other.audio_input_price),
     })
+  }
+
+  // Current tool usage is provider-specific. Keep the legacy fields above for
+  // historical logs and show all structured charges reported by settlement.
+  for (const item of Array.isArray(other.tool_surcharges)
+    ? other.tool_surcharges
+    : []) {
+    if (
+      typeof item?.name === 'string' &&
+      item.name.trim() &&
+      Number.isFinite(item.count) &&
+      item.count > 0 &&
+      Number.isFinite(item.price) &&
+      item.price > 0
+    ) {
+      rows.push({
+        label: item.name,
+        value: `${item.count} × ${fmtPrice(item.price / 1000)}`,
+      })
+    }
   }
 
   if (isAdmin && other.admin_info) {
@@ -836,6 +857,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
         )}
 
         {/* Quota saturation marker (admin only) */}
+        {props.isAdmin && adminInfo?.request_policy?.length ? (
+          <DetailSection
+            label={t('Request policy decisions')}
+            icon={<Route className='size-4' />}
+          >
+            <PolicyDecisionRecord events={adminInfo.request_policy} />
+          </DetailSection>
+        ) : null}
         {props.isAdmin && other?.admin_info?.quota_saturation && (
           <DetailSection
             icon={<AlertTriangle className='size-3.5' aria-hidden='true' />}

@@ -19,6 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 
 export const CHANNEL_OPTIONS = [
   { value: 1, color: 'green', label: 'OpenAI' },
+  // Distinct gateway types select the matching upstream balance API.
+  { value: 60, color: 'green', label: 'New API' },
+  { value: 59, color: 'blue', label: 'Sub2API' },
   {
     value: 2,
     color: 'light-blue',
@@ -194,7 +197,13 @@ export const CHANNEL_OPTIONS = [
 
 // Channel types that support upstream model list fetching in UI.
 export const MODEL_FETCHABLE_CHANNEL_TYPES = new Set([
-  1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43,
+  1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43, 59, 60,
 ]);
 
 export const MODEL_TABLE_PAGE_SIZE = 10;
+
+// Keep aligned with controller/channel-billing.go. OpenAI compatibility alone
+// does not imply support for a provider's management/balance API.
+export const BALANCE_QUERY_CHANNEL_TYPES = new Set([
+  1, 8, 10, 12, 13, 20, 25, 40, 43, 58, 59, 60,
+]);

@@ -27,30 +27,34 @@ import {
   showWarning,
   parseHttpStatusCodeRules,
   setStatusData,
+  toBoolean,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import HttpStatusCodeRulesInput from '../../../components/settings/HttpStatusCodeRulesInput';
 import { StatusContext } from '../../../context/Status';
 
+const MONITORING_DEFAULTS = {
+  ChannelDisableThreshold: '',
+  QuotaRemindThreshold: '',
+  QuotaRemindEnabled: true,
+  AutomaticDisableChannelEnabled: false,
+  AutomaticEnableChannelEnabled: false,
+  AutomaticDisableKeywords: '',
+  AutomaticDisableStatusCodes: '401',
+  AutomaticRetryStatusCodes: '100-199,300-399,401-407,409-499,500-599',
+  'monitor_setting.auto_test_channel_enabled': false,
+  'monitor_setting.auto_test_only_auto_disabled': false,
+  'monitor_setting.channel_test_mode': 'scheduled_all',
+  'monitor_setting.channel_test_concurrency': 1,
+  'monitor_setting.auto_test_channel_minutes': 10,
+  'monitor_setting.auto_test_channel_time_range': '00:00-23:59',
+};
+
 export default function SettingsMonitoring(props) {
   const { t } = useTranslation();
   const [, statusDispatch] = useContext(StatusContext);
   const [loading, setLoading] = useState(false);
-  const [inputs, setInputs] = useState({
-    ChannelDisableThreshold: '',
-    QuotaRemindThreshold: '',
-    QuotaRemindEnabled: true,
-    AutomaticDisableChannelEnabled: false,
-    AutomaticEnableChannelEnabled: false,
-    AutomaticDisableKeywords: '',
-    AutomaticDisableStatusCodes: '401',
-    AutomaticRetryStatusCodes: '100-199,300-399,401-407,409-499,500-599',
-    'monitor_setting.auto_test_channel_enabled': false,
-    'monitor_setting.auto_test_only_auto_disabled': false,
-    'monitor_setting.channel_test_mode': 'scheduled_all',
-    'monitor_setting.auto_test_channel_minutes': 10,
-    'monitor_setting.auto_test_channel_time_range': '00:00-23:59',
-  });
+  const [inputs, setInputs] = useState({ ...MONITORING_DEFAULTS });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
   const parsedAutoDisableStatusCodes = parseHttpStatusCodeRules(
@@ -65,7 +69,11 @@ export default function SettingsMonitoring(props) {
   function onSubmit() {
     const updateArray = compareObjects(inputs, inputsRow);
     if (!updateArray.length) return showWarning(t('你似乎并没有修改什么'));
-    if (!parsedAutoDisableStatusCodes.ok) {
+    const changedKeys = new Set(updateArray.map(({ key }) => key));
+    if (
+      changedKeys.has('AutomaticDisableStatusCodes') &&
+      !parsedAutoDisableStatusCodes.ok
+    ) {
       const details =
         parsedAutoDisableStatusCodes.invalidTokens &&
         parsedAutoDisableStatusCodes.invalidTokens.length > 0
@@ -73,7 +81,10 @@ export default function SettingsMonitoring(props) {
           : '';
       return showError(`${t('自动禁用状态码格式不正确')}${details}`);
     }
-    if (!parsedAutoRetryStatusCodes.ok) {
+    if (
+      changedKeys.has('AutomaticRetryStatusCodes') &&
+      !parsedAutoRetryStatusCodes.ok
+    ) {
       const details =
         parsedAutoRetryStatusCodes.invalidTokens &&
         parsedAutoRetryStatusCodes.invalidTokens.length > 0
@@ -82,28 +93,39 @@ export default function SettingsMonitoring(props) {
       return showError(`${t('自动重试状态码格式不正确')}${details}`);
     }
     if (
+      changedKeys.has('monitor_setting.auto_test_channel_time_range') &&
       !autoTestTimeRangePattern.test(
         inputs['monitor_setting.auto_test_channel_time_range'] || '',
       )
     ) {
       return showError(t('定时测试时间范围格式不正确'));
     }
-    const requestQueue = updateArray.map((item) => {
-      let value = '';
-      if (typeof inputs[item.key] === 'boolean') {
-        value = String(inputs[item.key]);
+    const policyOptions = {};
+    const requestQueue = [];
+    const normalizedMap = {
+      AutomaticDisableStatusCodes: parsedAutoDisableStatusCodes.normalized,
+      AutomaticRetryStatusCodes: parsedAutoRetryStatusCodes.normalized,
+    };
+    for (const { key } of updateArray) {
+      const value = String(normalizedMap[key] ?? inputs[key] ?? '');
+      if (key === 'QuotaRemindEnabled' || key === 'QuotaRemindThreshold') {
+        requestQueue.push(API.put('/api/option/', { key, value }));
       } else {
-        const normalizedMap = {
-          AutomaticDisableStatusCodes: parsedAutoDisableStatusCodes.normalized,
-          AutomaticRetryStatusCodes: parsedAutoRetryStatusCodes.normalized,
-        };
-        value = normalizedMap[item.key] ?? inputs[item.key];
+        policyOptions[key] = value;
       }
-      return API.put('/api/option/', {
-        key: item.key,
-        value,
-      });
-    });
+    }
+    // Keep the original form while retaining the backend's atomic policy save.
+    // The mode and its legacy alias must never be published independently.
+    if (changedKeys.has('monitor_setting.channel_test_mode')) {
+      policyOptions['monitor_setting.auto_test_only_auto_disabled'] = String(
+        inputs['monitor_setting.channel_test_mode'] === 'passive_recovery',
+      );
+    }
+    if (Object.keys(policyOptions).length) {
+      requestQueue.push(
+        API.patch('/api/option/request_policy', { options: policyOptions }),
+      );
+    }
     setLoading(true);
     Promise.all(requestQueue)
       .then(async (res) => {
@@ -113,8 +135,9 @@ export default function SettingsMonitoring(props) {
           if (res.includes(undefined))
             return showError(t('部分保存失败，请重试'));
         }
-        if (res.some((response) => !response?.data?.success)) {
-          return showError(t('部分保存失败，请重试'));
+        const failed = res.find((response) => !response?.data?.success);
+        if (failed) {
+          return showError(failed.data?.message || t('部分保存失败，请重试'));
         }
         if (
           updateArray.some(
@@ -141,18 +164,26 @@ export default function SettingsMonitoring(props) {
   }
 
   useEffect(() => {
-    const currentInputs = { QuotaRemindEnabled: true };
-    for (let key in props.options) {
-      if (Object.keys(inputs).includes(key)) {
-        currentInputs[key] = props.options[key];
-      }
+    const currentInputs = { ...MONITORING_DEFAULTS };
+    for (const key of Object.keys(MONITORING_DEFAULTS)) {
+      if (props.options?.[key] === undefined) continue;
+      currentInputs[key] =
+        typeof MONITORING_DEFAULTS[key] === 'boolean'
+          ? toBoolean(props.options[key])
+          : props.options[key];
     }
-    const channelTestMode =
+    let channelTestMode = 'scheduled_all';
+    if (
       currentInputs['monitor_setting.channel_test_mode'] ===
         'passive_recovery' ||
       currentInputs['monitor_setting.auto_test_only_auto_disabled'] === true
-        ? 'passive_recovery'
-        : 'scheduled_all';
+    ) {
+      channelTestMode = 'passive_recovery';
+    } else if (
+      currentInputs['monitor_setting.channel_test_mode'] === 'auto_ban_only'
+    ) {
+      channelTestMode = 'auto_ban_only';
+    }
     currentInputs['monitor_setting.channel_test_mode'] = channelTestMode;
     currentInputs['monitor_setting.auto_test_only_auto_disabled'] =
       channelTestMode === 'passive_recovery';
@@ -189,8 +220,8 @@ export default function SettingsMonitoring(props) {
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
                   label={t('自动测试所有通道间隔时间')}
-                  step={1}
-                  min={1}
+                  step={0.1}
+                  min={0}
                   suffix={t('分钟')}
                   extraText={t('每隔多少分钟测试一次所有通道')}
                   placeholder={''}
@@ -198,8 +229,7 @@ export default function SettingsMonitoring(props) {
                   onChange={(value) =>
                     setInputs({
                       ...inputs,
-                      'monitor_setting.auto_test_channel_minutes':
-                        parseInt(value),
+                      'monitor_setting.auto_test_channel_minutes': value,
                     })
                   }
                 />
@@ -219,23 +249,41 @@ export default function SettingsMonitoring(props) {
                 />
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Switch
-                  field={'monitor_setting.auto_test_only_auto_disabled'}
-                  label={t('仅测试自动禁用渠道')}
-                  extraText={t(
-                    '开启后定时测试只检测已自动禁用且启用自动测试的渠道',
-                  )}
-                  size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
+                <Form.Select
+                  field='monitor_setting.channel_test_mode'
+                  label={t('Channel test mode')}
+                  style={{ width: '100%' }}
+                  optionList={[
+                    { value: 'scheduled_all', label: t('Scheduled testing') },
+                    {
+                      value: 'auto_ban_only',
+                      label: t('Test automatically disabled channels'),
+                    },
+                    { value: 'passive_recovery', label: t('Passive recovery') },
+                  ]}
                   onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      'monitor_setting.auto_test_only_auto_disabled': value,
-                      'monitor_setting.channel_test_mode': value
-                        ? 'passive_recovery'
-                        : 'scheduled_all',
-                    })
+                    setInputs((current) => ({
+                      ...current,
+                      'monitor_setting.auto_test_only_auto_disabled':
+                        value === 'passive_recovery',
+                      'monitor_setting.channel_test_mode': value,
+                    }))
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  field='monitor_setting.channel_test_concurrency'
+                  label={t('Channel test concurrency')}
+                  min={1}
+                  max={32}
+                  step={1}
+                  precision={0}
+                  onChange={(value) =>
+                    setInputs((current) => ({
+                      ...current,
+                      'monitor_setting.channel_test_concurrency': value,
+                    }))
                   }
                 />
               </Col>
@@ -244,7 +292,7 @@ export default function SettingsMonitoring(props) {
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
                   label={t('测试所有渠道的最长响应时间')}
-                  step={1}
+                  step={0.1}
                   min={0}
                   suffix={t('秒')}
                   extraText={t(
@@ -369,7 +417,12 @@ export default function SettingsMonitoring(props) {
               </Col>
             </Row>
             <Row>
-              <Button size='default' onClick={onSubmit}>
+              <Button
+                size='default'
+                onClick={onSubmit}
+                loading={loading}
+                disabled={loading}
+              >
                 {t('保存监控设置')}
               </Button>
             </Row>

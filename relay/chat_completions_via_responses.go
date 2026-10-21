@@ -145,7 +145,7 @@ func relayResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, adaptor 
 		}
 	}
 
-	body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
+	body, closer, err := relaycommon.NewReasoningAwareJSONBody(jsonData, info)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}

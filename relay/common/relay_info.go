@@ -122,6 +122,9 @@ type RelayInfo struct {
 	IsFirstRequest     bool
 	AudioUsage         bool
 	ReasoningEffort    string
+	// ReasoningContentRepairActive is derived from the final upstream JSON,
+	// after parameter overrides, and reset for every channel attempt.
+	ReasoningContentRepairActive bool
 	// ReasoningConversion is the suffix-derived reasoning intent attached
 	// after model mapping. Converters read it via ReasoningState().
 	ReasoningConversion *dto.ReasoningConversionState
@@ -234,6 +237,7 @@ type RelayInfo struct {
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
+	info.ReasoningContentRepairActive = false
 	info.FinalRequestRelayFormat = ""
 	info.RequestConversionChain = nil
 	info.InitRequestConversionChain()

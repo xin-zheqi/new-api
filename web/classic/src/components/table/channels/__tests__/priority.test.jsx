@@ -23,6 +23,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest';
@@ -62,16 +63,28 @@ beforeEach(() => {
   }));
 });
 
-test('keyboard controls preview the full order, commit with the original revision and undo with the saved revision', async () => {
+async function chooseOption(label, optionName) {
+  fireEvent.click(
+    await screen.findByRole('combobox', { name: label, exact: true }),
+  );
+  const option = await screen.findByRole('option', { name: optionName });
+  const popup = option.closest('[role="dialog"]');
+  fireEvent.click(option);
+  if (popup) {
+    fireEvent.animationEnd(popup);
+    fireEvent(popup, new Event('webkitAnimationEnd', { bubbles: true }));
+  }
+}
+
+test('dropdown controls preview the full order, commit with the original revision and undo with the saved revision', async () => {
   render(<ChannelPriorityEditor channels={[{ id: 1, name: 'Primary' }]} />);
-  fireEvent.change(await screen.findByLabelText('Channel'), {
-    target: { value: '2' },
-  });
-  fireEvent.change(screen.getByLabelText('Target channel'), {
-    target: { value: '1' },
-  });
+  await chooseOption('Channel', /#2/);
+  await chooseOption('Target channel', /#1 Primary/);
   fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
   expect(await screen.findByRole('status')).toHaveTextContent('#2: 0 → 110');
+  for (const control of screen.getAllByRole('combobox')) {
+    expect(control).toHaveAttribute('aria-disabled', 'true');
+  }
   expect(API.post).toHaveBeenLastCalledWith('/api/channel/priority/reorder', {
     id: 2,
     target_id: 1,
@@ -128,12 +141,8 @@ test('a rejected revision is shown and refreshed without silently retrying the m
     },
   });
   render(<ChannelPriorityEditor />);
-  fireEvent.change(await screen.findByLabelText('Channel'), {
-    target: { value: '2' },
-  });
-  fireEvent.change(screen.getByLabelText('Target channel'), {
-    target: { value: '1' },
-  });
+  await chooseOption('Channel', /#2/);
+  await chooseOption('Target channel', /#1/);
   fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Channel priorities changed',
@@ -143,4 +152,30 @@ test('a rejected revision is shown and refreshed without silently retrying the m
   ).not.toBeInTheDocument();
   expect(API.post).toHaveBeenCalledTimes(1);
   expect(API.get).toHaveBeenCalledTimes(2);
+});
+
+test('channel search filters by name and keyboard selection prepares a move without committing', async () => {
+  render(
+    <ChannelPriorityEditor
+      channels={[
+        { id: 1, name: 'Primary' },
+        { id: 2, name: 'Backup' },
+      ]}
+    />,
+  );
+  const channel = await screen.findByRole('combobox', {
+    name: 'Channel',
+    exact: true,
+  });
+  fireEvent.click(channel);
+  const search = within(channel).getByRole('textbox');
+  fireEvent.change(search, { target: { value: 'Backup' } });
+  await screen.findByRole('option', { name: /#2 Backup/ });
+  expect(
+    screen.queryByRole('option', { name: /#1 Primary/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.keyDown(search, { key: 'ArrowDown', keyCode: 40 });
+  fireEvent.keyDown(search, { key: 'Enter', keyCode: 13 });
+  await waitFor(() => expect(channel).toHaveTextContent('#2 Backup'));
+  expect(API.post).not.toHaveBeenCalled();
 });

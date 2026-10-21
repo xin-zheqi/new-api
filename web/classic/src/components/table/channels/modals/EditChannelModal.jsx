@@ -151,11 +151,6 @@ const PARAM_OVERRIDE_OPERATIONS_TEMPLATE = {
 
 const DEPRECATED_DOUBAO_CODING_PLAN_BASE_URL = 'doubao-coding-plan';
 
-// 支持并且已适配通过接口获取模型列表的渠道类型
-const MODEL_FETCHABLE_TYPES = new Set([
-  1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43,
-]);
-
 function type2secretPrompt(type) {
   // inputs.type === 15 ? '按照如下格式输入：APIKey|SecretKey' : (inputs.type === 18 ? '按照如下格式输入：APPID|APISecret|APIKey' : '请输入渠道对应的鉴权密钥')
   switch (type) {
@@ -219,6 +214,7 @@ const EditChannelModal = (props) => {
     // 渠道额外设置的默认值
     force_format: false,
     thinking_to_content: false,
+    reasoning_content_repair: false,
     proxy: '',
     first_response_timeout_seconds: 30,
     first_response_timeout_auto_ban: false,
@@ -547,6 +543,7 @@ const EditChannelModal = (props) => {
   const [channelSettings, setChannelSettings] = useState({
     force_format: false,
     thinking_to_content: false,
+    reasoning_content_repair: false,
     proxy: '',
     first_response_timeout_seconds: 30,
     first_response_timeout_auto_ban: false,
@@ -900,6 +897,8 @@ const EditChannelModal = (props) => {
           data.force_format = parsedSettings.force_format || false;
           data.thinking_to_content =
             parsedSettings.thinking_to_content || false;
+          data.reasoning_content_repair =
+            parsedSettings.reasoning_content_repair === true;
           data.proxy = parsedSettings.proxy || '';
           data.first_response_timeout_seconds =
             typeof parsedSettings.first_response_timeout_seconds === 'number'
@@ -918,6 +917,7 @@ const EditChannelModal = (props) => {
           console.error('解析渠道设置失败:', error);
           data.force_format = false;
           data.thinking_to_content = false;
+          data.reasoning_content_repair = false;
           data.proxy = '';
           data.first_response_timeout_seconds = 0;
           data.first_response_timeout_auto_ban = false;
@@ -929,6 +929,7 @@ const EditChannelModal = (props) => {
       } else {
         data.force_format = false;
         data.thinking_to_content = false;
+        data.reasoning_content_repair = false;
         data.proxy = '';
         data.first_response_timeout_seconds = 0;
         data.first_response_timeout_auto_ban = false;
@@ -1062,6 +1063,7 @@ const EditChannelModal = (props) => {
       setChannelSettings({
         force_format: data.force_format,
         thinking_to_content: data.thinking_to_content,
+        reasoning_content_repair: data.reasoning_content_repair,
         proxy: data.proxy,
         first_response_timeout_seconds: data.first_response_timeout_seconds,
         first_response_timeout_auto_ban:
@@ -1114,6 +1116,7 @@ const EditChannelModal = (props) => {
         data.reject_empty_response ||
         (data.system_prompt && data.system_prompt.trim()) ||
         data.thinking_to_content ||
+        data.reasoning_content_repair ||
         data.pass_through_body_enabled ||
         data.force_format ||
         data.claude_beta_query ||
@@ -1460,6 +1463,7 @@ const EditChannelModal = (props) => {
     setChannelSettings({
       force_format: false,
       thinking_to_content: false,
+      reasoning_content_repair: false,
       proxy: '',
       first_response_timeout_seconds: 30,
       reject_empty_response: false,
@@ -1742,7 +1746,7 @@ const EditChannelModal = (props) => {
       return;
     }
     if (
-      localInputs.type === 45 &&
+      [45, 59, 60].includes(localInputs.type) &&
       (!localInputs.base_url || localInputs.base_url.trim() === '')
     ) {
       showInfo(t('请输入API地址！'));
@@ -1832,6 +1836,7 @@ const EditChannelModal = (props) => {
     const channelExtraSettings = {
       force_format: localInputs.force_format || false,
       thinking_to_content: localInputs.thinking_to_content || false,
+      reasoning_content_repair: localInputs.reasoning_content_repair || false,
       proxy: localInputs.proxy || '',
       first_response_timeout_seconds: Math.max(
         0,
@@ -1948,6 +1953,7 @@ const EditChannelModal = (props) => {
     // 清理不需要发送到后端的字段
     delete localInputs.force_format;
     delete localInputs.thinking_to_content;
+    delete localInputs.reasoning_content_repair;
     delete localInputs.proxy;
     delete localInputs.first_response_timeout_seconds;
     delete localInputs.first_response_timeout_auto_ban;
@@ -2248,6 +2254,9 @@ const EditChannelModal = (props) => {
       <div
         style={style}
         className={optionClassName}
+        role='option'
+        aria-selected={selected}
+        aria-disabled={disabled}
         onClick={() => !disabled && onClick()}
         onMouseEnter={(e) => onMouseEnter()}
       >
@@ -2911,6 +2920,21 @@ const EditChannelModal = (props) => {
                     }
                     extraText={t(
                       '将 reasoning_content 转换为 <think> 标签拼接到内容中',
+                    )}
+                  />
+                  <Form.Switch
+                    field='reasoning_content_repair'
+                    label={t('Restore reasoning content')}
+                    checkedText={t('开')}
+                    uncheckedText={t('关')}
+                    onChange={(value) =>
+                      handleChannelSettingsChange(
+                        'reasoning_content_repair',
+                        value,
+                      )
+                    }
+                    extraText={t(
+                      'Restore available reasoning text for thinking-enabled Chat/Responses requests. Does not invent missing history; body passthrough skips repair.',
                     )}
                   />
                   <Form.Switch
@@ -3859,17 +3883,35 @@ const EditChannelModal = (props) => {
                                 <Form.Input
                                   field='base_url'
                                   label={t('API地址')}
-                                  placeholder={t(
-                                    '此项可选，用于通过自定义API地址来进行 API 调用，末尾不要带/v1和/',
-                                  )}
+                                  placeholder={
+                                    [59, 60].includes(inputs.type)
+                                      ? t('请输入API地址！')
+                                      : t(
+                                          '此项可选，用于通过自定义API地址来进行 API 调用，末尾不要带/v1和/',
+                                        )
+                                  }
+                                  rules={
+                                    [59, 60].includes(inputs.type)
+                                      ? [
+                                          {
+                                            required: true,
+                                            message: t('请输入API地址！'),
+                                          },
+                                        ]
+                                      : []
+                                  }
                                   onChange={(value) =>
                                     handleInputChange('base_url', value)
                                   }
                                   showClear
                                   disabled={isIonetLocked}
-                                  extraText={t(
-                                    '对于官方渠道，new-api已经内置地址，除非是第三方代理站点或者Azure的特殊接入地址，否则不需要填写',
-                                  )}
+                                  extraText={
+                                    [59, 60].includes(inputs.type)
+                                      ? undefined
+                                      : t(
+                                          '对于官方渠道，new-api已经内置地址，除非是第三方代理站点或者Azure的特殊接入地址，否则不需要填写',
+                                        )
+                                  }
                                 />
                               </div>
                             )}

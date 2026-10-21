@@ -77,8 +77,10 @@ const OperationSetting = () => {
     'monitor_setting.auto_test_channel_enabled': false,
     'monitor_setting.auto_test_only_auto_disabled': false,
     'monitor_setting.channel_test_mode': 'scheduled_all',
-    'monitor_setting.auto_test_channel_minutes': 10 /* 签到设置 */,
+    'monitor_setting.channel_test_concurrency': 1,
+    'monitor_setting.auto_test_channel_minutes': 10,
     'monitor_setting.auto_test_channel_time_range': '00:00-23:59',
+    /* 签到设置 */
     'checkin_setting.enabled': false,
     'checkin_setting.min_quota': 1000,
     'checkin_setting.max_quota': 10000,

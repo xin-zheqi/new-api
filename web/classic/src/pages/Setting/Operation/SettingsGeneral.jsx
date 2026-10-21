@@ -93,6 +93,11 @@ export default function GeneralSettings(props) {
           if (res.includes(undefined))
             return showError(t('部分保存失败，请重试'));
         }
+        // Policy validation also applies to the original option endpoint.
+        const failed = res.find((response) => !response?.data?.success);
+        if (failed) {
+          return showError(failed.data?.message || t('部分保存失败，请重试'));
+        }
         showSuccess(t('保存成功'));
         props.refresh();
       })

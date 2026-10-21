@@ -375,6 +375,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	}
 
 	accumulator := service.NewResponsesUsageAccumulator(info)
+	reasoningRepair := relaycommon.NewResponsesReasoningRepair(info.ReasoningContentRepairActive)
 	info.StreamStatus = relaycommon.NewStreamStatus()
 	common.SetContextKey(c, appconstant.ContextKeyResponseStreamStatus, info.StreamStatus)
 	info.StreamStatus.RequireTerminal()
@@ -480,6 +481,13 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 					}
 				}
 				accumulator.Observe(&event.ResponsesStreamResponse, incoming.body)
+				// Each response has its own collector, even on a persistent socket.
+				// Preserve the original event for accounting and stream-state checks.
+				if reasoningRepair != nil {
+					if repaired, err := reasoningRepair.Repair(string(incoming.body)); err == nil {
+						incoming.body = []byte(repaired)
+					}
+				}
 			}
 			switch event.Type {
 			case "response.completed", "response.done", "response.incomplete", "response.failed", "response.cancelled", "response.canceled":

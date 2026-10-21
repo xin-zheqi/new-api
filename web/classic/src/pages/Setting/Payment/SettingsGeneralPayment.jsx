@@ -18,7 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Row, Spin, Typography } from '@douyinfe/semi-ui';
+import { Link } from 'react-router-dom';
 import {
   API,
   removeTrailingSlash,
@@ -33,7 +34,6 @@ import PaymentMethodSettingsEditor from './PaymentMethodSettingsEditor';
 
 function getGeneralPaymentInputs(options = {}) {
   return {
-    ServerAddress: options.ServerAddress || '',
     CustomCallbackAddress: options.CustomCallbackAddress || '',
     TopupGroupRatio: options.TopupGroupRatio || '',
     PayMethods: options.PayMethods || '',
@@ -157,14 +157,12 @@ export default function SettingsGeneralPayment(props) {
 
     setLoading(true);
     try {
-      const options = [
-        {
-          key: 'ServerAddress',
-          value: removeTrailingSlash(inputs.ServerAddress),
-        },
-      ];
+      // The site address is owned by System settings. A stale payment form
+      // must never overwrite it while saving unrelated payment options.
+      const options = [];
 
-      if (inputs.CustomCallbackAddress !== '') {
+      if (originInputs.CustomCallbackAddress !== inputs.CustomCallbackAddress) {
+        // An empty override restores the backend's ServerAddress fallback.
         options.push({
           key: 'CustomCallbackAddress',
           value: removeTrailingSlash(inputs.CustomCallbackAddress),
@@ -251,15 +249,19 @@ export default function SettingsGeneralPayment(props) {
         getFormApi={(api) => (formApiRef.current = api)}
       >
         <Form.Section text={sectionTitle}>
-          <Form.Input
-            field='ServerAddress'
-            label={t('服务器地址')}
-            placeholder={'https://yourdomain.com'}
-            style={{ width: '100%' }}
-            extraText={t(
-              '该服务器地址将影响支付回调地址以及默认首页展示的地址，请确保正确配置',
-            )}
-          />
+          <Form.Slot label={t('服务器地址')}>
+            <div className='flex flex-wrap items-center gap-x-4 gap-y-1'>
+              <Typography.Text type='tertiary' className='break-all'>
+                {props.options?.ServerAddress || '—'}
+              </Typography.Text>
+              <Link
+                className='text-semi-color-link hover:underline'
+                to='/console/setting?tab=system'
+              >
+                {t('系统设置')}
+              </Link>
+            </div>
+          </Form.Slot>
           <Row style={{ marginTop: 16 }}>
             <Col span={24}>
               <Form.Switch
@@ -311,6 +313,8 @@ export default function SettingsGeneralPayment(props) {
             <Col xs={24} sm={24} md={12} lg={12} xl={12}>
               <Form.Input
                 field='CustomCallbackAddress'
+                // Keep clearing in onValueChange; omitted fields retain draft values.
+                allowEmptyString
                 label={t('回调地址')}
                 placeholder={t('例如：https://yourdomain.com')}
                 extraText={t(

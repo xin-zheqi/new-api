@@ -42,6 +42,7 @@ import {
 import {
   CHANNEL_OPTIONS,
   MODEL_FETCHABLE_CHANNEL_TYPES,
+  BALANCE_QUERY_CHANNEL_TYPES,
 } from '../../../constants';
 import { parseUpstreamUpdateMeta } from '../../../hooks/channels/upstreamUpdateUtils';
 import {
@@ -528,6 +529,21 @@ export const getChannelsColumns = ({
       dataIndex: 'expired_time',
       render: (text, record, index) => {
         if (record.children === undefined) {
+          const isCodex = record.type === 57;
+          const supported = BALANCE_QUERY_CHANNEL_TYPES.has(record.type);
+          const multiKey = record.channel_info?.is_multi_key === true;
+          const disabled = !isCodex && (!supported || multiKey);
+          let balanceLabel = renderQuotaWithAmount(record.balance);
+          let balanceHelp = `${t('剩余额度')}: ${balanceLabel}${t('，点击更新')}`;
+          if (isCodex) {
+            balanceLabel = t('帐号信息');
+            balanceHelp = t('查看 Codex 帐号信息与用量');
+          } else if (disabled) {
+            balanceLabel = '—';
+            balanceHelp = multiKey
+              ? t('Multi-key channels do not support balance queries.')
+              : t('Balance queries are not supported for this channel type.');
+          }
           return (
             <div>
               <Space spacing={1}>
@@ -536,27 +552,24 @@ export const getChannelsColumns = ({
                     {renderQuota(record.used_quota)}
                   </Tag>
                 </Tooltip>
-                <Tooltip
-                  content={
-                    record.type === 57
-                      ? t('查看 Codex 帐号信息与用量')
-                      : t('剩余额度') +
-                        ': ' +
-                        renderQuotaWithAmount(record.balance) +
-                        t('，点击更新')
-                  }
-                >
-                  <Tag
-                    color={record.type === 57 ? 'light-blue' : 'white'}
-                    type={record.type === 57 ? 'light' : 'ghost'}
-                    shape='circle'
-                    className={record.type === 57 ? 'cursor-pointer' : ''}
-                    onClick={() => updateChannelBalance(record)}
-                  >
-                    {record.type === 57
-                      ? t('帐号信息')
-                      : renderQuotaWithAmount(record.balance)}
-                  </Tag>
+                <Tooltip content={balanceHelp}>
+                  <span className='inline-flex'>
+                    <button
+                      type='button'
+                      disabled={disabled}
+                      aria-label={isCodex ? t('帐号信息') : t('余额查询')}
+                      className={disabled ? 'cursor-default' : 'cursor-pointer'}
+                      onClick={() => updateChannelBalance(record)}
+                    >
+                      <Tag
+                        color={isCodex ? 'light-blue' : 'white'}
+                        type={isCodex ? 'light' : 'ghost'}
+                        shape='circle'
+                      >
+                        {balanceLabel}
+                      </Tag>
+                    </button>
+                  </span>
                 </Tooltip>
               </Space>
             </div>
@@ -727,6 +740,18 @@ export const getChannelsColumns = ({
             },
           ];
 
+          // Keep the query discoverable even when the balance column is hidden.
+          if (
+            (record.type === 59 || record.type === 60) &&
+            !record.channel_info?.is_multi_key
+          ) {
+            moreMenuItems.unshift({
+              node: 'item',
+              name: t('余额查询'),
+              onClick: () => updateChannelBalance(record),
+            });
+          }
+
           if (upstreamUpdateMeta.supported) {
             moreMenuItems.push({
               node: 'item',
@@ -865,7 +890,12 @@ export const getChannelsColumns = ({
                 position='bottomRight'
                 menu={moreMenuItems}
               >
-                <Button icon={<IconMore />} type='tertiary' size='small' />
+                <Button
+                  icon={<IconMore />}
+                  aria-label={t('更多')}
+                  type='tertiary'
+                  size='small'
+                />
               </Dropdown>
             </Space>
           );

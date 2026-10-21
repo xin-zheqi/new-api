@@ -45,10 +45,17 @@ import ChannelsActions from '../ChannelsActions';
 
 // Exercise the existing balance cell, batch controls and data hook together.
 // Only HTTP is replaced; New API and Sub2API share the existing channel UI path.
-function BalanceControls() {
+function BalanceControls({ hideBalance = false }) {
   const data = useChannelsData();
-  const balanceColumn = getChannelsColumns(data).find(
+  const columns = getChannelsColumns(data);
+  const balanceColumn = columns.find(
     (column) => column.key === data.COLUMN_KEYS.BALANCE,
+  );
+  const typeColumn = columns.find(
+    (column) => column.key === data.COLUMN_KEYS.TYPE,
+  );
+  const actionColumn = columns.find(
+    (column) => column.key === data.COLUMN_KEYS.OPERATE,
   );
   const channels = data.channels.flatMap((channel) =>
     channel.children === undefined ? [channel] : channel.children,
@@ -58,7 +65,10 @@ function BalanceControls() {
       <ChannelsActions {...data} />
       {channels.map((channel) => (
         <article key={channel.id} aria-label={channel.name}>
-          {balanceColumn.render(undefined, channel)}
+          {typeColumn.render(channel.type, channel)}
+          {hideBalance
+            ? actionColumn.render(undefined, channel)
+            : balanceColumn.render(undefined, channel)}
         </article>
       ))}
     </>
@@ -186,6 +196,34 @@ describe.each([
     ).not.toBeInTheDocument();
   });
 
+  test('the channel type is named and a visible balance query button refreshes it', async () => {
+    render(<BalanceControls />);
+    const channel = within(
+      await screen.findByRole('article', { name: `${name} fixture` }),
+    );
+    expect(channel.getByText(name)).toBeInTheDocument();
+    fireEvent.click(channel.getByRole('button', { name: '余额查询' }));
+    expect(await channel.findByText('$2.50')).toBeInTheDocument();
+    expect(API.get).toHaveBeenCalledWith(
+      `/api/channel/update_balance/${type}/`,
+    );
+  });
+
+  test('the more menu can query balance when its table column is hidden', async () => {
+    render(<BalanceControls hideBalance />);
+    const channel = within(
+      await screen.findByRole('article', { name: `${name} fixture` }),
+    );
+    fireEvent.click(channel.getByRole('button', { name: '更多' }));
+    fireEvent.click(await screen.findByText('余额查询'));
+    expect(
+      await screen.findByText(`通道 ${name} fixture 余额更新成功！`),
+    ).toBeInTheDocument();
+    expect(API.get).toHaveBeenCalledWith(
+      `/api/channel/update_balance/${type}/`,
+    );
+  });
+
   test('confirming the classic batch balance action calls the shared updater and shows completion', async () => {
     render(<BalanceControls />);
     await screen.findByRole('article', { name: `${name} fixture` });
@@ -205,3 +243,27 @@ describe.each([
     expect(API.get).toHaveBeenCalledWith('/api/channel/update_balance');
   });
 });
+
+test.each([
+  { type: 14, channel_info: {} },
+  { type: 24, channel_info: {} },
+  { type: 3, channel_info: {} },
+  { type: 60, channel_info: { is_multi_key: true } },
+])(
+  'unsupported or multi-key balance controls do not issue a query ($type)',
+  (record) => {
+    const updateChannelBalance = vi.fn();
+    const column = getChannelsColumns({
+      t: (key) => key,
+      COLUMN_KEYS: { BALANCE: 'balance' },
+      updateChannelBalance,
+    }).find((column) => column.key === 'balance');
+    render(column.render(undefined, { ...record, balance: 0, used_quota: 0 }));
+    const query = screen.getByRole('button', { name: '余额查询' });
+    expect(query).toBeDisabled();
+    expect(query).toHaveTextContent('—');
+    fireEvent.click(query);
+    expect(updateChannelBalance).not.toHaveBeenCalled();
+    cleanup();
+  },
+);

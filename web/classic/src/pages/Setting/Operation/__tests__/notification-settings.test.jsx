@@ -28,6 +28,7 @@ import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { MemoryRouter } from 'react-router-dom';
 import { API } from '../../../../helpers/api';
 import { StatusContext } from '../../../../context/Status';
 import SettingsMonitoring from '../SettingsMonitoring';
@@ -46,29 +47,34 @@ test('classic site reminder switch saves false and refreshes the personal-settin
   const dispatch = vi.fn();
   const refresh = vi.fn();
   vi.spyOn(API, 'put').mockResolvedValue({ data: { success: true } });
+  vi.spyOn(API, 'patch').mockResolvedValue({ data: { success: true } });
   vi.spyOn(API, 'get').mockResolvedValue({
     data: { success: true, data: { quota_remind_enabled: false } },
   });
   render(
-    <StatusContext.Provider value={[{ status: {} }, dispatch]}>
-      <SettingsMonitoring
-        refresh={refresh}
-        options={{
-          QuotaRemindEnabled: true,
-          QuotaRemindThreshold: '100',
-          AutomaticDisableStatusCodes: '401',
-          AutomaticRetryStatusCodes: '500',
-          'monitor_setting.auto_test_channel_time_range': '00:00-23:59',
-        }}
-      />
-    </StatusContext.Provider>,
+    <MemoryRouter>
+      <StatusContext.Provider value={[{ status: {} }, dispatch]}>
+        <SettingsMonitoring
+          refresh={refresh}
+          options={{
+            QuotaRemindEnabled: true,
+            QuotaRemindThreshold: '100',
+            // Saving reminders must preserve newer modes in the same old form.
+            'monitor_setting.channel_test_mode': 'auto_ban_only',
+          }}
+        />
+      </StatusContext.Provider>
+    </MemoryRouter>,
   );
+  expect(
+    screen.getByText('Test automatically disabled channels'),
+  ).toBeVisible();
   fireEvent.click(
     await screen.findByRole('switch', {
       name: 'Site-wide low balance reminders',
     }),
   );
-  fireEvent.click(screen.getByRole('button'));
+  fireEvent.click(screen.getByRole('button', { name: '保存监控设置' }));
   await waitFor(() =>
     expect(API.put).toHaveBeenCalledWith('/api/option/', {
       key: 'QuotaRemindEnabled',
@@ -82,4 +88,6 @@ test('classic site reminder switch saves false and refreshes the personal-settin
     }),
   );
   expect(refresh).toHaveBeenCalled();
+  expect(API.put).toHaveBeenCalledTimes(1);
+  expect(API.patch).not.toHaveBeenCalled();
 });

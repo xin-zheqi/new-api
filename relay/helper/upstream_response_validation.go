@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 )
@@ -106,6 +107,9 @@ func ValidateUpstreamTextPayload(body []byte) *types.NewAPIError {
 	}
 	var payload any
 	if err := common.Unmarshal(body, &payload); err == nil {
+		if failure := responsesFailureBeforeOutput(payload); failure != nil {
+			return failure
+		}
 		if hasExplicitResponseError(payload) || hasSubstantiveResponse(payload) || hasPositiveResponseOutputUsage(payload) {
 			return nil
 		}
@@ -127,6 +131,9 @@ func ValidateUpstreamTextPayload(body []byte) *types.NewAPIError {
 			return nil
 		}
 		parsedDocument = true
+		if failure := responsesFailureBeforeOutput(payload); failure != nil {
+			return failure
+		}
 		if hasExplicitResponseError(payload) || hasSubstantiveResponse(payload) || hasPositiveResponseOutputUsage(payload) {
 			return nil
 		}
@@ -233,6 +240,13 @@ func validateUpstreamTextStream(resp *http.Response, info *relaycommon.RelayInfo
 				restorePrefixedResponseBody(resp, &prefix, reader, originalBody)
 				return nil
 			}
+			if failure := responsesFailureBeforeOutput(value); failure != nil {
+				// No buffered event has reached the client. Return the original
+				// protocol failure to the normal error-log/retry path instead of
+				// forwarding an HTTP 200 stream that has already failed.
+				_ = originalBody.Close()
+				return failure
+			}
 			if hasExplicitResponseError(value) {
 				restorePrefixedResponseBody(resp, &prefix, reader, originalBody)
 				return nil
@@ -306,6 +320,94 @@ func isTerminalResponseEvent(value any) bool {
 	return done
 }
 
+// responsesFailureBeforeOutput bridges explicit Responses failures carried by
+// HTTP 200 to the existing relay retry policy. It does not reinterpret provider
+// safety results, incomplete/cancelled responses, or arbitrary nested "error"
+// fields. Callers still honor RejectEmptyResponse and the controller's written
+// response/client cancellation guards; this function never initiates a retry.
+func responsesFailureBeforeOutput(value any) *types.NewAPIError {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	eventType, _ := object["type"].(string)
+	response := object
+	switch eventType {
+	case "response.failed", "response.error":
+		if nested, ok := object["response"].(map[string]any); ok {
+			response = nested
+		}
+	case "error":
+		// Responses error events have flat code/message fields. Other
+		// providers' nested error envelopes remain their adaptor's concern.
+		if _, ok := object["code"].(string); !ok {
+			return nil
+		}
+	case "":
+		if object["object"] != "response" || object["status"] != "failed" {
+			return nil
+		}
+	default:
+		return nil
+	}
+	// A terminal failure can include partial text, completed tools, or billed
+	// output. Preserve that response and its existing settlement path rather
+	// than replaying work that may already have produced side effects.
+	if hasSubstantiveResponse(value) || hasPositiveResponseOutputUsage(value) {
+		return nil
+	}
+	upstreamError := dto.GetOpenAIError(response["error"])
+	if upstreamError == nil {
+		upstreamError = &types.OpenAIError{}
+		upstreamError.Code = object["code"]
+		upstreamError.Message, _ = object["message"].(string)
+		upstreamError.Param, _ = object["param"].(string)
+	}
+	code, isStringCode := upstreamError.Code.(string)
+	if strings.HasPrefix(code, "channel:") {
+		// This prefix belongs to local channel-selection errors, which have
+		// special retry rules. Never promote an upstream-supplied code into
+		// that namespace; retain the existing adaptor handling instead.
+		return nil
+	}
+	classification := strings.ToLower(strings.TrimSpace(code))
+	if upstreamError.Code == nil || isStringCode && classification == "" {
+		classification = strings.ToLower(strings.TrimSpace(upstreamError.Type))
+	}
+	if upstreamError.Code == nil || isStringCode && strings.TrimSpace(code) == "" {
+		upstreamError.Code = "response_failed"
+	}
+	if strings.TrimSpace(upstreamError.Message) == "" {
+		upstreamError.Message = "upstream Responses request failed"
+	}
+	status := http.StatusBadGateway
+	var options []types.NewAPIErrorOptions
+	switch classification {
+	case "upstream_error", "server_error", "internal_error", "internal_server_error", "bad_gateway":
+		// HTTP 200 describes the transport, not the failed generation. Use a
+		// gateway error so configured retry status ranges can make the decision.
+	case "overloaded_error", "service_unavailable":
+		status = http.StatusServiceUnavailable
+	case "rate_limit_exceeded", "rate_limit_error":
+		status = http.StatusTooManyRequests
+	case "timeout", "request_timeout", "gateway_timeout":
+		status = http.StatusGatewayTimeout
+	case "invalid_api_key", "authentication_error":
+		status = http.StatusUnauthorized
+	case "permission_denied", "permission_error":
+		status = http.StatusForbidden
+	case "invalid_request_error", "invalid_request", "invalid_argument", "context_length_exceeded",
+		"content_filter", "content_policy_violation", "safety_violation", "cyber_policy":
+		status = http.StatusBadRequest
+		options = append(options, types.ErrOptionWithSkipRetry())
+	default:
+		// Unknown failures are recorded with their original details, but do
+		// not guess that retrying the same request is appropriate.
+		options = append(options, types.ErrOptionWithSkipRetry())
+	}
+	return types.WithOpenAIError(*upstreamError, status, options...)
+}
+
 func hasExplicitResponseError(value any) bool {
 	switch typed := value.(type) {
 	case []any:
@@ -317,7 +419,7 @@ func hasExplicitResponseError(value any) bool {
 	case map[string]any:
 		eventType, _ := typed["type"].(string)
 		switch strings.ToLower(strings.TrimSpace(eventType)) {
-		case "error", "response.error", "response.failed", "response.incomplete", "response.cancelled":
+		case "error", "response.error", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
 			return true
 		}
 		for key, item := range typed {

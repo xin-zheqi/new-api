@@ -51,7 +51,6 @@ import PaymentSetting from '../../components/settings/PaymentSetting';
 import InvoiceSetting from '../../components/settings/InvoiceSetting';
 import ContentAuditSetting from '../../components/settings/ContentAuditSetting';
 import ModelDeploymentSetting from '../../components/settings/ModelDeploymentSetting';
-import RequestPolicySetting from './RequestPolicy';
 import PerformanceSetting from '../../components/settings/PerformanceSetting';
 
 const Setting = () => {
@@ -62,11 +61,6 @@ const Setting = () => {
   let panes = [];
 
   if (isRoot()) {
-    panes.push({
-      tab: t('Request policies'),
-      content: <RequestPolicySetting />,
-      itemKey: 'request-policies',
-    });
     panes.push({
       tab: (
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -213,9 +207,20 @@ const Setting = () => {
     navigate(`?tab=${key}`);
   };
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
+    const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
-    if (tab) {
+    if (tab === 'request-policies') {
+      // Previously shared policy URLs still open their original settings page.
+      const legacyTab = ['routing', 'affinity'].includes(
+        searchParams.get('policy'),
+      )
+        ? 'models'
+        : 'operation';
+      setTabActiveKey(legacyTab);
+      searchParams.set('tab', legacyTab);
+      searchParams.delete('policy');
+      navigate(`?${searchParams}`, { replace: true });
+    } else if (tab) {
       setTabActiveKey(tab);
     } else {
       onChangeTab('operation');

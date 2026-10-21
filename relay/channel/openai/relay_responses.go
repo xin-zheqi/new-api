@@ -70,6 +70,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	defer service.CloseResponseBodyGracefully(resp)
 
 	accumulator := service.NewResponsesUsageAccumulator(info)
+	reasoningRepair := relaycommon.NewResponsesReasoningRepair(info.ReasoningContentRepairActive)
 
 	scanErr := helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -81,6 +82,13 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			return
 		}
 		accumulator.Observe(&streamResponse, common.StringToByteSlice(data))
+		// Account from the original upstream event. Repair only the plaintext
+		// history returned to the client; usage and failure handling stay intact.
+		if repaired, err := reasoningRepair.Repair(data); err == nil {
+			data = repaired
+		} else {
+			logger.LogWarn(c, "reasoning content repair skipped: "+err.Error())
+		}
 		sendResponsesStreamData(c, streamResponse, data)
 	})
 	if scanErr != nil {

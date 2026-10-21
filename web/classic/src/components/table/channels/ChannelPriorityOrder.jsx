@@ -16,15 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import React, { useEffect, useRef, useState } from 'react';
-import { Banner, Button, Modal, Spin } from '@douyinfe/semi-ui';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { Banner, Button, Modal, Select, Spin } from '@douyinfe/semi-ui';
+import { GripVertical, RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { API } from '../../../helpers/api';
+import '../../../styles/channel-priority.css';
 
 // Always use the server's complete order. Sorting a filtered page locally would
 // accidentally assign priorities without considering channels on other pages.
 export function ChannelPriorityEditor({ channels = [], onSaved }) {
   const { t } = useTranslation();
+  const fieldId = useId();
   const [order, setOrder] = useState(null);
   const [preview, setPreview] = useState(null);
   const [undo, setUndo] = useState(null);
@@ -98,76 +101,94 @@ export function ChannelPriorityEditor({ channels = [], onSaved }) {
     );
   };
   const displayed = preview?.order ?? order;
+  const channelOptions =
+    order?.items.map((item) => ({
+      value: String(item.id),
+      label: name(item.id),
+    })) ?? [];
+  const controlsDisabled = busy || !!preview || !order?.items.length;
   return (
-    <div className='space-y-3'>
-      <p>
-        {t(
-          'Move channels into a priority tier or between tiers. Priority values update automatically.',
-        )}
-      </p>
-      <p>
-        {t(
-          'All channels are shown here; filters and pagination do not limit priority changes.',
-        )}
-      </p>
+    <div className='channel-priority-editor'>
+      <div className='channel-priority-description'>
+        <p>
+          {t(
+            'Move channels into a priority tier or between tiers. Priority values update automatically.',
+          )}
+        </p>
+        <p className='channel-priority-hint'>
+          {t(
+            'All channels are shown here; filters and pagination do not limit priority changes.',
+          )}
+        </p>
+      </div>
       {error && (
         <div>
           <Banner type='danger' description={t(error)} closeIcon={null} />
         </div>
       )}
-      {!order && !error && <Spin />}
+      {!order && !error && (
+        <div className='channel-priority-empty'>
+          <Spin />
+        </div>
+      )}
       {order && (
         <>
-          <fieldset
-            disabled={busy || !!preview}
-            className='flex flex-wrap gap-2'
-          >
-            <label>
-              {t('Channel')}
-              <select
-                aria-label={t('Channel')}
-                className='bg-transparent border rounded p-2'
-                value={moving}
-                onChange={(event) => setMoving(event.target.value)}
+          <div className='channel-priority-toolbar'>
+            <div className='channel-priority-field'>
+              <span
+                id={`${fieldId}-channel`}
+                className='channel-priority-label'
               >
-                <option value=''>{t('Select a channel')}</option>
-                {order.items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {name(item.id)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              {t('Position')}
-              <select
-                aria-label={t('Position')}
-                className='bg-transparent border rounded p-2'
+                {t('Channel')}
+              </span>
+              <Select
+                aria-labelledby={`${fieldId}-channel`}
+                placeholder={t('Select a channel')}
+                value={moving || undefined}
+                onChange={setMoving}
+                optionList={channelOptions}
+                disabled={controlsDisabled}
+                filter
+                ellipsisTrigger
+              />
+            </div>
+            <div className='channel-priority-field'>
+              <span
+                id={`${fieldId}-position`}
+                className='channel-priority-label'
+              >
+                {t('Position')}
+              </span>
+              <Select
+                aria-labelledby={`${fieldId}-position`}
                 value={position}
-                onChange={(event) => setPosition(event.target.value)}
-              >
-                <option value='before'>{t('Before')}</option>
-                <option value='same'>{t('Same priority')}</option>
-                <option value='after'>{t('After')}</option>
-              </select>
-            </label>
-            <label>
-              {t('Target channel')}
-              <select
-                aria-label={t('Target channel')}
-                className='bg-transparent border rounded p-2'
-                value={target}
-                onChange={(event) => setTarget(event.target.value)}
-              >
-                <option value=''>{t('Select a channel')}</option>
-                {order.items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {name(item.id)}
-                  </option>
-                ))}
-              </select>
-            </label>
+                onChange={setPosition}
+                optionList={[
+                  { value: 'before', label: t('Before') },
+                  { value: 'same', label: t('Same priority') },
+                  { value: 'after', label: t('After') },
+                ]}
+                disabled={controlsDisabled}
+                ellipsisTrigger
+              />
+            </div>
+            <div className='channel-priority-field'>
+              <span id={`${fieldId}-target`} className='channel-priority-label'>
+                {t('Target channel')}
+              </span>
+              <Select
+                aria-labelledby={`${fieldId}-target`}
+                placeholder={t('Select a channel')}
+                value={target || undefined}
+                onChange={setTarget}
+                optionList={channelOptions}
+                disabled={controlsDisabled}
+                filter
+                ellipsisTrigger
+              />
+            </div>
             <Button
+              type='tertiary'
               disabled={
                 busy || !!preview || !moving || !target || moving === target
               }
@@ -175,18 +196,20 @@ export function ChannelPriorityEditor({ channels = [], onSaved }) {
             >
               {t('Preview')}
             </Button>
-          </fieldset>
+          </div>
           <div
             role='region'
             aria-label={t('Channel priorities')}
             tabIndex={0}
-            className='overflow-auto max-h-96 border rounded'
+            className='channel-priority-list'
           >
-            <table className='w-full text-left'>
+            <table>
               <thead>
                 <tr>
-                  <th className='p-2'>{t('Channel')}</th>
-                  <th className='p-2'>{t('Priority')}</th>
+                  <th scope='col'>{t('Channel')}</th>
+                  <th scope='col' className='channel-priority-value'>
+                    {t('Priority')}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -203,84 +226,127 @@ export function ChannelPriorityEditor({ channels = [], onSaved }) {
                         event.currentTarget.getBoundingClientRect();
                       const fraction =
                         (event.clientY - bounds.top) / bounds.height;
-                      const relation =
-                        fraction < 0.25
-                          ? 'before'
-                          : fraction > 0.75
-                            ? 'after'
-                            : 'same';
+                      let relation = 'same';
+                      if (fraction < 0.25) relation = 'before';
+                      else if (fraction > 0.75) relation = 'after';
                       prepare(dragged.current, item.id, relation);
                       dragged.current = null;
                     }}
                   >
-                    <td className='p-2 break-all'>
-                      <button
-                        type='button'
-                        disabled={busy || !!preview}
-                        draggable={!busy && !preview}
-                        aria-label={`${t('Move channel')} ${name(item.id)}`}
-                        className='cursor-grab p-1 mr-2'
-                        onClick={() => setMoving(String(item.id))}
-                        onDragStart={(event) => {
-                          dragged.current = item.id;
-                          event.dataTransfer.setData(
-                            'text/plain',
-                            String(item.id),
-                          );
-                          event.dataTransfer.effectAllowed = 'move';
-                        }}
-                        onDragEnd={() => {
-                          dragged.current = null;
-                        }}
-                      >
-                        ↕
-                      </button>
-                      {name(item.id)}
+                    <td>
+                      <div className='channel-priority-channel'>
+                        <button
+                          type='button'
+                          disabled={busy || !!preview}
+                          draggable={!busy && !preview}
+                          aria-label={`${t('Move channel')} ${name(item.id)}`}
+                          className='channel-priority-handle'
+                          onClick={() => setMoving(String(item.id))}
+                          onDragStart={(event) => {
+                            dragged.current = item.id;
+                            event.dataTransfer.setData(
+                              'text/plain',
+                              String(item.id),
+                            );
+                            event.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => {
+                            dragged.current = null;
+                          }}
+                        >
+                          <GripVertical size={16} aria-hidden='true' />
+                        </button>
+                        <span
+                          className='channel-priority-name'
+                          title={name(item.id)}
+                        >
+                          {names.get(item.id) || `#${item.id}`}
+                        </span>
+                        {names.has(item.id) && (
+                          <span className='channel-priority-id'>
+                            #{item.id}
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className='p-2'>{item.priority ?? 0}</td>
+                    <td className='channel-priority-value'>
+                      <span
+                        className='channel-priority-number'
+                        title={String(item.priority ?? 0)}
+                      >
+                        {item.priority ?? 0}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {!displayed.items.length && <p>{t('No channels available')}</p>}
+            {!displayed.items.length && (
+              <div className='channel-priority-empty'>
+                {t('No channels available')}
+              </div>
+            )}
           </div>
-          {preview && (
-            <div role='status' className='space-y-2'>
-              <p>
-                {t('Priority changes')}: {preview.order.changes.length}
-              </p>
-              <ul>
-                {preview.order.changes.map((change) => (
-                  <li key={change.id}>
-                    {name(change.id)}: {change.previous ?? 0} →{' '}
-                    {change.priority ?? 0}
-                  </li>
-                ))}
-              </ul>
-              <Button loading={busy} onClick={() => void move(preview.payload)}>
-                {t('Save Changes')}
-              </Button>
-              <Button disabled={busy} onClick={() => setPreview(null)}>
-                {t('Cancel')}
-              </Button>
+          {(preview || undo) && (
+            <div className='channel-priority-footer'>
+              {preview && (
+                <div role='status' className='channel-priority-summary'>
+                  <p className='channel-priority-label'>
+                    {t('Priority changes')}: {preview.order.changes.length}
+                  </p>
+                  <ul className='channel-priority-changes'>
+                    {preview.order.changes.map((change) => (
+                      <li key={change.id}>
+                        {name(change.id)}: {change.previous ?? 0} →{' '}
+                        {change.priority ?? 0}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className='channel-priority-actions'>
+                {undo && (
+                  <Button
+                    theme='borderless'
+                    type='tertiary'
+                    className='channel-priority-undo'
+                    icon={<RotateCcw size={14} aria-hidden='true' />}
+                    disabled={busy || !!preview || !undo.changes.length}
+                    onClick={() =>
+                      void move({
+                        revision: undo.revision,
+                        restore: undo.changes.map((change) => ({
+                          id: change.id,
+                          previous: change.priority,
+                          priority: change.previous,
+                        })),
+                      })
+                    }
+                  >
+                    {t('Undo last move')}
+                  </Button>
+                )}
+                {preview && (
+                  <>
+                    <Button
+                      type='tertiary'
+                      disabled={busy}
+                      onClick={() => setPreview(null)}
+                    >
+                      {t('Cancel')}
+                    </Button>
+                    <Button
+                      theme='solid'
+                      loading={busy}
+                      disabled={busy}
+                      onClick={() => void move(preview.payload)}
+                    >
+                      {t('Save Changes')}
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
-          )}
-          {undo && (
-            <Button
-              disabled={busy || !!preview || !undo.changes.length}
-              onClick={() =>
-                void move({
-                  revision: undo.revision,
-                  restore: undo.changes.map((change) => ({
-                    id: change.id,
-                    previous: change.priority,
-                    priority: change.previous,
-                  })),
-                })
-              }
-            >
-              {t('Undo last move')}
-            </Button>
           )}
         </>
       )}

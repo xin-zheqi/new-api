@@ -262,6 +262,7 @@ export const channelFormSchema = z
     // Channel extra settings (stored in setting JSON, not sent directly)
     force_format: z.boolean().optional(),
     thinking_to_content: z.boolean().optional(),
+    reasoning_content_repair: z.boolean().optional(),
     proxy: z
       .string()
       .optional()
@@ -455,6 +456,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   // Channel extra settings
   force_format: false,
   thinking_to_content: false,
+  reasoning_content_repair: false,
   proxy: '',
   http_protocol: HTTP_PROTOCOL_AUTO,
   http2_connection_shards: 1,
@@ -504,6 +506,7 @@ export function transformChannelToFormDefaults(
     task_plugin_key: '',
     force_format: false,
     thinking_to_content: false,
+    reasoning_content_repair: false,
     proxy: '',
     http_protocol: HTTP_PROTOCOL_AUTO as 'auto' | 'http1',
     http2_connection_shards: 1,
@@ -527,6 +530,7 @@ export function transformChannelToFormDefaults(
         task_plugin_key: parsed.task_plugin_key || '',
         force_format: parsed.force_format || false,
         thinking_to_content: parsed.thinking_to_content || false,
+        reasoning_content_repair: parsed.reasoning_content_repair === true,
         proxy: parsed.proxy || '',
         http_protocol: protocol,
         http2_connection_shards: protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
@@ -674,6 +678,7 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
         : undefined,
     force_format: formData.force_format || false,
     thinking_to_content: formData.thinking_to_content || false,
+    reasoning_content_repair: formData.reasoning_content_repair || false,
     proxy: formData.proxy?.trim() || '',
     pass_through_body_enabled: formData.pass_through_body_enabled || false,
     responses_websocket_enabled:

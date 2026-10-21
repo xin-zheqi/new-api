@@ -23,6 +23,16 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: {
+      // Use router ESM entries so Vite's React aliases also apply to its hooks.
+      'react-router-dom': path.resolve(
+        'node_modules/react-router-dom/dist/index.mjs',
+      ),
+      'react-router/dom': path.resolve(
+        'node_modules/react-router/dist/development/dom-export.mjs',
+      ),
+      'react-router': path.resolve(
+        'node_modules/react-router/dist/development/index.mjs',
+      ),
       react: path.resolve('../node_modules/react'),
       'react-dom': path.resolve('../node_modules/react-dom'),
     },
@@ -39,6 +49,9 @@ export default defineConfig({
           '@douyinfe/semi-ui',
           '@douyinfe/semi-foundation',
           'react-i18next',
+          'react-router-dom',
+          'react-router',
+          '@lobehub/icons',
         ],
       },
     },

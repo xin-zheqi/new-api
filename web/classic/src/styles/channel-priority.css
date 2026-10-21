@@ -1,0 +1,204 @@
+.channel-priority-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* This modal has no footer; retain the same breathing room as its sides. */
+  padding-bottom: 24px;
+  color: var(--semi-color-text-0);
+}
+
+.channel-priority-description {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--semi-color-text-1);
+  line-height: 20px;
+}
+
+.channel-priority-hint,
+.channel-priority-label {
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.channel-priority-toolbar {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr) minmax(110px, 0.65fr) minmax(0, 1fr)
+    auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.channel-priority-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.channel-priority-field .semi-select {
+  width: 100%;
+}
+
+.channel-priority-list {
+  overflow: auto;
+  max-height: 384px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background-color: var(--semi-color-bg-2);
+}
+
+.channel-priority-list table {
+  width: 100%;
+  table-layout: fixed;
+  text-align: left;
+}
+
+.channel-priority-list th {
+  padding: 10px 12px;
+  color: var(--semi-color-text-2);
+  background-color: var(--semi-color-fill-0);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.channel-priority-list th:first-child {
+  padding-left: 48px;
+}
+
+.channel-priority-list td {
+  padding: 8px 12px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.channel-priority-list tbody tr:hover {
+  background-color: var(--semi-color-fill-0);
+}
+
+.channel-priority-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  height: 28px;
+  color: var(--semi-color-text-2);
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.channel-priority-handle:not(:disabled):hover {
+  color: var(--semi-color-text-0);
+  background-color: var(--semi-color-fill-1);
+}
+
+.channel-priority-handle:active {
+  cursor: grabbing;
+}
+
+.channel-priority-handle:focus-visible {
+  outline: 2px solid var(--semi-color-focus-border);
+  outline-offset: 2px;
+}
+
+.channel-priority-handle:disabled {
+  color: var(--semi-color-disabled-text);
+  cursor: not-allowed;
+}
+
+.channel-priority-channel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.channel-priority-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-priority-id {
+  flex-shrink: 0;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}
+
+.channel-priority-list .channel-priority-value {
+  width: 100px;
+  text-align: right;
+}
+
+.channel-priority-number {
+  display: inline-block;
+  min-width: 36px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background-color: var(--semi-color-fill-0);
+  color: var(--semi-color-text-1);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.channel-priority-empty {
+  padding: 32px 16px;
+  color: var(--semi-color-text-2);
+  text-align: center;
+}
+
+.channel-priority-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.channel-priority-changes {
+  max-height: 128px;
+  overflow: auto;
+  margin-top: 8px;
+  color: var(--semi-color-text-1);
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+
+.channel-priority-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.channel-priority-undo {
+  margin-right: auto;
+}
+
+@media (max-width: 600px) {
+  .channel-priority-toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .channel-priority-toolbar > .semi-button {
+    justify-self: end;
+  }
+
+  .channel-priority-list .channel-priority-value {
+    width: 80px;
+  }
+
+  .channel-priority-channel {
+    gap: 8px;
+  }
+
+  .channel-priority-list th:first-child {
+    padding-left: 44px;
+  }
+}

@@ -39,39 +39,26 @@ export default function SettingsSensitiveWords(props) {
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
 
-  function onSubmit() {
+  async function onSubmit() {
     const updateArray = compareObjects(inputs, inputsRow);
     if (!updateArray.length) return showWarning(t('你似乎并没有修改什么'));
-    const requestQueue = updateArray.map((item) => {
-      let value = '';
-      if (typeof inputs[item.key] === 'boolean') {
-        value = String(inputs[item.key]);
-      } else {
-        value = inputs[item.key];
-      }
-      return API.put('/api/option/', {
-        key: item.key,
-        value,
-      });
-    });
+    const options = Object.fromEntries(
+      updateArray.map(({ key }) => [key, String(inputs[key] ?? '')]),
+    );
     setLoading(true);
-    Promise.all(requestQueue)
-      .then((res) => {
-        if (requestQueue.length === 1) {
-          if (res.includes(undefined)) return;
-        } else if (requestQueue.length > 1) {
-          if (res.includes(undefined))
-            return showError(t('部分保存失败，请重试'));
-        }
-        showSuccess(t('保存成功'));
-        props.refresh();
-      })
-      .catch(() => {
-        showError(t('保存失败，请重试'));
-      })
-      .finally(() => {
-        setLoading(false);
+    try {
+      // Preserve the original controls while publishing filters as one policy.
+      const { data } = await API.patch('/api/option/request_policy', {
+        options,
       });
+      if (!data.success) throw new Error(data.message || t('保存失败，请重试'));
+      showSuccess(t('保存成功'));
+      await props.refresh();
+    } catch (error) {
+      showError(error.message || t('保存失败，请重试'));
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -145,7 +132,12 @@ export default function SettingsSensitiveWords(props) {
               </Col>
             </Row>
             <Row>
-              <Button size='default' onClick={onSubmit}>
+              <Button
+                size='default'
+                onClick={onSubmit}
+                loading={loading}
+                disabled={loading}
+              >
                 {t('保存屏蔽词过滤设置')}
               </Button>
             </Row>

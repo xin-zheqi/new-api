@@ -492,13 +492,14 @@ func TestValidateUpstreamTextResponseStream(t *testing.T) {
 		assert.Equal(t, validStream, string(preserved))
 	})
 
-	t.Run("preserves explicit stream errors for the adaptor", func(t *testing.T) {
+	t.Run("returns explicit Responses failure before downstream write", func(t *testing.T) {
 		resp := emptyResponseTestHTTPResponse(errorStream, "text/event-stream")
 		err := ValidateUpstreamTextResponse(resp, emptyResponseTestInfo(true, true))
-		require.Nil(t, err)
-		preserved, readErr := io.ReadAll(resp.Body)
-		require.NoError(t, readErr)
-		assert.Equal(t, errorStream, string(preserved))
+		require.NotNil(t, err)
+		assert.Equal(t, types.ErrorCode("server_error"), err.GetErrorCode())
+		assert.Equal(t, "try later", err.Error())
+		assert.Equal(t, http.StatusBadGateway, err.StatusCode)
+		assert.False(t, types.IsSkipRetryError(err))
 	})
 
 	t.Run("preserves unknown stream formats for the adaptor", func(t *testing.T) {

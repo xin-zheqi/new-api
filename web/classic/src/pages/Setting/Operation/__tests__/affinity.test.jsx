@@ -31,7 +31,7 @@ import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { API } from '../../../../helpers/api';
-import SettingsChannelAffinity from '../../Operation/SettingsChannelAffinity';
+import SettingsChannelAffinity from '../SettingsChannelAffinity';
 
 beforeAll(() =>
   i18next

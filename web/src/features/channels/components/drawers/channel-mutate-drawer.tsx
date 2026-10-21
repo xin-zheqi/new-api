@@ -189,6 +189,7 @@ import { ParamOverrideEditorDialog } from '../dialogs/param-override-editor-dial
 import { StatusCodeRiskDialog } from '../dialogs/status-code-risk-dialog'
 import { ModelMappingEditor } from '../model-mapping-editor'
 import { ResponsesWebSocketSetting } from '../responses-websocket-setting'
+import { ReasoningContentRepairSetting } from '../reasoning-content-repair-setting'
 import {
   ChannelAdvancedSection,
   ChannelApiAccessSection,
@@ -290,6 +291,7 @@ const SENSITIVE_FORM_FIELDS = [
   'azure_responses_version',
   'force_format',
   'thinking_to_content',
+  'reasoning_content_repair',
   'proxy',
   'http_protocol',
   'http2_connection_shards',
@@ -350,6 +352,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.system_prompt?.trim() ||
     values.force_format ||
     values.thinking_to_content ||
+    values.reasoning_content_repair ||
     values.pass_through_body_enabled ||
     values.disable_image_generation ||
     values.strip_image_generation_tool ||
@@ -764,6 +767,7 @@ export function ChannelMutateDrawer({
   const currentHeaderOverride = form.watch('header_override')
   const currentForceFormat = form.watch('force_format')
   const currentThinkingToContent = form.watch('thinking_to_content')
+  const currentReasoningContentRepair = form.watch('reasoning_content_repair')
   const currentPassThroughBodyEnabled = form.watch('pass_through_body_enabled')
   const currentRejectEmptyResponse = form.watch('reject_empty_response')
   const currentDisableTaskPollingSleep = form.watch(
@@ -1048,6 +1052,7 @@ export function ChannelMutateDrawer({
   const extraSettingsConfigured = Boolean(
     currentForceFormat ||
     currentThinkingToContent ||
+    currentReasoningContentRepair ||
     currentPassThroughBodyEnabled ||
     currentRejectEmptyResponse ||
     currentDisableTaskPollingSleep ||
@@ -4233,6 +4238,10 @@ export function ChannelMutateDrawer({
                                     </FormControl>
                                   </FormItem>
                                 )}
+                              />
+
+                              <ReasoningContentRepairSetting
+                                disabled={sensitiveLocked}
                               />
 
                               <FormField

@@ -424,6 +424,9 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		adminInfo := make(map[string]interface{})
 		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
 		if relayInfo != nil {
+			if mismatch := relayInfo.ResponseModelMismatch(); mismatch != nil {
+				adminInfo["response_model_mismatch"] = mismatch
+			}
 			if diagnostics := relayInfo.ConversionDiagnostics(); len(diagnostics) > 0 {
 				adminInfo["conversion_diagnostics"] = diagnostics
 			}

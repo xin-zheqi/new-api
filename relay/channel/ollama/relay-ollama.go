@@ -317,6 +317,7 @@ func ollamaEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	if err = common.Unmarshal(body, &oResp); err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseJSON(body)
 	if oResp.Error != "" {
 		return nil, types.NewOpenAIError(fmt.Errorf("ollama error: %s", oResp.Error), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
@@ -325,7 +326,7 @@ func ollamaEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		data = append(data, dto.OpenAIEmbeddingResponseItem{Index: i, Object: "embedding", Embedding: emb})
 	}
 	usage := &dto.Usage{PromptTokens: oResp.PromptEvalCount, CompletionTokens: 0, TotalTokens: oResp.PromptEvalCount}
-	embResp := &dto.OpenAIEmbeddingResponse{Object: "list", Data: data, Model: info.UpstreamModelName, Usage: *usage}
+	embResp := &dto.OpenAIEmbeddingResponse{Object: "list", Data: data, Model: relaycommon.ClientResponseModel(info, info.UpstreamModelName), Usage: *usage}
 	out, _ := common.Marshal(embResp)
 	service.IOCopyBytesGracefully(c, resp, out)
 	return usage, nil

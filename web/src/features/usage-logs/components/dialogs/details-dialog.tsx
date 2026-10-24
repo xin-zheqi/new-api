@@ -68,6 +68,7 @@ import {
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 import { PluginAuthorLink } from '../plugin-author-link'
+import { ResponseModelMismatch } from '../response-model-mismatch'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -1204,6 +1205,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           </DetailSection>
         )}
+
+        <ResponseModelMismatch
+          isAdmin={props.isAdmin}
+          mismatch={other?.admin_info?.response_model_mismatch}
+          expanded
+        />
 
         {/* Token breakdown (for consume/error types with token data) */}
         {isDisplayableType(props.log.type) && other && (

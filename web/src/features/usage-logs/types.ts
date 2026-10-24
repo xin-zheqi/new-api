@@ -126,6 +126,11 @@ export interface LogOtherData {
   status_code_rewritten?: boolean
   error_message_rewritten?: boolean
   admin_info?: {
+    response_model_mismatch?: {
+      requested_model: string
+      response_models: string[]
+      truncated?: boolean
+    }
     request_policy?: PolicyEvent[]
     is_multi_key?: boolean
     multi_key_index?: number

@@ -151,6 +151,7 @@ func handleTTSResponse(c *gin.Context, resp *http.Response, info *relaycommon.Re
 			http.StatusInternalServerError,
 		)
 	}
+	info.ObserveUpstreamResponseJSON(body)
 	defer resp.Body.Close()
 
 	var volcResp VolcengineTTSResponse

@@ -35,7 +35,9 @@ func SensitiveWordsFromString(s string) {
 }
 
 func ShouldCheckPromptSensitive() bool {
-	return CheckSensitiveEnabled && CheckSensitiveOnPromptEnabled
+	// An empty dictionary cannot match anything. Skip prompt extraction too;
+	// token estimation, when enabled, still builds its own required metadata.
+	return CheckSensitiveEnabled && CheckSensitiveOnPromptEnabled && len(SensitiveWords) > 0
 }
 
 //func ShouldCheckCompletionSensitive() bool {

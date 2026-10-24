@@ -145,7 +145,7 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	helper.SetEventStreamHeaders(c)
 	scanner := helper.NewStreamScanner(resp.Body)
 	usage := &dto.Usage{}
-	var model = info.UpstreamModelName
+	var model = relaycommon.ClientResponseModel(info, info.UpstreamModelName)
 	var responseId = common.GetUUID()
 	var created = time.Now().Unix()
 	var toolCallIndex int
@@ -165,8 +165,9 @@ func ollamaStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			logger.LogError(c, "ollama stream json decode error: "+err.Error()+" line="+line)
 			return usage, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
+		info.ObserveUpstreamResponseModel(chunk.Model)
 		if chunk.Model != "" {
-			model = chunk.Model
+			model = relaycommon.ClientResponseModel(info, chunk.Model)
 		}
 		created = toUnix(chunk.CreatedAt)
 
@@ -307,9 +308,10 @@ func ollamaChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 		}
 	}
 
-	model := lastChunk.Model
+	info.ObserveUpstreamResponseModel(lastChunk.Model)
+	model := relaycommon.ClientResponseModel(info, lastChunk.Model)
 	if model == "" {
-		model = info.UpstreamModelName
+		model = relaycommon.ClientResponseModel(info, info.UpstreamModelName)
 	}
 	created := toUnix(lastChunk.CreatedAt)
 	usage := &dto.Usage{PromptTokens: lastChunk.PromptEvalCount, CompletionTokens: lastChunk.EvalCount, TotalTokens: lastChunk.PromptEvalCount + lastChunk.EvalCount}

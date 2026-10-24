@@ -44,6 +44,7 @@ import { useTableCompactMode } from '../common/useTableCompactMode';
 import ToolSurchargeDetails from '../../components/table/usage-logs/components/ToolSurchargeDetails';
 import PolicyDecisionRecord from '../../components/table/usage-logs/components/PolicyDecisionRecord';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
+import ResponseModelMismatch from '../../components/table/usage-logs/components/ResponseModelMismatch';
 
 function renderStructuredLogContent(other, fallback, t) {
   const op = other?.op;
@@ -405,6 +406,19 @@ export const useLogsData = () => {
         t,
       );
       let expandDataLocal = [];
+
+      if (isAdminUser && other?.admin_info?.response_model_mismatch) {
+        expandDataLocal.push({
+          key: t('Response model mismatch'),
+          value: (
+            <ResponseModelMismatch
+              isAdmin={isAdminUser}
+              mismatch={other.admin_info.response_model_mismatch}
+              expanded
+            />
+          ),
+        });
+      }
 
       if (
         isAdminUser &&

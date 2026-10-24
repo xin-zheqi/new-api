@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-func auditServiceFixture(t *testing.T, action string) {
+func auditServiceFixture(t testing.TB, action string) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "audit.db")), &gorm.Config{})
 	require.NoError(t, err)
@@ -102,6 +102,35 @@ func TestAuditBlockReturns403AndDoesNotModifyBody(t *testing.T) {
 	assert.Equal(t, 403, err.StatusCode)
 	assert.Contains(t, err.Error(), "命中自定义敏感内容")
 }
+
+func TestAuditMissPreservesBodyWithoutCreatingRecord(t *testing.T) {
+	auditServiceFixture(t, "replace")
+	body := `{ "model":"public-model", "input":[{"role":"user","content":"ordinary request"}], "metadata":{"precise":9007199254740993} }`
+	c := auditContext(strings.NewReader(body))
+	defer common.CleanupBodyStorage(c)
+	require.Nil(t, AuditRelayContent(c))
+	storage, err := common.GetBodyStorage(c)
+	require.NoError(t, err)
+	actual, err := storage.Bytes()
+	require.NoError(t, err)
+	assert.Equal(t, body, string(actual))
+	assert.Empty(t, c.Writer.Header().Get("X-Content-Audit-Action"))
+	assert.True(t, c.GetBool("content_audit_completed"))
+	_, total, err := model.ListContentAuditRecords(context.Background(), 7, model.ContentAuditFilter{Page: 1, PageSize: 20})
+	require.NoError(t, err)
+	assert.Zero(t, total)
+}
+
+func TestAuditEmptyRulesDoNotReadOrValidateRequestBody(t *testing.T) {
+	auditServiceFixture(t, "warn")
+	require.NoError(t, model.SaveContentAuditPolicy(context.Background(), 7, contentaudit.Policy{Enabled: true}))
+	c := auditContext(strings.NewReader("not JSON"))
+	defer common.CleanupBodyStorage(c)
+	require.Nil(t, AuditRelayContent(c))
+	body, err := io.ReadAll(c.Request.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "not JSON", string(body), "empty rules must leave the body for the ordinary protocol validator")
+}
 func TestMultipartReplacementDoesNotRewriteSameNamedFile(t *testing.T) {
 	auditServiceFixture(t, "replace")
 	var body bytes.Buffer
@@ -135,4 +164,19 @@ func TestAuditRetentionHardDeletesExpiredRowsWhileDisabled(t *testing.T) {
 	var count int64
 	require.NoError(t, model.DB.Unscoped().Model(&model.ContentAuditRecord{}).Count(&count).Error)
 	assert.Zero(t, count)
+}
+
+func BenchmarkContentAuditMiss(b *testing.B) {
+	auditServiceFixture(b, "warn")
+	body := `{"model":"public-model","input":[{"role":"user","content":"` + strings.Repeat("Review this ordinary source code. ", 8192) + `"}]}`
+	b.SetBytes(int64(len(body)))
+	b.ReportAllocs()
+	for b.Loop() {
+		c := auditContext(strings.NewReader(body))
+		err := AuditRelayContent(c)
+		common.CleanupBodyStorage(c)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
 }

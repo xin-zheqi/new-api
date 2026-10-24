@@ -55,6 +55,7 @@ func jimengImageHandler(c *gin.Context, resp *http.Response, info *relaycommon.R
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 	service.CloseResponseBodyGracefully(resp)
 
 	err = json.Unmarshal(responseBody, &jimengResponse)

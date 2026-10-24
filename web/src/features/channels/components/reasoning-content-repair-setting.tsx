@@ -44,7 +44,7 @@ export function ReasoningContentRepairSetting(props: { disabled?: boolean }) {
             <FormLabel>{t('Restore reasoning content')}</FormLabel>
             <FormDescription>
               {t(
-                'Restore available reasoning text for thinking-enabled Chat/Responses requests. Does not invent missing history; body passthrough skips repair.'
+                'Restore available reasoning and fix Responses history format. DeepSeek thinking with tools uses a missing-history notice when needed. Existing content is preserved; body passthrough skips repair.'
               )}
             </FormDescription>
           </div>

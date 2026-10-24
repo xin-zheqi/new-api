@@ -84,6 +84,7 @@ export interface ChannelSettings {
   force_format?: boolean
   thinking_to_content?: boolean
   reasoning_content_repair?: boolean
+  tool_output_repair?: boolean
   proxy?: string
   pass_through_body_enabled?: boolean
   responses_websocket_enabled?: boolean

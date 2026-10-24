@@ -6,6 +6,22 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
+// NewChannelJSONBody applies provider schema compatibility and opt-in history
+// repairs after conversion and parameter overrides. Passthrough callers keep
+// their original body; none of these transformations mutate retry input.
+func NewChannelJSONBody(data []byte, info *RelayInfo) (common.ReplayableBody, io.Closer, error) {
+	data = NormalizeDeepSeekSchemas(data, info)
+	data, err := RepairReasoningRequest(data, info)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err = RepairToolOutputRequest(data, info)
+	if err != nil {
+		return nil, nil, err
+	}
+	return NewOutboundJSONBody(data)
+}
+
 // NewOutboundJSONBody wraps the already-marshaled upstream request body into a
 // BodyStorage. When disk cache is enabled and the payload exceeds the configured
 // threshold, the data is written to a temp file and the original []byte can be

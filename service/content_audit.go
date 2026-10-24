@@ -104,18 +104,22 @@ func AuditRelayContent(c *gin.Context) *types.NewAPIError {
 		}
 		return auditError("invalid JSON content for content audit", http.StatusBadRequest)
 	}
-	var metadata struct {
-		Model string `json:"model"`
-	}
-	_ = common.Unmarshal(body, &metadata)
-	if metadata.Model == "" {
-		metadata.Model = c.GetString("original_model")
-	}
-	if metadata.Model == "" {
-		metadata.Model = c.Param("model")
-	}
-	if apiErr := recordContentAuditResult(c, result, metadata.Model); apiErr != nil {
-		return apiErr
+	// Only matched requests produce an audit record. Avoid decoding the whole
+	// conversation a second time just to obtain unused log metadata on a miss.
+	if result.Count != 0 {
+		var metadata struct {
+			Model string `json:"model"`
+		}
+		_ = common.Unmarshal(body, &metadata)
+		if metadata.Model == "" {
+			metadata.Model = c.GetString("original_model")
+		}
+		if metadata.Model == "" {
+			metadata.Model = c.Param("model")
+		}
+		if apiErr := recordContentAuditResult(c, result, metadata.Model); apiErr != nil {
+			return apiErr
+		}
 	}
 	if !bytes.Equal(updated, body) {
 		if err := replaceAuditedBody(c, updated); err != nil {

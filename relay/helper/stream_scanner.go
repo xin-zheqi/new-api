@@ -247,6 +247,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 				ExtendWriteDeadline(c)
 				// 真正要写第一条数据给客户端之前准备 SSE headers
 				prepareHeaders()
+				// Capture the provider's metadata before callbacks convert or
+				// normalize it. Delta text and tool payloads are never inspected.
+				info.ObserveUpstreamResponseJSON(common.StringToByteSlice(data))
 				dataHandler(data, sr)
 				markStreamStarted()
 			}()

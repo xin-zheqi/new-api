@@ -14,9 +14,12 @@ type ChannelSettings struct {
 	TaskPluginKey     string `json:"task_plugin_key,omitempty"`
 	ForceFormat       bool   `json:"force_format,omitempty"`
 	ThinkingToContent bool   `json:"thinking_to_content,omitempty"`
-	// ReasoningContentRepair restores only available plaintext reasoning; it
-	// never synthesizes missing history or changes signed/encrypted thinking.
-	ReasoningContentRepair      bool   `json:"reasoning_content_repair,omitempty"`
+	// ReasoningContentRepair preserves available reasoning, normalizes Responses
+	// history, and marks missing DeepSeek thinking history when tools are used.
+	ReasoningContentRepair bool `json:"reasoning_content_repair,omitempty"`
+	// ToolOutputRepair repairs explicit Responses tool history only. Missing
+	// results are marked unavailable, never executed or reported as successful.
+	ToolOutputRepair            bool   `json:"tool_output_repair,omitempty"`
 	Proxy                       string `json:"proxy"`
 	PassThroughBodyEnabled      bool   `json:"pass_through_body_enabled,omitempty"`
 	ResponsesWebSocketEnabled   bool   `json:"responses_websocket_enabled,omitempty"`

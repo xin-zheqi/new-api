@@ -25,6 +25,7 @@ func GeminiTextGenerationHandler(c *gin.Context, info *relaycommon.RelayInfo, re
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 
 	logger.LogDebug(c, "Gemini native response body: %s", responseBody)
 
@@ -38,6 +39,11 @@ func GeminiTextGenerationHandler(c *gin.Context, info *relaycommon.RelayInfo, re
 	grounding.observe(&geminiResponse)
 	grounding.commit(info)
 	countGeminiBillableFunctionCalls(info, &geminiResponse)
+	if patched, patchErr := relaycommon.RewriteResponseModel(info, responseBody); patchErr == nil {
+		responseBody = patched
+	} else {
+		logger.LogWarn(c, "failed to normalize response model: "+patchErr.Error())
+	}
 
 	if len(geminiResponse.Candidates) == 0 && geminiResponse.PromptFeedback != nil && geminiResponse.PromptFeedback.BlockReason != nil {
 		common.SetContextKey(c, constant.ContextKeyAdminRejectReason, fmt.Sprintf("gemini_block_reason=%s", *geminiResponse.PromptFeedback.BlockReason))
@@ -58,6 +64,7 @@ func NativeGeminiEmbeddingHandler(c *gin.Context, resp *http.Response, info *rel
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 
 	logger.LogDebug(c, "Gemini native embedding response body: %s", responseBody)
 
@@ -76,6 +83,11 @@ func NativeGeminiEmbeddingHandler(c *gin.Context, resp *http.Response, info *rel
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
 	}
+	if patched, patchErr := relaycommon.RewriteResponseModel(info, responseBody); patchErr == nil {
+		responseBody = patched
+	} else {
+		logger.LogWarn(c, "failed to normalize response model: "+patchErr.Error())
+	}
 
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
@@ -86,6 +98,11 @@ func GeminiTextGenerationStreamHandler(c *gin.Context, info *relaycommon.RelayIn
 	helper.SetEventStreamHeaders(c)
 
 	return geminiStreamHandler(c, info, resp, func(data string, geminiResponse *dto.GeminiChatResponse) bool {
+		if patched, patchErr := relaycommon.RewriteResponseModel(info, common.StringToByteSlice(data)); patchErr == nil {
+			data = string(patched)
+		} else {
+			logger.LogWarn(c, "failed to normalize response model: "+patchErr.Error())
+		}
 		err := helper.StringData(c, data)
 		if err != nil {
 			logger.LogError(c, "failed to write stream data: "+err.Error())

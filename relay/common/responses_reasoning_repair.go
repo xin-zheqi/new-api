@@ -128,7 +128,7 @@ func (r *ResponsesReasoningRepair) Repair(data string) (string, error) {
 			return data, nil
 		}
 		content, err := r.finalContent(int(index.Int()), root.Get("item"))
-		if err != nil || content == "" || !missingReasoning(root.Get("item.content")) {
+		if err != nil || content == "" || !missingReasoningText(root.Get("item.content")) {
 			return data, err
 		}
 		return sjson.SetRaw(data, "item.content", content)
@@ -140,7 +140,7 @@ func (r *ResponsesReasoningRepair) Repair(data string) (string, error) {
 		if !outputs.IsArray() {
 			return data, nil
 		}
-		var patches []reasoningJSONPatch
+		var patches []jsonTextPatch
 		var repairErr error
 		outputs.ForEach(func(index, item gjson.Result) bool {
 			raw := item.Raw
@@ -149,19 +149,19 @@ func (r *ResponsesReasoningRepair) Repair(data string) (string, error) {
 				repairErr = err
 				return false
 			}
-			if content != "" && missingReasoning(item.Get("content")) {
+			if content != "" && missingReasoningText(item.Get("content")) {
 				raw, repairErr = sjson.SetRaw(raw, "content", content)
 				if repairErr != nil {
 					return false
 				}
-				patches = append(patches, reasoningJSONPatch{start: item.Index, end: item.Index + len(item.Raw), value: raw})
+				patches = append(patches, jsonTextPatch{start: item.Index, end: item.Index + len(item.Raw), value: raw})
 			}
 			return true
 		})
 		if repairErr != nil || len(patches) == 0 {
 			return data, repairErr
 		}
-		return applyReasoningPatches(data, patches), nil
+		return applyJSONTextPatches(data, patches), nil
 	}
 	return data, nil
 }
@@ -215,7 +215,7 @@ func (r *ResponsesReasoningRepair) finalContent(index int, raw gjson.Result) (st
 		item.blocked, item.parts, item.content = true, nil, ""
 		return "", nil
 	}
-	if content := raw.Get("content"); !missingReasoning(content) {
+	if content := raw.Get("content"); !missingReasoningText(content) {
 		plain := content.IsArray()
 		content.ForEach(func(_, part gjson.Result) bool {
 			plain = plain && part.Get("type").String() == "reasoning_text" && part.Get("text").Type == gjson.String && !protectedReasoning(part)
@@ -239,7 +239,7 @@ func (r *ResponsesReasoningRepair) finalContent(index int, raw gjson.Result) (st
 	parts := make([]reasoningTextPart, len(item.parts))
 	for i := range parts {
 		part := item.parts[i]
-		if part == nil || part.Len() == 0 {
+		if part == nil || strings.TrimSpace(part.String()) == "" {
 			return "", nil
 		}
 		parts[i] = reasoningTextPart{Type: "reasoning_text", Text: part.String()}
@@ -250,28 +250,4 @@ func (r *ResponsesReasoningRepair) finalContent(index int, raw gjson.Result) (st
 	}
 	item.content, item.parts = string(encoded), nil
 	return item.content, nil
-}
-
-type reasoningJSONPatch struct {
-	start, end int
-	value      string
-}
-
-// Patches arrive in array order. Rebuild once, instead of copying a potentially
-// large conversation for each repaired item; unchanged JSON stays verbatim.
-func applyReasoningPatches(data string, patches []reasoningJSONPatch) string {
-	size := len(data)
-	for _, patch := range patches {
-		size += len(patch.value) - (patch.end - patch.start)
-	}
-	var out strings.Builder
-	out.Grow(size)
-	last := 0
-	for _, patch := range patches {
-		out.WriteString(data[last:patch.start])
-		out.WriteString(patch.value)
-		last = patch.end
-	}
-	out.WriteString(data[last:])
-	return out.String()
 }

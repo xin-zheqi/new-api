@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -79,9 +80,66 @@ func PrepareResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, req *d
 	}
 
 	logger.LogDebug(c, "requestBody: %s", jsonData)
-	body, closer, err := relaycommon.NewReasoningAwareJSONBody(jsonData, info)
+	body, closer, err := relaycommon.NewChannelJSONBody(jsonData, info)
 	if err != nil {
 		return nil, nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 	return adaptor, body, closer, nil
+}
+
+// doResponsesRequest performs one targeted retry for a provider validation
+// error that names a missing Responses tool output. The normal request path
+// remains one network call; this branch only runs when the provider explicitly
+// confirms the missing output and the channel opted into tool repair.
+func doResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, adaptor relaychannel.Adaptor, requestBody io.Reader) (any, error) {
+	response, err := adaptor.DoRequest(c, info, requestBody)
+	if err != nil {
+		return nil, err
+	}
+	httpResponse, ok := response.(*http.Response)
+	if !ok || httpResponse == nil || httpResponse.StatusCode < http.StatusBadRequest || httpResponse.StatusCode >= http.StatusInternalServerError {
+		return response, nil
+	}
+	if info == nil || info.ChannelMeta == nil || !info.ChannelSetting.ToolOutputRepair ||
+		info.ChannelSetting.PassThroughBodyEnabled || info.GetFinalRequestRelayFormat() != types.RelayFormatOpenAIResponses {
+		return response, nil
+	}
+	replayable, ok := requestBody.(common.ReplayableBody)
+	if !ok {
+		return response, nil
+	}
+	if httpResponse.Body == nil {
+		return response, nil
+	}
+	errorBody, readErr := io.ReadAll(httpResponse.Body)
+	_ = httpResponse.Body.Close()
+	if readErr != nil {
+		httpResponse.Body = io.NopCloser(bytes.NewReader(errorBody))
+		return response, nil
+	}
+	requestReader, readerErr := replayable.NewReader()
+	if readerErr != nil {
+		httpResponse.Body = io.NopCloser(bytes.NewReader(errorBody))
+		return response, nil
+	}
+	originalRequest, requestReadErr := io.ReadAll(requestReader)
+	_ = requestReader.Close()
+	if requestReadErr != nil {
+		httpResponse.Body = io.NopCloser(bytes.NewReader(errorBody))
+		return response, nil
+	}
+	repairedRequest, repaired, repairErr := relaycommon.RepairToolOutputFromUpstreamError(originalRequest, errorBody, info)
+	if repairErr != nil {
+		return nil, repairErr
+	}
+	if repaired == 0 {
+		httpResponse.Body = io.NopCloser(bytes.NewReader(errorBody))
+		return response, nil
+	}
+	retryBody, retryCloser, bodyErr := relaycommon.NewOutboundJSONBody(repairedRequest)
+	if bodyErr != nil {
+		return nil, bodyErr
+	}
+	defer retryCloser.Close()
+	return adaptor.DoRequest(c, info, retryBody)
 }

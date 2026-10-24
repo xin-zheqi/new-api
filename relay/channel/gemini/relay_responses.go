@@ -31,6 +31,7 @@ func GeminiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	if err := common.Unmarshal(responseBody, &geminiResponse); err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 	var grounding geminiGroundingCounter
 	grounding.observe(&geminiResponse)
 	grounding.commit(info)
@@ -66,7 +67,7 @@ func GeminiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 	if responseID := helper.GetResponseID(c); responseID != "" {
 		responsesResp.ID = responseID
 	}
-	responsesResp.Model = info.UpstreamModelName
+	responsesResp.Model = relaycommon.ClientResponseModel(info, responsesResp.Model)
 	responsesResp.Usage = relayconvert.UsageFromChatUsage(&usage)
 
 	responseBody, err = common.Marshal(responsesResp)
@@ -82,7 +83,7 @@ func GeminiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, r
 	created := common.GetTimestamp()
 	state, err := relayconvert.NewResponseStreamState(types.RelayFormatGemini, types.RelayFormatOpenAIResponses, relayconvert.ResponseStreamOptions{
 		ID:                 responseID,
-		Model:              info.UpstreamModelName,
+		Model:              relaycommon.ClientResponseModel(info, info.UpstreamModelName),
 		Created:            created,
 		EmitSequenceNumber: true,
 	})

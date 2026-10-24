@@ -37,6 +37,7 @@ func RerankHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayI
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError), nil
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 	service.CloseResponseBodyGracefully(resp)
 
 	var aliResponse AliRerankResponse

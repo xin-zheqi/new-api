@@ -102,6 +102,24 @@ func TestChatCompletionsRequestToResponsesRequestPreservesPromptCacheKey(t *test
 	})
 }
 
+func TestChatCompletionsRequestToResponsesRequestPreservesCacheRetention(t *testing.T) {
+	for _, retention := range []string{"", `"in_memory"`, `"24h"`} {
+		t.Run(retention, func(t *testing.T) {
+			req := &dto.GeneralOpenAIRequest{
+				Model: "gpt-test", Messages: []dto.Message{{Role: "user", Content: "hello"}},
+				PromptCacheKey: "stable-session", PromptCacheRetention: json.RawMessage(retention),
+			}
+			got, err := ChatCompletionsRequestToResponsesRequest(req)
+			require.NoError(t, err)
+			encoded, err := kitutil.Marshal(got)
+			require.NoError(t, err)
+			assert.Equal(t, retention, gjson.GetBytes(encoded, "prompt_cache_retention").Raw)
+			assert.Equal(t, "stable-session", gjson.GetBytes(encoded, "prompt_cache_key").String())
+			assert.Equal(t, retention, string(req.PromptCacheRetention))
+		})
+	}
+}
+
 func TestChatCompletionsRequestToResponsesRequestPreservesQwenThinkingBudget(t *testing.T) {
 	tests := []struct {
 		name   string

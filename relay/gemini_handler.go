@@ -117,7 +117,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 		logger.LogDebug(c, "Gemini request body: %s", jsonData)
 
-		body, closer, err := relaycommon.NewReasoningAwareJSONBody(jsonData, info)
+		body, closer, err := relaycommon.NewChannelJSONBody(jsonData, info)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
@@ -229,7 +229,7 @@ func GeminiEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo) (newAPI
 		}
 	}
 	logger.LogDebug(c, "Gemini embedding request body: %s", jsonData)
-	body, closer, err := relaycommon.NewReasoningAwareJSONBody(jsonData, info)
+	body, closer, err := relaycommon.NewChannelJSONBody(jsonData, info)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}

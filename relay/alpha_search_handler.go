@@ -1,12 +1,13 @@
 package relay
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
-	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -16,13 +17,17 @@ import (
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 )
 
 func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 
 	switch info.ChannelType {
-	case constant.ChannelTypeSub2API,
+	// OpenAI-compatible gateways may expose this endpoint as well. Keep the
+	// raw search protocol instead of converting it into a chat request.
+	case constant.ChannelTypeOpenAI,
+		constant.ChannelTypeSub2API,
 		constant.ChannelTypeNewAPI,
 		constant.ChannelTypeCodex,
 		constant.ChannelTypeAdvancedCustom:
@@ -92,11 +97,22 @@ func AlphaSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError
 		return newAPIError
 	}
 
+	var responseBody io.Reader = httpResp.Body
+	if strings.Contains(httpResp.Header.Get("Content-Type"), "application/json") {
+		data, err := io.ReadAll(httpResp.Body)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeReadResponseBodyFailed, types.ErrOptionWithSkipRetry())
+		}
+		if patched, err := relaycommon.RewriteResponseModel(info, data); err == nil {
+			data = patched
+		}
+		responseBody = bytes.NewReader(data)
+	}
 	if contentType := httpResp.Header.Get("Content-Type"); contentType != "" {
 		c.Writer.Header().Set("Content-Type", contentType)
 	}
 	c.Writer.WriteHeader(httpResp.StatusCode)
-	if _, err := io.Copy(c.Writer, httpResp.Body); err != nil {
+	if _, err := io.Copy(c.Writer, responseBody); err != nil {
 		return types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 
@@ -118,10 +134,7 @@ func buildAlphaSearchRequestBody(rawBody []byte, originModel, upstreamModel stri
 	if upstreamModel == "" || upstreamModel == originModel {
 		return rawBody, nil
 	}
-	var body map[string]any
-	if err := common.Unmarshal(rawBody, &body); err != nil {
-		return nil, err
-	}
-	body["model"] = upstreamModel
-	return common.Marshal(body)
+	// Patch only the routing field; decoding arbitrary extensions into
+	// interface{} would round large JSON numbers through float64.
+	return sjson.SetBytes(rawBody, "model", upstreamModel)
 }

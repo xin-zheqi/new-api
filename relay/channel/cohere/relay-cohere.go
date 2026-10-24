@@ -132,6 +132,7 @@ func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 				info.SetFirstResponseTime()
 				helper.SetEventStreamHeaders(c)
 			}
+			info.ObserveUpstreamResponseJSON(common.StringToByteSlice(data))
 			var cohereResp CohereResponse
 			err := common.Unmarshal([]byte(data), &cohereResp)
 			if err != nil {
@@ -142,7 +143,7 @@ func cohereStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			openaiResp.Id = responseId
 			openaiResp.Created = createdTime
 			openaiResp.Object = "chat.completion.chunk"
-			openaiResp.Model = info.UpstreamModelName
+			openaiResp.Model = relaycommon.ClientResponseModel(info, info.UpstreamModelName)
 			if cohereResp.IsFinished {
 				finishReason := stopReasonCohere2OpenAI(cohereResp.FinishReason)
 				openaiResp.Choices = []dto.ChatCompletionsStreamResponseChoice{
@@ -200,6 +201,7 @@ func cohereHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 	service.CloseResponseBodyGracefully(resp)
 	var cohereResp CohereResponseResult
 	err = common.Unmarshal(responseBody, &cohereResp)
@@ -215,7 +217,7 @@ func cohereHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	openaiResp.Id = cohereResp.ResponseId
 	openaiResp.Created = createdTime
 	openaiResp.Object = "chat.completion"
-	openaiResp.Model = info.UpstreamModelName
+	openaiResp.Model = relaycommon.ClientResponseModel(info, info.UpstreamModelName)
 	openaiResp.Usage = usage
 
 	openaiResp.Choices = []dto.OpenAITextResponseChoice{
@@ -241,6 +243,7 @@ func cohereRerankHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 	service.CloseResponseBodyGracefully(resp)
 	var cohereResp CohereRerankResponseResult
 	err = common.Unmarshal(responseBody, &cohereResp)

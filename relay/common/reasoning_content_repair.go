@@ -1,7 +1,6 @@
 package common
 
 import (
-	"io"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,20 +10,10 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-// NewReasoningAwareJSONBody runs after conversion and parameter overrides.
-// Passthrough paths deliberately keep using the original replayable body.
-func NewReasoningAwareJSONBody(data []byte, info *RelayInfo) (common.ReplayableBody, io.Closer, error) {
-	data, err := RepairReasoningRequest(data, info)
-	if err != nil {
-		return nil, nil, err
-	}
-	return NewOutboundJSONBody(data)
-}
-
-// RepairReasoningRequest normalizes genuine reasoning aliases on the same
-// history item. It never borrows user/tool text, answers, summaries, or another
-// turn's reasoning. Raw JSON patches preserve unknown provider fields, and
-// never modify the incoming byte slice reused by retries.
+// RepairReasoningRequest preserves genuine reasoning and repairs replayed
+// history on opt-in channels. DeepSeek's missing-history fallback is an explicit
+// diagnostic, never text borrowed from answers, tools, or another turn.
+// Raw patches preserve unknown fields and the original body used by retries.
 func RepairReasoningRequest(data []byte, info *RelayInfo) ([]byte, error) {
 	if info == nil {
 		return data, nil
@@ -38,10 +27,11 @@ func RepairReasoningRequest(data []byte, info *RelayInfo) ([]byte, error) {
 		return data, nil // Native Claude/Gemini signatures must remain untouched.
 	}
 	root := gjson.ParseBytes(data)
-	if !reasoningRepairEnabled(root, info.ChannelType) {
+	thinking := reasoningRepairEnabled(root, info.ChannelType)
+	if !thinking && format != types.RelayFormatOpenAIResponses {
 		return data, nil
 	}
-	info.ReasoningContentRepairActive = true
+	info.ReasoningContentRepairActive = thinking
 	path := "messages"
 	if format == types.RelayFormatOpenAIResponses {
 		path = "input"
@@ -50,56 +40,72 @@ func RepairReasoningRequest(data []byte, info *RelayInfo) ([]byte, error) {
 	if !items.IsArray() {
 		return data, nil
 	}
-	var patches []reasoningJSONPatch
-	used := 0
+	var patches []jsonTextPatch
+	used, count := 0, 0
 	var repairErr error
 	items.ForEach(func(_, item gjson.Result) bool {
-		if len(patches) >= maxReasoningRepairItems {
+		count++
+		if count > 4096 || len(patches) >= maxReasoningRepairItems {
 			return false
-		}
-		if protectedReasoning(item) {
-			return true
 		}
 		field := "reasoning_content"
 		eligible := item.Get("role").String() == "assistant"
 		if format == types.RelayFormatOpenAIResponses {
 			field, eligible = "content", item.Get("type").String() == "reasoning"
 		}
-		if !eligible || !missingReasoning(item.Get(field)) {
+		if !eligible {
 			return true
 		}
+		raw := item.Raw
 		alias := item.Get("reasoning")
 		if format == types.RelayFormatOpenAIResponses {
 			alias = item.Get("reasoning_content")
-			if alias.Type != gjson.String || alias.String() == "" {
+			if alias.Type != gjson.String || strings.TrimSpace(alias.String()) == "" {
 				alias = item.Get("reasoning_text")
 			}
 		}
-		if alias.Type != gjson.String || strings.TrimSpace(alias.String()) == "" || len(alias.String()) > maxReasoningRepairBytes-used {
-			return true
+		if thinking && !protectedReasoning(item) && missingReasoningText(item.Get(field)) && alias.Type == gjson.String && strings.TrimSpace(alias.String()) != "" && len(alias.String()) <= maxReasoningRepairBytes-used {
+			used += len(alias.String())
+			raw, repairErr = setReasoningPlaintext(item, field, alias.String())
+		} else if format == types.RelayFormatOpenAIResponses && !item.Get("summary").IsArray() && !item.Get("content").IsArray() && missingReasoning(item.Get("summary")) && missingReasoning(item.Get("content")) {
+			// Replayed Responses items require summary or content even when the
+			// next turn disables thinking. An empty summary changes no thought
+			// or ciphertext, and avoids sending an invalid bare reasoning item.
+			raw, repairErr = sjson.SetRaw(raw, "summary", "[]")
 		}
-		used += len(alias.String())
-		var value any = alias.String()
-		if format == types.RelayFormatOpenAIResponses {
-			value = []reasoningTextPart{{Type: "reasoning_text", Text: alias.String()}}
-		}
-		encoded, err := common.Marshal(value)
-		if err != nil {
-			repairErr = err
+		if repairErr != nil {
 			return false
 		}
-		raw, err := sjson.SetRaw(item.Raw, field, string(encoded))
-		if err != nil {
-			repairErr = err
-			return false
+		if raw != item.Raw {
+			patches = append(patches, jsonTextPatch{start: item.Index, end: item.Index + len(item.Raw), value: raw})
 		}
-		patches = append(patches, reasoningJSONPatch{start: item.Index, end: item.Index + len(item.Raw), value: raw})
 		return true
 	})
-	if repairErr != nil || len(patches) == 0 {
+	if repairErr != nil {
 		return data, repairErr
 	}
-	return []byte(applyReasoningPatches(string(data), patches)), nil
+	if len(patches) > 0 {
+		data = []byte(applyJSONTextPatches(string(data), patches))
+		root = gjson.ParseBytes(data)
+	}
+	model := strings.ToLower(root.Get("model").String())
+	deepSeek := info.ChannelType == constant.ChannelTypeDeepSeek || strings.HasPrefix(model, "deepseek-") || strings.HasPrefix(model, "deepseek/") || strings.HasPrefix(model, "deepseek-ai/deepseek-")
+	if thinking && deepSeek {
+		// A Responses client may omit the current tools declaration while still
+		// replaying assistant/tool history (for example after a ZCode/Sub2API
+		// conversion). DeepSeek validates the replayed reasoning independently of
+		// that declaration, so let the history scanner decide whether a local
+		// batch actually needs a placeholder. The scanner is a no-op for a new
+		// user-only request and never invents a turn on its own.
+		// DeepSeek's native Responses endpoint ignores stateful parameters.
+		// Repair explicit local history even if a client also sent those fields;
+		// compatible gateways may implement them, so retain their original guard.
+		stateful := root.Get("previous_response_id").String() != "" || root.Get("conversation").Type != gjson.Null
+		if !stateful || info.ChannelType == constant.ChannelTypeDeepSeek {
+			return repairDeepSeekReasoningHistory(data, root, format)
+		}
+	}
+	return data, nil
 }
 
 // Explicit disabling always wins, including overrides applied by a channel.
@@ -127,11 +133,54 @@ func reasoningRepairEnabled(root gjson.Result, channelType int) bool {
 	}
 	model := root.Get("model").String()
 	return enabled || channelType == constant.ChannelTypeDeepSeek &&
-		(model == "deepseek-reasoner" || strings.HasPrefix(model, "deepseek-v4"))
+		(model == "deepseek-reasoner" || model == "deepseek-flash" || strings.HasPrefix(model, "deepseek-v4"))
 }
 
 func missingReasoning(value gjson.Result) bool {
 	return !value.Exists() || value.Type == gjson.Null || value.Type == gjson.String && value.String() == "" || value.IsArray() && value.Get("#").Int() == 0
+}
+
+// A populated content array can still contain no plaintext. Only recognize
+// empty, unsigned reasoning_text parts: unknown/signed content must survive.
+// Keep this separate from missingReasoning, which also protects opaque fields.
+func missingReasoningText(value gjson.Result) bool {
+	if missingReasoning(value) {
+		return true
+	}
+	if value.Type == gjson.String {
+		return strings.TrimSpace(value.String()) == ""
+	}
+	if !value.IsArray() {
+		return false
+	}
+	empty, count := true, 0
+	value.ForEach(func(_, part gjson.Result) bool {
+		count++
+		text := part.Get("text")
+		empty = count <= maxReasoningRepairParts && part.Get("type").String() == "reasoning_text" &&
+			!protectedReasoning(part) && (text.Type == gjson.Null || text.Type == gjson.String && strings.TrimSpace(text.String()) == "")
+		return empty
+	})
+	return empty
+}
+
+// Preserve metadata and empty companion parts when filling an existing block.
+// The caller has already checked that no genuine/signed plaintext is replaced.
+func setReasoningPlaintext(item gjson.Result, field, text string) (string, error) {
+	var value any = text
+	path := field
+	if field == "content" {
+		if item.Get("content").IsArray() && item.Get("content.0").Exists() {
+			path = "content.0.text"
+		} else {
+			value = []reasoningTextPart{{Type: "reasoning_text", Text: text}}
+		}
+	}
+	encoded, err := common.Marshal(value)
+	if err != nil {
+		return item.Raw, err
+	}
+	return sjson.SetRaw(item.Raw, path, string(encoded))
 }
 
 func protectedReasoning(item gjson.Result) bool {

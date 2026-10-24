@@ -174,7 +174,7 @@ func handleLastResponse(lastStreamData string, responseId *string, createAt *int
 	*responseId = lastStreamResponse.Id
 	*createAt = lastStreamResponse.Created
 	*systemFingerprint = lastStreamResponse.GetSystemFingerprint()
-	*model = lastStreamResponse.Model
+	*model = relaycommon.ClientResponseModel(info, lastStreamResponse.Model)
 
 	if service.ValidUsage(lastStreamResponse.Usage) {
 		*containStreamUsage = true
@@ -208,6 +208,7 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 			common.SysLog("error unmarshalling stream response: " + err.Error())
 			return
 		}
+		streamResponse.Model = relaycommon.ClientResponseModel(info, streamResponse.Model)
 
 		info.ClaudeConvertInfo.Usage = usage
 
@@ -232,6 +233,7 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 			common.SysLog("error unmarshalling stream response: " + err.Error())
 			return
 		}
+		streamResponse.Model = relaycommon.ClientResponseModel(info, streamResponse.Model)
 
 		state, err := chatToGeminiStreamState(c, &streamResponse)
 		if err != nil {

@@ -215,6 +215,7 @@ const EditChannelModal = (props) => {
     force_format: false,
     thinking_to_content: false,
     reasoning_content_repair: false,
+    tool_output_repair: false,
     proxy: '',
     first_response_timeout_seconds: 30,
     first_response_timeout_auto_ban: false,
@@ -544,6 +545,7 @@ const EditChannelModal = (props) => {
     force_format: false,
     thinking_to_content: false,
     reasoning_content_repair: false,
+    tool_output_repair: false,
     proxy: '',
     first_response_timeout_seconds: 30,
     first_response_timeout_auto_ban: false,
@@ -899,6 +901,7 @@ const EditChannelModal = (props) => {
             parsedSettings.thinking_to_content || false;
           data.reasoning_content_repair =
             parsedSettings.reasoning_content_repair === true;
+          data.tool_output_repair = parsedSettings.tool_output_repair === true;
           data.proxy = parsedSettings.proxy || '';
           data.first_response_timeout_seconds =
             typeof parsedSettings.first_response_timeout_seconds === 'number'
@@ -918,6 +921,7 @@ const EditChannelModal = (props) => {
           data.force_format = false;
           data.thinking_to_content = false;
           data.reasoning_content_repair = false;
+          data.tool_output_repair = false;
           data.proxy = '';
           data.first_response_timeout_seconds = 0;
           data.first_response_timeout_auto_ban = false;
@@ -930,6 +934,7 @@ const EditChannelModal = (props) => {
         data.force_format = false;
         data.thinking_to_content = false;
         data.reasoning_content_repair = false;
+        data.tool_output_repair = false;
         data.proxy = '';
         data.first_response_timeout_seconds = 0;
         data.first_response_timeout_auto_ban = false;
@@ -1064,6 +1069,7 @@ const EditChannelModal = (props) => {
         force_format: data.force_format,
         thinking_to_content: data.thinking_to_content,
         reasoning_content_repair: data.reasoning_content_repair,
+        tool_output_repair: data.tool_output_repair,
         proxy: data.proxy,
         first_response_timeout_seconds: data.first_response_timeout_seconds,
         first_response_timeout_auto_ban:
@@ -1117,6 +1123,7 @@ const EditChannelModal = (props) => {
         (data.system_prompt && data.system_prompt.trim()) ||
         data.thinking_to_content ||
         data.reasoning_content_repair ||
+        data.tool_output_repair ||
         data.pass_through_body_enabled ||
         data.force_format ||
         data.claude_beta_query ||
@@ -1464,6 +1471,7 @@ const EditChannelModal = (props) => {
       force_format: false,
       thinking_to_content: false,
       reasoning_content_repair: false,
+      tool_output_repair: false,
       proxy: '',
       first_response_timeout_seconds: 30,
       reject_empty_response: false,
@@ -1837,6 +1845,7 @@ const EditChannelModal = (props) => {
       force_format: localInputs.force_format || false,
       thinking_to_content: localInputs.thinking_to_content || false,
       reasoning_content_repair: localInputs.reasoning_content_repair || false,
+      tool_output_repair: localInputs.tool_output_repair || false,
       proxy: localInputs.proxy || '',
       first_response_timeout_seconds: Math.max(
         0,
@@ -1954,6 +1963,7 @@ const EditChannelModal = (props) => {
     delete localInputs.force_format;
     delete localInputs.thinking_to_content;
     delete localInputs.reasoning_content_repair;
+    delete localInputs.tool_output_repair;
     delete localInputs.proxy;
     delete localInputs.first_response_timeout_seconds;
     delete localInputs.first_response_timeout_auto_ban;
@@ -2934,7 +2944,19 @@ const EditChannelModal = (props) => {
                       )
                     }
                     extraText={t(
-                      'Restore available reasoning text for thinking-enabled Chat/Responses requests. Does not invent missing history; body passthrough skips repair.',
+                      'Restore available reasoning and fix Responses history format. DeepSeek thinking with tools uses a missing-history notice when needed. Existing content is preserved; body passthrough skips repair.',
+                    )}
+                  />
+                  <Form.Switch
+                    field='tool_output_repair'
+                    label={t('Repair missing tool outputs')}
+                    checkedText={t('开')}
+                    uncheckedText={t('关')}
+                    onChange={(value) =>
+                      handleChannelSettingsChange('tool_output_repair', value)
+                    }
+                    extraText={t(
+                      'Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.',
                     )}
                   />
                   <Form.Switch

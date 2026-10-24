@@ -39,6 +39,9 @@ func OpenaiTTSHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 					usage.TotalTokens = simpleResponse.TotalTokens
 				}
 			}
+			if patched, err := relaycommon.RewriteResponseModel(info, common.StringToByteSlice(data)); err == nil {
+				data = string(patched)
+			}
 			if err := helper.StringData(c, data); err != nil {
 				sr.Error(err)
 			}
@@ -123,7 +126,14 @@ func OpenaiSTTHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError), nil
 	}
-	// 写入新的 response body
+	// Only JSON transcription envelopes carry model metadata. A plain-text
+	// transcript can itself be valid JSON; its spoken content must stay intact.
+	switch responseFormat {
+	case "", "json", "verbose_json", "diarized_json":
+		if patched, err := relaycommon.RewriteResponseModel(info, responseBody); err == nil {
+			responseBody = patched
+		}
+	}
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	var responseData struct {

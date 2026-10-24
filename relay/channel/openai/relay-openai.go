@@ -25,6 +25,11 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	}
 
 	if !forceFormat && !thinkToContent {
+		if patched, err := relaycommon.RewriteResponseModel(info, common.StringToByteSlice(data)); err == nil {
+			data = string(patched)
+		} else {
+			logger.LogWarn(c, "failed to normalize response model: "+err.Error())
+		}
 		return helper.StringData(c, data)
 	}
 
@@ -32,6 +37,7 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	if err := common.UnmarshalJsonStr(data, &lastStreamResponse); err != nil {
 		return err
 	}
+	lastStreamResponse.Model = relaycommon.ClientResponseModel(info, lastStreamResponse.Model)
 
 	if !thinkToContent {
 		return helper.ObjectData(c, lastStreamResponse)
@@ -108,7 +114,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 	defer service.CloseResponseBodyGracefully(resp)
 
-	model := info.UpstreamModelName
+	model := relaycommon.ClientResponseModel(info, info.UpstreamModelName)
 	var responseId string
 	var createAt int64 = 0
 	var systemFingerprint string
@@ -270,6 +276,8 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseModel(simpleResponse.Model)
+	simpleResponse.Model = relaycommon.ClientResponseModel(info, simpleResponse.Model)
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
@@ -330,8 +338,6 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 			if err != nil {
 				return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 			}
-		} else {
-			break
 		}
 	case types.RelayFormatClaude:
 		convertResult, err := service.ConvertResponse(c, info, types.RelayFormatClaude, &simpleResponse)
@@ -353,6 +359,15 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 			return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 		}
 		responseBody = geminiRespStr
+	}
+
+	// Conversion handlers may create a new response object after the native
+	// OpenAI body was parsed. Apply the alias at the final protocol boundary so
+	// Claude/Gemini clients cannot observe the provider model name either.
+	if patched, patchErr := relaycommon.RewriteResponseModel(info, responseBody); patchErr == nil {
+		responseBody = patched
+	} else {
+		logger.LogWarn(c, "failed to normalize response model: "+patchErr.Error())
 	}
 
 	service.IOCopyBytesGracefully(c, resp, responseBody)

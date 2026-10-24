@@ -77,7 +77,7 @@ func TestRepairReasoningRequest(t *testing.T) {
 		{"existing content kept", `{"reasoning_effort":"high","messages":[{"role":"assistant","reasoning_content":"original","reasoning":"alias"}]}`, "messages.0.reasoning_content", "original", types.RelayFormatOpenAI, true, true, 1},
 		{"ordinary answer is not reasoning", `{"reasoning_effort":"high","messages":[{"role":"assistant","content":"answer"}]}`, "messages.0.reasoning_content", "", types.RelayFormatOpenAI, true, true, 1},
 		{"summary is not full reasoning", `{"reasoning":{"effort":"high"},"input":[{"type":"reasoning","summary":[{"type":"summary_text","text":"summary"}]}]}`, "input.0.content.0.text", "", types.RelayFormatOpenAIResponses, true, true, 1},
-		{"encrypted item untouched", `{"reasoning":{"effort":"high"},"input":[{"type":"reasoning","encrypted_content":"opaque","reasoning_text":"alias"}]}`, "input.0.content.0.text", "", types.RelayFormatOpenAIResponses, true, true, 1},
+		{"encrypted item untouched", `{"reasoning":{"effort":"high"},"input":[{"type":"reasoning","encrypted_content":"opaque","summary":[],"reasoning_text":"alias"}]}`, "input.0.content.0.text", "", types.RelayFormatOpenAIResponses, true, true, 1},
 		{"user text untouched", `{"reasoning_effort":"high","messages":[{"role":"user","reasoning":"not assistant"}]}`, "messages.0.reasoning_content", "", types.RelayFormatOpenAI, true, true, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

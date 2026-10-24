@@ -101,6 +101,9 @@ func DeepSeekToolsHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIErr
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 	}
+	if patched, err := relaycommon.RewriteResponseModel(info, responseBody); err == nil {
+		responseBody = patched
+	}
 	service.IOCopyBytesGracefully(c, httpResp, responseBody)
 
 	// DeepSeek bills a successful request only when it returns something: a

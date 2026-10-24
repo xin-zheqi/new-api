@@ -438,6 +438,7 @@ func (a *TaskAdaptor) ParseResponse(c *gin.Context, resp *http.Response, info *r
 		logger.LogDebug(c, "task_plugin subsystem=adaptor event=parse_submit_failed plugin=%q stage=read_response reason=read_failed status=%d", a.plugin.Meta.Key, resp.StatusCode)
 		return nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseJSON(body)
 	logger.LogDebug(
 		c,
 		"task_plugin subsystem=adaptor event=submit_response_received plugin=%q status=%d body_bytes=%d",

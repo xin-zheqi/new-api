@@ -77,6 +77,9 @@ func validateUpstreamTextBody(resp *http.Response, info *relaycommon.RelayInfo) 
 	if looksLikeEventStream(body) {
 		return validateUpstreamTextStream(resp, info)
 	}
+	// Rejected responses never reach the protocol handler. Keep their model
+	// metadata available to the existing error log without changing retries.
+	info.ObserveUpstreamResponseJSON(body)
 	return ValidateUpstreamTextPayload(body)
 }
 
@@ -240,6 +243,7 @@ func validateUpstreamTextStream(resp *http.Response, info *relaycommon.RelayInfo
 				restorePrefixedResponseBody(resp, &prefix, reader, originalBody)
 				return nil
 			}
+			info.ObserveUpstreamResponseJSON(payload)
 			if failure := responsesFailureBeforeOutput(value); failure != nil {
 				// No buffered event has reached the client. Return the original
 				// protocol failure to the normal error-log/retry path instead of

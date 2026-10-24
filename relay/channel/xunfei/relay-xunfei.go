@@ -159,13 +159,13 @@ func xunfeiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, textReques
 			xunfeiResponse := pendingResponses[pendingIndex]
 			pendingIndex++
 			accumulateXunfeiUsage(&usage, xunfeiResponse)
-			writeXunfeiStreamResponse(c, xunfeiResponse)
+			writeXunfeiStreamResponse(c, info, xunfeiResponse)
 			return true
 		}
 		select {
 		case xunfeiResponse := <-dataChan:
 			accumulateXunfeiUsage(&usage, xunfeiResponse)
-			writeXunfeiStreamResponse(c, xunfeiResponse)
+			writeXunfeiStreamResponse(c, info, xunfeiResponse)
 			return true
 		case <-stopChan:
 			c.Render(-1, common.CustomEvent{Data: "data: [DONE]"})
@@ -211,6 +211,7 @@ func xunfeiHandler(c *gin.Context, info *relaycommon.RelayInfo, textRequest dto.
 	xunfeiResponse.Payload.Choices.Text[0].Content = content
 
 	response := responseXunfei2OpenAI(&xunfeiResponse)
+	response.Model = relaycommon.ClientResponseModel(info, response.Model)
 	jsonResponse, err := common.Marshal(response)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
@@ -239,8 +240,9 @@ func accumulateXunfeiUsage(usage *dto.Usage, response XunfeiChatResponse) {
 	usage.TotalTokens += response.Payload.Usage.Text.TotalTokens
 }
 
-func writeXunfeiStreamResponse(c *gin.Context, xunfeiResponse XunfeiChatResponse) {
+func writeXunfeiStreamResponse(c *gin.Context, info *relaycommon.RelayInfo, xunfeiResponse XunfeiChatResponse) {
 	response := streamResponseXunfei2OpenAI(&xunfeiResponse)
+	response.Model = relaycommon.ClientResponseModel(info, response.Model)
 	jsonResponse, err := common.Marshal(response)
 	if err != nil {
 		common.SysLog("error marshalling stream response: " + err.Error())

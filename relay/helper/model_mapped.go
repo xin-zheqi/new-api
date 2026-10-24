@@ -8,9 +8,15 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/hot"
 )
 
 const modelMappingCacheContextKey = "_model_mapping_cache"
+
+// Cache only immutable, successfully parsed configurations. The exact source
+// string is the key, so edits/retries cannot reuse another mapping's contents.
+// Bound both entry count and source size; oversized maps retain the old path.
+var parsedModelMappings = hot.NewHotCache[string, map[string]string](hot.LRU, 128).Build()
 
 type modelMappingCache struct {
 	raw    string
@@ -23,9 +29,20 @@ func getRequestModelMapping(c *gin.Context, raw string) (map[string]string, erro
 			return mappingCache.values, nil
 		}
 	}
-	modelMap := make(map[string]string)
-	if err := commonroot.Unmarshal([]byte(raw), &modelMap); err != nil {
-		return nil, err
+	cacheable := len(raw) <= 64*1024
+	var modelMap map[string]string
+	var found bool
+	if cacheable {
+		modelMap, found, _ = parsedModelMappings.Get(raw)
+	}
+	if !found {
+		modelMap = make(map[string]string)
+		if err := commonroot.Unmarshal([]byte(raw), &modelMap); err != nil {
+			return nil, err
+		}
+		if cacheable {
+			parsedModelMappings.Set(raw, modelMap)
+		}
 	}
 	c.Set(modelMappingCacheContextKey, modelMappingCache{
 		raw:    raw,

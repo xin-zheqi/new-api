@@ -56,12 +56,13 @@ func cfStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Res
 			logger.LogError(c, "error_unmarshalling_stream_response: "+err.Error())
 			continue
 		}
+		info.ObserveUpstreamResponseModel(response.Model)
 		for _, choice := range response.Choices {
 			choice.Delta.Role = "assistant"
 			responseText += choice.Delta.GetContentString()
 		}
 		response.Id = id
-		response.Model = info.UpstreamModelName
+		response.Model = relaycommon.ClientResponseModel(info, info.UpstreamModelName)
 		if isFirst {
 			isFirst = false
 			info.SetFirstResponseTime()
@@ -86,7 +87,7 @@ func cfStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Res
 	}
 	usage := service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	if info.ShouldIncludeUsage {
-		response := helper.GenerateFinalUsageResponse(id, info.StartTime.Unix(), info.UpstreamModelName, *usage)
+		response := helper.GenerateFinalUsageResponse(id, info.StartTime.Unix(), relaycommon.ClientResponseModel(info, info.UpstreamModelName), *usage)
 		err := helper.ObjectData(c, response)
 		if err != nil {
 			logger.LogError(c, "error_rendering_final_usage_response: "+err.Error())
@@ -102,13 +103,14 @@ func cfHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 	service.CloseResponseBodyGracefully(resp)
 	var response dto.TextResponse
 	err = common.Unmarshal(responseBody, &response)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
-	response.Model = info.UpstreamModelName
+	response.Model = relaycommon.ClientResponseModel(info, info.UpstreamModelName)
 	var responseText string
 	for _, choice := range response.Choices {
 		responseText += choice.Message.StringContent()
@@ -132,6 +134,7 @@ func cfSTTHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respon
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 	service.CloseResponseBodyGracefully(resp)
 	err = common.Unmarshal(responseBody, &cfResp)
 	if err != nil {

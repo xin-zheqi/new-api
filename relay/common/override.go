@@ -213,13 +213,14 @@ func syncReasoningEffortAfterParamOverride(info *RelayInfo, before, after []byte
 	if info == nil {
 		return
 	}
-	_, existedBefore := extractReasoningEffortFromJSON(info.GetFinalRequestRelayFormat(), before)
 	effort, existsAfter := extractReasoningEffortFromJSON(info.GetFinalRequestRelayFormat(), after)
 	if existsAfter {
 		info.SetReasoningEffort(effort)
 		return
 	}
-	if existedBefore {
+	// The final request is authoritative. Inspect the original body only when
+	// needed to distinguish a removed setting from one that was never present.
+	if _, existedBefore := extractReasoningEffortFromJSON(info.GetFinalRequestRelayFormat(), before); existedBefore {
 		info.SetReasoningEffort("")
 	}
 }

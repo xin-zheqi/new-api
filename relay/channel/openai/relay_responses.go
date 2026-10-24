@@ -29,8 +29,17 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseModel(responsesResponse.Model)
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	}
+
+	// Keep model aliases client-visible. The upstream model is still retained
+	// in RelayInfo for routing, billing and audit data.
+	if patched, patchErr := relaycommon.RewriteResponseModel(info, responseBody); patchErr == nil {
+		responseBody = patched
+	} else {
+		logger.LogWarn(c, "failed to normalize response model: "+patchErr.Error())
 	}
 
 	// 写入新的 response body
@@ -88,6 +97,11 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			data = repaired
 		} else {
 			logger.LogWarn(c, "reasoning content repair skipped: "+err.Error())
+		}
+		if patched, err := relaycommon.RewriteResponseModel(info, common.StringToByteSlice(data)); err == nil {
+			data = string(patched)
+		} else {
+			logger.LogWarn(c, "failed to normalize response model: "+err.Error())
 		}
 		sendResponsesStreamData(c, streamResponse, data)
 	})

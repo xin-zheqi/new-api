@@ -69,6 +69,7 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 
 	var usageResp dto.SimpleResponse
 	err = common.Unmarshal(responseBody, &usageResp)
@@ -85,6 +86,11 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	// entries, or include revised_prompt-only entries; charging data.# would
 	// overcharge or undercharge those responses.
 	updateOpenAIImageCount(info, openaiImageResponseCount(responseBody))
+	if patched, patchErr := relaycommon.RewriteResponseModel(info, responseBody); patchErr == nil {
+		responseBody = patched
+	} else {
+		logger.LogWarn(c, "failed to normalize response model: "+patchErr.Error())
+	}
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
@@ -171,6 +177,9 @@ func OpenaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp 
 			if chunk.Type == "image_generation.completed" || chunk.Type == "image_edit.completed" {
 				completedImages++
 			}
+		}
+		if patched, err := relaycommon.RewriteResponseModel(info, raw); err == nil {
+			raw = patched
 		}
 		if err := writeOpenaiImageStreamChunk(c, raw); err != nil {
 			sr.Stop(err)
@@ -290,6 +299,7 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 	normalizeOpenAIUsage(&usageResp.Usage)
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 
+	info.ObserveUpstreamResponseJSON(responseBody)
 	imageCount := openaiImageResponseCount(responseBody)
 	updateOpenAIImageCount(info, imageCount)
 

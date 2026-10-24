@@ -57,6 +57,7 @@ type ResponsesUsageInfo struct {
 }
 
 type ChannelMeta struct {
+	responseModels       responseModelObservations
 	ChannelType          int
 	ChannelId            int
 	ChannelIsMultiKey    bool
@@ -125,6 +126,7 @@ type RelayInfo struct {
 	// ReasoningContentRepairActive is derived from the final upstream JSON,
 	// after parameter overrides, and reset for every channel attempt.
 	ReasoningContentRepairActive bool
+	ToolOutputRepairStats        *ToolOutputRepairStats
 	// ReasoningConversion is the suffix-derived reasoning intent attached
 	// after model mapping. Converters read it via ReasoningState().
 	ReasoningConversion *dto.ReasoningConversionState
@@ -238,6 +240,7 @@ type RelayInfo struct {
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	info.ReasoningContentRepairActive = false
+	info.ToolOutputRepairStats = nil
 	info.FinalRequestRelayFormat = ""
 	info.RequestConversionChain = nil
 	info.InitRequestConversionChain()
@@ -1168,22 +1171,15 @@ func RemoveDisabledFields(jsonData []byte, channelOtherSettings dto.ChannelOther
 }
 
 func hasRemovableDisabledField(jsonData []byte, channelOtherSettings dto.ChannelOtherSettings) bool {
-	values := gjson.GetManyBytes(
-		jsonData,
-		"service_tier",
-		"inference_geo",
-		"speed",
-		"store",
-		"safety_identifier",
-		"stream_options.include_obfuscation",
-	)
-
-	return (!channelOtherSettings.AllowServiceTier && values[0].Exists()) ||
-		(!channelOtherSettings.AllowInferenceGeo && values[1].Exists()) ||
-		(!channelOtherSettings.AllowSpeed && values[2].Exists()) ||
-		(channelOtherSettings.DisableStore && values[3].Exists()) ||
-		(!channelOtherSettings.AllowSafetyIdentifier && values[4].Exists()) ||
-		(!channelOtherSettings.AllowIncludeObfuscation && values[5].Exists())
+	// Probe only disabled fields, stopping as soon as removal is necessary.
+	// GetManyBytes scanned the full history for all six paths on every request,
+	// including allowed fields and requests with an early matching field.
+	return (!channelOtherSettings.AllowServiceTier && gjson.GetBytes(jsonData, "service_tier").Exists()) ||
+		(!channelOtherSettings.AllowInferenceGeo && gjson.GetBytes(jsonData, "inference_geo").Exists()) ||
+		(!channelOtherSettings.AllowSpeed && gjson.GetBytes(jsonData, "speed").Exists()) ||
+		(channelOtherSettings.DisableStore && gjson.GetBytes(jsonData, "store").Exists()) ||
+		(!channelOtherSettings.AllowSafetyIdentifier && gjson.GetBytes(jsonData, "safety_identifier").Exists()) ||
+		(!channelOtherSettings.AllowIncludeObfuscation && gjson.GetBytes(jsonData, "stream_options.include_obfuscation").Exists())
 }
 
 // RemoveGeminiDisabledFields removes disabled fields from Gemini request JSON data

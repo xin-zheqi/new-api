@@ -96,6 +96,13 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 
 	adminInfo := make(map[string]interface{})
 	adminInfo["use_channel"] = ctx.GetStringSlice("use_channel")
+	if mismatch := relayInfo.ResponseModelMismatch(); mismatch != nil {
+		adminInfo["response_model_mismatch"] = mismatch
+	}
+	if relayInfo.ToolOutputRepairStats != nil {
+		// Counts only: tool arguments and results never enter the audit marker.
+		adminInfo["tool_output_repair"] = relayInfo.ToolOutputRepairStats
+	}
 	if billingModel := relayInfo.GetBillingModelName(); billingModel != "" && billingModel != relayInfo.OriginModelName {
 		adminInfo["billing_model"] = billingModel
 	}
@@ -350,6 +357,9 @@ func AppendRelayLogAdminInfo(ctx *gin.Context, info *relaycommon.RelayInfo, othe
 		adminInfo["use_channel"] = ctx.GetStringSlice("use_channel")
 	}
 	if info != nil {
+		if mismatch := info.ResponseModelMismatch(); mismatch != nil {
+			adminInfo["response_model_mismatch"] = mismatch
+		}
 		if diagnostics := info.ConversionDiagnostics(); len(diagnostics) > 0 {
 			adminInfo["conversion_diagnostics"] = diagnostics
 		}

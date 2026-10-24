@@ -1,0 +1,39 @@
+# Copy to /etc/newapi-backup/backup.conf, chmod 600, then edit.
+# This file is sourced by Bash. It must be writable only by a trusted operator.
+DEPLOY_DIR=/opt/newapi
+COMPOSE_FILES=("$DEPLOY_DIR/docker-compose.yml")
+# Set this if deployment used docker compose -p ... or COMPOSE_PROJECT_NAME.
+COMPOSE_PROJECT_NAME=''
+POSTGRES_SERVICE=postgres
+DATABASES=(new-api)
+# If LOG_SQL_DSN points to another database in this same PostgreSQL service:
+# DATABASES=(new-api new-api-log)
+# A log database on a different server needs its own native backup job.
+
+# This directory holds private temporary dumps. Keep it outside BACKUP_PATHS.
+STATE_DIR=/var/lib/newapi-backup
+BACKUP_HOST=newapi-production
+BACKUP_TAG=new-api-production
+BACKUP_PATHS=(
+  "$DEPLOY_DIR/docker-compose.yml"
+  "$DEPLOY_DIR/.env"
+  "$DEPLOY_DIR/data"
+)
+# Add every Compose override, external secret file, reverse-proxy configuration,
+# separate CONTENT_AUDIT_DIR, and any separately deployed frontend release files.
+# Include logs only if needed; these are not a substitute for LOG_SQL_DSN backup.
+
+# Redis snapshot is optional. Do not automatically restore it over a live cache.
+# Requires the Redis service to have REDIS_PASSWORD, as in the repository Compose.
+BACKUP_REDIS=true
+REDIS_SERVICE=redis
+
+# Use a different server or object storage for the actual production repository.
+# Local directory example is for an initial rehearsal only:
+RESTIC_REPOSITORY=/mnt/offsite-backups/newapi
+# RESTIC_REPOSITORY=sftp:backup@backup.example.com:/srv/backups/newapi
+# RESTIC_REPOSITORY=s3:https://s3.example.com/newapi-backups
+# export AWS_ACCESS_KEY_ID=...
+# export AWS_SECRET_ACCESS_KEY=...
+RESTIC_PASSWORD_FILE=/etc/newapi-backup/restic-password
+# Keep an independent secure copy of this password; losing it loses the backups.

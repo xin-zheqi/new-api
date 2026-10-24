@@ -35,6 +35,18 @@ func TestFormatUserLogsStripsQuotaSaturation(t *testing.T) {
 	require.Contains(t, parsed, "model_price")
 }
 
+func TestResponseModelMismatchVisibilityIsAdminOnly(t *testing.T) {
+	other := `{"admin_info":{"response_model_mismatch":{"requested_model":"client-model","response_models":["private-upstream-model"]}},"model_ratio":1}`
+	userLogs := []*Log{{ModelName: "client-model", Other: other}}
+	formatUserLogs(userLogs, 0)
+	assert.NotContains(t, userLogs[0].Other, "private-upstream-model")
+	assert.Equal(t, "client-model", userLogs[0].ModelName)
+	assert.JSONEq(t, `{"model_ratio":1}`, userLogs[0].Other)
+	adminLogs := []*Log{{Other: other}}
+	FormatAdminLogs(adminLogs)
+	assert.JSONEq(t, other, adminLogs[0].Other)
+}
+
 func TestTaskPluginLogVisibilityIsRoleSeparated(t *testing.T) {
 	other := common.MapToJsonStr(map[string]interface{}{
 		"model_price": 1.25,

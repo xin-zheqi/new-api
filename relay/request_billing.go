@@ -35,6 +35,12 @@ func PrepareRequestBilling(c *gin.Context, info *relaycommon.RelayInfo) *types.N
 			meta.MaxTokens = int(lo.FromPtr(request.MaxOutputTokens))
 		case *dto.ClaudeRequest:
 			meta.MaxTokens = int(lo.FromPtr(request.MaxTokens))
+		case *dto.GeminiChatRequest:
+			// Empty sensitive-word settings may now use this fast path too.
+			// Preserve the output budget used by Gemini's full metadata builder.
+			if request.GenerationConfig.MaxOutputTokens != nil && *request.GenerationConfig.MaxOutputTokens > 0 {
+				meta.MaxTokens = int(*request.GenerationConfig.MaxOutputTokens)
+			}
 		case *dto.ImageRequest:
 			meta = request.GetTokenCountMeta()
 		}

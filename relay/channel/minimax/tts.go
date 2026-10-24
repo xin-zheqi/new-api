@@ -114,6 +114,7 @@ func handleTTSResponse(c *gin.Context, resp *http.Response, info *relaycommon.Re
 			http.StatusInternalServerError,
 		)
 	}
+	info.ObserveUpstreamResponseJSON(body)
 	defer resp.Body.Close()
 
 	// Parse response
@@ -181,6 +182,7 @@ func handleChatCompletionResponse(c *gin.Context, resp *http.Response, info *rel
 			http.StatusInternalServerError,
 		)
 	}
+	info.ObserveUpstreamResponseJSON(body)
 	defer resp.Body.Close()
 
 	// Set response headers

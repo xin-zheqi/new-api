@@ -32,6 +32,7 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseJSON(body)
 
 	if err := common.Unmarshal(body, &responsesResp); err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
@@ -48,6 +49,11 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	responseBody, err := common.Marshal(responseValue)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+	}
+	if patched, patchErr := relaycommon.RewriteResponseModel(info, responseBody); patchErr == nil {
+		responseBody = patched
+	} else {
+		logger.LogWarn(c, "failed to normalize response model: "+patchErr.Error())
 	}
 
 	service.IOCopyBytesGracefully(c, resp, responseBody)
@@ -80,6 +86,8 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 			continue
 		}
 
+		// This buffered path reads SSE directly instead of using StreamScannerHandler.
+		info.ObserveUpstreamResponseJSON(common.StringToByteSlice(data))
 		var streamResp dto.ResponsesStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResp); err != nil {
 			logger.LogError(c, "failed to unmarshal buffered responses stream event: "+err.Error())
@@ -121,7 +129,7 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 		finalResponse = &dto.OpenAIResponsesResponse{
 			ID:        helper.GetResponseID(c),
 			CreatedAt: int(time.Now().Unix()),
-			Model:     info.UpstreamModelName,
+			Model:     relaycommon.ClientResponseModel(info, info.UpstreamModelName),
 			Status:    []byte(`"completed"`),
 		}
 	}
@@ -135,15 +143,22 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
+	if patched, patchErr := relaycommon.RewriteResponseModel(info, responseBody); patchErr == nil {
+		responseBody = patched
+	} else {
+		logger.LogWarn(c, "failed to normalize response model: "+patchErr.Error())
+	}
 
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 	return usage, nil
 }
 
 func convertResponsesResponseForClient(c *gin.Context, info *relaycommon.RelayInfo, response *dto.OpenAIResponsesResponse) (any, *dto.Usage, error) {
+	info.ObserveUpstreamResponseModel(response.Model)
 	if responseID := helper.GetResponseID(c); responseID != "" {
 		response.ID = responseID
 	}
+	response.Model = relaycommon.ClientResponseModel(info, response.Model)
 
 	usage := relayconvert.UsageFromResponsesUsage(response.Usage)
 	if usage == nil || usage.TotalTokens == 0 {
@@ -173,7 +188,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	createAt := time.Now().Unix()
 	state, err := relayconvert.NewResponseStreamState(types.RelayFormatOpenAIResponses, info.RelayFormat, relayconvert.ResponseStreamOptions{
 		ID:      responseId,
-		Model:   info.UpstreamModelName,
+		Model:   relaycommon.ClientResponseModel(info, info.UpstreamModelName),
 		Created: createAt,
 	})
 	if err != nil {
@@ -270,6 +285,11 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			return
 		}
 
+		// The scanner already recorded the upstream model. Keep metadata events
+		// from overwriting the client model held by the stream converter.
+		if streamResp.Response != nil {
+			streamResp.Response.Model = relaycommon.ClientResponseModel(info, streamResp.Response.Model)
+		}
 		results, err := service.ConvertStreamResponseChunk(c, info, state, &streamResp)
 		if err != nil {
 			streamErr = types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
@@ -310,7 +330,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 	}
 	if info.RelayFormat == types.RelayFormatOpenAI && info.ShouldIncludeUsage && usage != nil {
-		if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseId, createAt, info.UpstreamModelName, *usage)); err != nil {
+		if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseId, createAt, relaycommon.ClientResponseModel(info, info.UpstreamModelName), *usage)); err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
 		}
 	}

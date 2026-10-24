@@ -139,7 +139,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 
 		logger.LogDebug(c, "text request body: %s", jsonData)
 
-		body, closer, err := relaycommon.NewReasoningAwareJSONBody(jsonData, info)
+		body, closer, err := relaycommon.NewChannelJSONBody(jsonData, info)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}

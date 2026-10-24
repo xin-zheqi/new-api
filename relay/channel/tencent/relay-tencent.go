@@ -104,6 +104,7 @@ func tencentStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *htt
 		}
 		data = strings.TrimPrefix(data, "data:")
 
+		info.ObserveUpstreamResponseJSON(common.StringToByteSlice(data))
 		var tencentResponse TencentChatResponse
 		err := common.Unmarshal([]byte(data), &tencentResponse)
 		if err != nil {
@@ -112,6 +113,7 @@ func tencentStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *htt
 		}
 
 		response := streamResponseTencent2OpenAI(&tencentResponse)
+		response.Model = relaycommon.ClientResponseModel(info, response.Model)
 		if len(response.Choices) != 0 {
 			responseText += response.Choices[0].Delta.GetContentString()
 		}
@@ -139,6 +141,7 @@ func tencentHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Resp
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 	service.CloseResponseBodyGracefully(resp)
 	err = json.Unmarshal(responseBody, &tencentSb)
 	if err != nil {
@@ -151,6 +154,7 @@ func tencentHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Resp
 		}, resp.StatusCode)
 	}
 	fullTextResponse := responseTencent2OpenAI(&tencentSb.Response)
+	fullTextResponse.Model = relaycommon.ClientResponseModel(info, fullTextResponse.Model)
 	jsonResponse, err := common.Marshal(fullTextResponse)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)

@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
+import ResponseModelMismatch from './components/ResponseModelMismatch';
 import {
   Avatar,
   Space,
@@ -150,10 +151,7 @@ function renderType(type, t) {
 
 function buildStreamStatusTooltip(ss, t) {
   if (!ss) return null;
-  const lines = [
-    t('流状态') + '：' + t('异常'),
-    (ss.end_reason || 'unknown'),
-  ];
+  const lines = [t('流状态') + '：' + t('异常'), ss.end_reason || 'unknown'];
   if (ss.error_count > 0) {
     lines.push(`${t('软错误')}: ${ss.error_count}`);
   }
@@ -191,11 +189,7 @@ function renderIsStream(bool, t, streamStatus) {
                 userSelect: 'none',
               }}
             >
-              <CircleAlert
-                size={14}
-                strokeWidth={2.5}
-                color='currentColor'
-              />
+              <CircleAlert size={14} strokeWidth={2.5} color='currentColor' />
             </span>
           </Tooltip>
         )}
@@ -453,11 +447,11 @@ function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
     record.type === 3 || record.type === 7
       ? renderAuditText(other, text, t)
       : other?.op?.action === 'lottery.win'
-      ? t('抽奖中奖：{{title}}，奖品：{{prize_name}}', {
-          title: other?.op?.params?.title || '',
-          prize_name: other?.op?.params?.prize_name || '',
-        })
-      : text;
+        ? t('抽奖中奖：{{title}}，奖品：{{prize_name}}', {
+            title: other?.op?.params?.title || '',
+            prize_name: other?.op?.params?.prize_name || '',
+          })
+        : text;
 
   if (record.type === 6) {
     return {
@@ -495,7 +489,11 @@ function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
     };
   }
 
-  const summaryOpts = { ...other, displayMode: billingDisplayMode, outputMode: 'segments' };
+  const summaryOpts = {
+    ...other,
+    displayMode: billingDisplayMode,
+    outputMode: 'segments',
+  };
 
   if (other?.billing_mode === 'tiered_expr') {
     return { segments: renderTieredModelPriceSimple(summaryOpts) };
@@ -722,7 +720,15 @@ export const getLogsColumns = ({
           record.type === 2 ||
           record.type === 5 ||
           record.type === 6 ? (
-          <>{renderModelName(record, copyText, t)}</>
+          <div className='flex w-fit flex-col gap-0.5'>
+            {renderModelName(record, copyText, t)}
+            <ResponseModelMismatch
+              isAdmin={isAdminUser}
+              mismatch={
+                getLogOther(record.other)?.admin_info?.response_model_mismatch
+              }
+            />
+          </div>
         ) : (
           <></>
         );
@@ -840,14 +846,12 @@ export const getLogsColumns = ({
       title: t('花费'),
       dataIndex: 'quota',
       render: (text, record, index) => {
-        if (
-          !(
-            record.type === 0 ||
-            record.type === 2 ||
-            record.type === 5 ||
-            record.type === 6
-          )
-        ) {
+        if (!(
+          record.type === 0 ||
+          record.type === 2 ||
+          record.type === 5 ||
+          record.type === 6
+        )) {
           return <></>;
         }
         const other = getLogOther(record.other);
@@ -940,11 +944,11 @@ export const getLogsColumns = ({
           record.type === 3 || record.type === 7
             ? renderAuditText(other, text, t)
             : other?.op?.action === 'lottery.win'
-            ? t('抽奖中奖：{{title}}，奖品：{{prize_name}}', {
-                title: other?.op?.params?.title || '',
-                prize_name: other?.op?.params?.prize_name || '',
-              })
-            : text;
+              ? t('抽奖中奖：{{title}}，奖品：{{prize_name}}', {
+                  title: other?.op?.params?.title || '',
+                  prize_name: other?.op?.params?.prize_name || '',
+                })
+              : text;
         const detailSummary = getUsageLogDetailSummary(
           record,
           displayText,

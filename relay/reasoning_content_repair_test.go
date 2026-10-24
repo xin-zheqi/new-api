@@ -50,3 +50,44 @@ func TestPrepareResponsesReasoningRepairRespectsOverridesAndRetries(t *testing.T
 		})
 	}
 }
+
+func TestPrepareResponsesBothHistoryRepairsRespectModelMappingAndRetries(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	common.SetContextKey(c, constant.ContextKeyOriginalModel, "local-alias")
+	common.SetContextKey(c, constant.ContextKeyChannelType, constant.ChannelTypeOpenAI)
+	input := `[{"type":"reasoning","id":"old"},{"type":"function_call","call_id":"a","name":"read","arguments":"{}"}]`
+	request := &dto.OpenAIResponsesRequest{Model: "local-alias", Input: []byte(input), Reasoning: &dto.Reasoning{Effort: "high"}, Tools: []byte(`[{"type":"function","name":"read","parameters":{"type":"object"}}]`)}
+	info := relaycommon.GenRelayInfoResponses(c, request)
+	for _, tc := range []struct {
+		name, model string
+		enabled     bool
+		wantNotice  bool
+	}{
+		{"OpenAI channel mapped to DeepSeek", "deepseek-v4.1-flash", true, true},
+		{"retry to disabled channel", "deepseek-v4.1-flash", false, false},
+		{"other model only gets schema repair", "gpt-test", true, false},
+		{"retry to DeepSeek again", "deepseek-v4.1-flash", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{ReasoningContentRepair: tc.enabled, ToolOutputRepair: tc.enabled})
+			common.SetContextKey(c, constant.ContextKeyChannelModelMapping, `{"local-alias":"`+tc.model+`"}`)
+			_, body, closer, apiErr := PrepareResponsesRequest(c, info, request)
+			require.Nil(t, apiErr)
+			defer closer.Close()
+			wire, err := io.ReadAll(body)
+			require.NoError(t, err)
+			assert.Equal(t, tc.model, gjson.GetBytes(wire, "model").String())
+			assert.Equal(t, tc.wantNotice, gjson.GetBytes(wire, "input.0.content.0.text").Exists())
+			assert.Equal(t, input, string(request.Input))
+			assert.Equal(t, gjson.Get(input, "1").Raw, gjson.GetBytes(wire, "input.1").Raw)
+			if tc.enabled {
+				assert.Equal(t, "[]", gjson.GetBytes(wire, "input.0.summary").Raw)
+				assert.Equal(t, "a", gjson.GetBytes(wire, "input.2.call_id").String())
+				assert.Contains(t, gjson.GetBytes(wire, "input.2.output").String(), "tool_output_unavailable")
+			} else {
+				assert.Equal(t, input, gjson.GetBytes(wire, "input").Raw)
+			}
+		})
+	}
+}

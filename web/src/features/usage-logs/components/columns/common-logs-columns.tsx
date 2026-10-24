@@ -60,6 +60,7 @@ import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
+import { ResponseModelMismatch } from '../response-model-mismatch'
 import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
@@ -617,6 +618,8 @@ export function useCommonLogsColumns(
         if (!isDisplayableLogType(log.type)) return null
 
         const modelInfo = formatModelName(log)
+        const mismatch = parseLogOther(log.other)?.admin_info
+          ?.response_model_mismatch
 
         return (
           <div className='flex w-fit flex-col gap-0.5'>
@@ -624,6 +627,7 @@ export function useCommonLogsColumns(
               modelName={modelInfo.name}
               actualModel={modelInfo.actualModel}
             />
+            <ResponseModelMismatch isAdmin={isAdmin} mismatch={mismatch} />
           </div>
         )
       },

@@ -244,6 +244,7 @@ func difyStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 			return
 		}
 		openaiResponse := *streamResponseDify2OpenAI(difyResponse)
+		openaiResponse.Model = relaycommon.ClientResponseModel(info, openaiResponse.Model)
 		if len(openaiResponse.Choices) != 0 {
 			responseText += openaiResponse.Choices[0].Delta.GetContentString()
 			if openaiResponse.Choices[0].Delta.ReasoningContent != nil {
@@ -284,6 +285,7 @@ func difyHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respons
 		Created: common.GetTimestamp(),
 		Usage:   difyResponse.MetaData.Usage,
 	}
+	fullTextResponse.Model = relaycommon.ClientResponseModel(info, fullTextResponse.Model)
 	choice := dto.OpenAITextResponseChoice{
 		Index: 0,
 		Message: dto.Message{

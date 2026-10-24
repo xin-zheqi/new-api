@@ -32,6 +32,27 @@ func emptyResponseTestHTTPResponse(body, contentType string) *http.Response {
 	}
 }
 
+func TestRejectedResponseRetainsModelAuditWithoutChangingRetry(t *testing.T) {
+	body := `{"type":"response.failed","response":{"model":"provider-v2","status":"failed","output":[],"error":{"code":"upstream_error","message":"fixture failure"}}}`
+	for _, stream := range []bool{false, true} {
+		t.Run(map[bool]string{false: "json", true: "stream"}[stream], func(t *testing.T) {
+			info := emptyResponseTestInfo(true, stream)
+			info.OriginModelName = "client-model"
+			info.RelayMode = relayconstant.RelayModeResponses
+			payload, contentType := body, "application/json"
+			if stream {
+				payload, contentType = "data: "+body+"\n\n", "text/event-stream"
+			}
+			apiErr := ValidateUpstreamTextResponse(emptyResponseTestHTTPResponse(payload, contentType), info)
+			require.NotNil(t, apiErr)
+			assert.Equal(t, http.StatusBadGateway, apiErr.StatusCode)
+			assert.False(t, types.IsSkipRetryError(apiErr))
+			require.NotNil(t, info.ResponseModelMismatch())
+			assert.Equal(t, []string{"provider-v2"}, info.ResponseModelMismatch().ResponseModels)
+		})
+	}
+}
+
 func TestValidateUpstreamTextResponseNonStream(t *testing.T) {
 	tests := []struct {
 		name      string

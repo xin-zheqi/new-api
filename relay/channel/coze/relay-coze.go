@@ -51,11 +51,12 @@ func cozeChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Res
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 	service.CloseResponseBodyGracefully(resp)
 	// convert coze response to openai response
 	var response dto.TextResponse
 	var cozeResponse CozeChatDetailResponse
-	response.Model = info.UpstreamModelName
+	response.Model = relaycommon.ClientResponseModel(info, info.UpstreamModelName)
 	err = json.Unmarshal(responseBody, &cozeResponse)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
@@ -150,6 +151,7 @@ func cozeChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 }
 
 func handleCozeEvent(c *gin.Context, event string, data string, responseText *string, usage *dto.Usage, id string, info *relaycommon.RelayInfo) {
+	info.ObserveUpstreamResponseJSON(common.StringToByteSlice(data))
 	switch event {
 	case "conversation.chat.completed":
 		// 将 data 解析为 CozeChatResponseData
@@ -165,7 +167,7 @@ func handleCozeEvent(c *gin.Context, event string, data string, responseText *st
 		usage.TotalTokens = chatData.Usage.TokenCount
 
 		finishReason := "stop"
-		stopResponse := helper.GenerateStopResponse(id, common.GetTimestamp(), info.UpstreamModelName, finishReason)
+		stopResponse := helper.GenerateStopResponse(id, common.GetTimestamp(), relaycommon.ClientResponseModel(info, info.UpstreamModelName), finishReason)
 		helper.ObjectData(c, stopResponse)
 
 	case "conversation.message.delta":
@@ -190,7 +192,7 @@ func handleCozeEvent(c *gin.Context, event string, data string, responseText *st
 			Id:      id,
 			Object:  "chat.completion.chunk",
 			Created: common.GetTimestamp(),
-			Model:   info.UpstreamModelName,
+			Model:   relaycommon.ClientResponseModel(info, info.UpstreamModelName),
 		}
 
 		choice := dto.ChatCompletionsStreamResponseChoice{
@@ -242,6 +244,7 @@ func checkIfChatComplete(a *Adaptor, c *gin.Context, info *relaycommon.RelayInfo
 	if err != nil {
 		return fmt.Errorf("read response body failed: %w", err), false
 	}
+	info.ObserveUpstreamResponseJSON(responseBody)
 	err = json.Unmarshal(responseBody, &cozeResponse)
 	if err != nil {
 		return fmt.Errorf("unmarshal response body failed: %w", err), false

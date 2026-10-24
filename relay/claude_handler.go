@@ -118,7 +118,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		}
 
 		logger.LogDebug(c, "requestBody: %s", jsonData)
-		body, closer, err := relaycommon.NewReasoningAwareJSONBody(jsonData, info)
+		body, closer, err := relaycommon.NewChannelJSONBody(jsonData, info)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}

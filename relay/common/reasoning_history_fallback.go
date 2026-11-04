@@ -8,7 +8,7 @@ import (
 
 // This is a compatibility notice, not reconstructed model reasoning. Never
 // derive a substitute from user messages, answers, summaries, or tool results.
-const unavailableReasoningText = "历史思考内容缺失。此为 New API 兼容性占位说明，不是模型原始思考；请依据已有对话及工具结果继续。"
+const unavailableReasoningText = "历史思考内容缺失，Agent或请求链路中可能丢弃历史思考内容。"
 
 type reasoningHistoryTurn struct {
 	start        int

@@ -35,7 +35,7 @@ func TestMissingDeepSeekReasoningHistoryIsMarkedWithoutChangingExistingItems(t *
 				assert.Equal(t, "[]", items[0].Get("summary").Raw)
 				assert.Equal(t, "reasoning_text", items[0].Get("content.0.type").String())
 				assert.Contains(t, items[0].Get("content.0.text").String(), "历史思考内容缺失")
-				assert.Contains(t, items[0].Get("content.0.text").String(), "不是模型原始思考")
+				assert.Equal(t, unavailableReasoningText, items[0].Get("content.0.text").String())
 				original := gjson.GetBytes(body, "input").Array()
 				for i := range original {
 					assert.Equal(t, original[i].Raw, items[i+1].Raw)
@@ -153,6 +153,21 @@ func TestDeepSeekChatFallbackKeepsAnswersToolsAndExistingThoughts(t *testing.T) 
 		assert.Equal(t, gjson.GetBytes(body, "messages."+index).Raw, gjson.GetBytes(got, "messages."+index).Raw)
 	}
 	assert.Contains(t, gjson.GetBytes(got, "messages.2.reasoning_content").String(), "历史思考内容缺失")
+	assert.Equal(t, gjson.GetBytes(body, "messages.2.tool_calls").Raw, gjson.GetBytes(got, "messages.2.tool_calls").Raw)
+}
+
+func TestOpenAIChannelDeepSeekChatFallbackInfersThinkingModel(t *testing.T) {
+	body := []byte(`{"model":"deepseek-v4.1-flash","messages":[
+		{"role":"assistant","content":"old answer"},
+		{"role":"user","content":"continue"},
+		{"role":"assistant","content":null,"tool_calls":[{"id":"a","type":"function","function":{"name":"read","arguments":"{}"}}]},
+		{"role":"tool","tool_call_id":"a","content":"result"}
+	]}`)
+	info := &RelayInfo{RelayFormat: types.RelayFormatOpenAI, ChannelMeta: &ChannelMeta{ChannelType: constant.ChannelTypeOpenAI, ChannelSetting: dto.ChannelSettings{ReasoningContentRepair: true}}}
+	got, err := RepairReasoningRequest(body, info)
+	require.NoError(t, err)
+	assert.Equal(t, unavailableReasoningText, gjson.GetBytes(got, "messages.0.reasoning_content").String())
+	assert.Equal(t, unavailableReasoningText, gjson.GetBytes(got, "messages.2.reasoning_content").String())
 	assert.Equal(t, gjson.GetBytes(body, "messages.2.tool_calls").Raw, gjson.GetBytes(got, "messages.2.tool_calls").Raw)
 }
 

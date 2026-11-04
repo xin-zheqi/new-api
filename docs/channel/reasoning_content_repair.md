@@ -5,7 +5,7 @@
 ## 生效范围
 
 - 正文恢复和缺失占位仅处理最终发往上游的 Chat Completions / Responses JSON，且最终参数启用了思考。判断发生在模型映射、协议转换和参数覆盖之后；显式关闭思考优先。
-- 未显式指定思考时，只识别 DeepSeek 渠道的 `deepseek-reasoner`、`deepseek-flash` / V4 系列默认行为，不猜测其他网关的模型默认值。
+- 未显式指定思考时，只识别 `deepseek-reasoner`、`deepseek-flash` / V4 系列等已知思考模型的默认行为；这同样适用于 OpenAI 兼容渠道的对应模型名，不猜测其他模型。显式关闭思考始终优先。
 - Chat 历史：同一条 assistant 消息缺少 `reasoning_content` 时，可从其已有的字符串 `reasoning` 补齐。
 - Responses 历史：同一条 reasoning item 缺少 `content` 时，可从其已有的字符串 `reasoning_content` 或 `reasoning_text` 补为 `reasoning_text` 内容块。
 - Responses 格式修复：开关开启后，历史 reasoning 条目同时缺少 `summary` 和 `content`（或两者为 null）时，补入 `summary: []`。这项结构修复也适用于其他模型或下一轮未开启思考的请求；不生成正文，保留已有摘要、正文和加密数据。
@@ -18,7 +18,7 @@
 
 不会从普通回答、用户消息、工具结果、摘要或其他轮次生成原始思考。真正丢失的原文无法恢复，此时只在符合上述 DeepSeek 条件的请求历史里填写：
 
-> 历史思考内容缺失。此为 New API 兼容性占位说明，不是模型原始思考；请依据已有对话及工具结果继续。
+> 历史思考内容缺失，Agent或请求链路中可能丢弃历史思考内容。
 
 占位说明不注入下游响应、SSE delta 或最终回答，不改变上游 token 用量、错误事件和重试判定。上游可能将新增说明计入输入 token；本功能不保证所有第三方网关都接受占位正文，也不能补救损坏的签名或错误的工具调用参数。兼容网关的 `previous_response_id` / 远端 conversation、item reference 和超限历史不生成占位说明。DeepSeek 类型的原生接口不支持远端会话参数，因此即使客户端同时携带这些参数，仍可修复请求中明确提供的本地历史；不会查询或虚构远端历史。
 

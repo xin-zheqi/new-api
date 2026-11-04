@@ -27,7 +27,7 @@ func RepairReasoningRequest(data []byte, info *RelayInfo) ([]byte, error) {
 		return data, nil // Native Claude/Gemini signatures must remain untouched.
 	}
 	root := gjson.ParseBytes(data)
-	thinking := reasoningRepairEnabled(root, info.ChannelType)
+	thinking := reasoningRepairEnabled(root)
 	if !thinking && format != types.RelayFormatOpenAIResponses {
 		return data, nil
 	}
@@ -109,9 +109,11 @@ func RepairReasoningRequest(data []byte, info *RelayInfo) ([]byte, error) {
 }
 
 // Explicit disabling always wins, including overrides applied by a channel.
-// Unknown model defaults are not guessed. DeepSeek V4 and reasoner defaults
-// are only inferred for the actual DeepSeek channel, not arbitrary gateways.
-func reasoningRepairEnabled(root gjson.Result, channelType int) bool {
+// For known DeepSeek thinking models, the model name is enough to infer the
+// default even on an OpenAI-compatible channel. This is intentionally limited
+// to the same model families that the native DeepSeek adaptor recognizes;
+// arbitrary gateway model names are never guessed.
+func reasoningRepairEnabled(root gjson.Result) bool {
 	enabled := false
 	for _, path := range []string{"reasoning_effort", "reasoning.effort", "thinking.type", "reasoning.enabled", "enable_thinking"} {
 		value := root.Get(path)
@@ -131,9 +133,14 @@ func reasoningRepairEnabled(root gjson.Result, channelType int) bool {
 			enabled = true
 		}
 	}
-	model := root.Get("model").String()
-	return enabled || channelType == constant.ChannelTypeDeepSeek &&
-		(model == "deepseek-reasoner" || model == "deepseek-flash" || strings.HasPrefix(model, "deepseek-v4"))
+	model := strings.ToLower(strings.TrimSpace(root.Get("model").String()))
+	for _, prefix := range []string{"deepseek/", "deepseek-ai/"} {
+		model = strings.TrimPrefix(model, prefix)
+	}
+	deepSeekThinkingDefault := model == "deepseek-reasoner" ||
+		model == "deepseek-flash" ||
+		strings.HasPrefix(model, "deepseek-v4")
+	return enabled || deepSeekThinkingDefault
 }
 
 func missingReasoning(value gjson.Result) bool {

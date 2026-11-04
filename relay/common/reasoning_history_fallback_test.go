@@ -85,7 +85,6 @@ func TestReasoningHistoryFallbackLeavesNormalOrIneligibleRequestsUnchanged(t *te
 		{"off", base, true, false},
 		{"body passthrough", base, false, true},
 		{"thinking off", strings.Replace(base, `"high"`, `"none"`, 1), false, false},
-		{"other model", strings.Replace(base, "deepseek-v4.1-flash", "gpt-test", 1), false, false},
 		{"remote history", strings.Replace(base, `"input":`, `"previous_response_id":"remote","input":`, 1), false, false},
 		{"item reference", strings.Replace(base, `"input":[`, `"input":[{"type":"item_reference","id":"remote"},`, 1), false, false},
 		{"unfinished call", strings.Replace(base, `{"role":"assistant","content":"answer"}`, `{"type":"function_call","status":"in_progress","call_id":"a","name":"read","arguments":"{"}`, 1), false, false},
@@ -124,7 +123,7 @@ func TestReasoningItemsAlwaysKeepSummaryOrContentWhenRepairEnabled(t *testing.T)
 		require.NoError(t, err)
 		assert.Equal(t, "[]", gjson.GetBytes(got, "input.0.summary").Raw)
 		assert.Equal(t, gjson.GetBytes(body, "input.0.encrypted_content").Raw, gjson.GetBytes(got, "input.0.encrypted_content").Raw)
-		assert.NotContains(t, string(got), "历史思考内容缺失", "non-DeepSeek requests do not receive plaintext placeholders")
+		assert.NotContains(t, string(got), "历史思考内容缺失", "without an assistant/tool history there is no placeholder to add")
 	}
 }
 
@@ -156,8 +155,8 @@ func TestDeepSeekChatFallbackKeepsAnswersToolsAndExistingThoughts(t *testing.T) 
 	assert.Equal(t, gjson.GetBytes(body, "messages.2.tool_calls").Raw, gjson.GetBytes(got, "messages.2.tool_calls").Raw)
 }
 
-func TestOpenAIChannelDeepSeekChatFallbackUsesThinkingField(t *testing.T) {
-	body := []byte(`{"model":"deepseek-v4.1-flash","reasoning_effort":"high","messages":[
+func TestOpenAIChannelReasoningHistoryFallbackUsesThinkingField(t *testing.T) {
+	body := []byte(`{"model":"arbitrary-model","reasoning_effort":"high","messages":[
 		{"role":"assistant","content":"old answer"},
 		{"role":"user","content":"continue"},
 		{"role":"assistant","content":null,"tool_calls":[{"id":"a","type":"function","function":{"name":"read","arguments":"{}"}}]},
@@ -180,7 +179,7 @@ func TestDeepSeekFallbackChecksWholeTurnAndPreservesOpaqueHistory(t *testing.T) 
 		{"foreign encrypted history", `{"type":"reasoning","summary":[],"encrypted_content":"OPAQUE","signature":"SIGNED"},{"role":"assistant","content":"original answer"}`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			body := []byte(`{"model":"deepseek-v4.1-flash","reasoning":{"effort":"high"},"tools":[{"type":"function","name":"read"}],"input":[` + tc.input + `]}`)
+			body := []byte(`{"model":"arbitrary-model","reasoning":{"effort":"high"},"tools":[{"type":"function","name":"read"}],"input":[` + tc.input + `]}`)
 			info := &RelayInfo{RelayFormat: types.RelayFormatOpenAIResponses, ChannelMeta: &ChannelMeta{ChannelType: constant.ChannelTypeOpenAI, ChannelSetting: dto.ChannelSettings{ReasoningContentRepair: true}}}
 			got, err := RepairReasoningRequest(body, info)
 			require.NoError(t, err)

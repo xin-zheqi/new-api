@@ -66,7 +66,7 @@ func TestPrepareResponsesBothHistoryRepairsRespectModelMappingAndRetries(t *test
 	}{
 		{"OpenAI channel mapped to DeepSeek", "deepseek-v4.1-flash", true, true},
 		{"retry to disabled channel", "deepseek-v4.1-flash", false, false},
-		{"other model only gets schema repair", "gpt-test", true, false},
+		{"other model gets history repair by thinking field", "gpt-test", true, true},
 		{"retry to DeepSeek again", "deepseek-v4.1-flash", true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 )
 
 // RepairReasoningRequest preserves genuine reasoning and repairs replayed
-// history on opt-in channels. DeepSeek's missing-history fallback is an explicit
+// history on opt-in channels. Missing-history fallback is an explicit
 // diagnostic, never text borrowed from answers, tools, or another turn.
 // Raw patches preserve unknown fields and the original body used by retries.
 func RepairReasoningRequest(data []byte, info *RelayInfo) ([]byte, error) {
@@ -88,12 +88,10 @@ func RepairReasoningRequest(data []byte, info *RelayInfo) ([]byte, error) {
 		data = []byte(applyJSONTextPatches(string(data), patches))
 		root = gjson.ParseBytes(data)
 	}
-	model := strings.ToLower(root.Get("model").String())
-	deepSeek := info.ChannelType == constant.ChannelTypeDeepSeek || strings.HasPrefix(model, "deepseek-") || strings.HasPrefix(model, "deepseek/") || strings.HasPrefix(model, "deepseek-ai/deepseek-")
-	if thinking && deepSeek {
+	if thinking {
 		// A Responses client may omit the current tools declaration while still
 		// replaying assistant/tool history (for example after a ZCode/Sub2API
-		// conversion). DeepSeek validates the replayed reasoning independently of
+		// conversion). Providers can validate replayed reasoning independently of
 		// that declaration, so let the history scanner decide whether a local
 		// batch actually needs a placeholder. The scanner is a no-op for a new
 		// user-only request and never invents a turn on its own.
@@ -102,7 +100,7 @@ func RepairReasoningRequest(data []byte, info *RelayInfo) ([]byte, error) {
 		// compatible gateways may implement them, so retain their original guard.
 		stateful := root.Get("previous_response_id").String() != "" || root.Get("conversation").Type != gjson.Null
 		if !stateful || info.ChannelType == constant.ChannelTypeDeepSeek {
-			return repairDeepSeekReasoningHistory(data, root, format)
+			return repairReasoningHistory(data, root, format)
 		}
 	}
 	return data, nil

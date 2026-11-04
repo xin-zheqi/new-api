@@ -18,10 +18,11 @@ type reasoningHistoryTurn struct {
 	blocked      bool
 }
 
-// DeepSeek requires prior plaintext reasoning when thinking and tools are both
-// enabled. The caller has checked those conditions on the final upstream body.
-// Only explicit local history is repairable; no cache or extra request is used.
-func repairDeepSeekReasoningHistory(data []byte, root gjson.Result, format types.RelayFormat) ([]byte, error) {
+// Some thinking providers require prior plaintext reasoning when thinking and
+// tools are both enabled. The caller has checked those conditions on the final
+// upstream body. Only explicit local history is repairable; no cache or extra
+// request is used.
+func repairReasoningHistory(data []byte, root gjson.Result, format types.RelayFormat) ([]byte, error) {
 	path := "input"
 	if format == types.RelayFormatOpenAI {
 		path = "messages"
@@ -74,6 +75,12 @@ func repairDeepSeekReasoningHistory(data []byte, root gjson.Result, format types
 		if reasoning {
 			field = "content"
 		}
+		// Responses messages may carry opaque reasoning ciphertext even though
+		// their content is ordinary answer text. Preserve that complete item
+		// group without treating the answer as reasoning or adding a companion.
+		if format == types.RelayFormatOpenAIResponses && assistant && protectedReasoning(item) {
+			turn.hasReasoning = true
+		}
 		if reasoning || format == types.RelayFormatOpenAI && assistant {
 			// Even an oversized or signed genuine alias must not be replaced by
 			// a notice just because the earlier normalization skipped it.
@@ -82,7 +89,7 @@ func repairDeepSeekReasoningHistory(data []byte, root gjson.Result, format types
 			} else if !turn.emptyItem.Exists() && !protectedReasoning(item) {
 				turn.emptyItem = item
 			} else if format == types.RelayFormatOpenAI && protectedReasoning(item) {
-				turn.hasReasoning = true // Chat has no separate unsigned item.
+				turn.hasReasoning = true
 			}
 		}
 		return true

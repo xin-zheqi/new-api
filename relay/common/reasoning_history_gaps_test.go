@@ -27,7 +27,7 @@ func TestDeepSeekHistoryRepairsEmptyPlaintextWithoutReplacingRealContent(t *test
 		{"unknown part", `{"type":"reasoning","content":[{"type":"vendor_reasoning","text":""}]}`, "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			body := []byte(`{"model":"deepseek-flash","tools":[{"type":"function","name":"read"}],"input":[` + tc.item + `,{"role":"assistant","content":"REAL ANSWER"}]}`)
+			body := []byte(`{"model":"deepseek-flash","reasoning":{"effort":"high"},"tools":[{"type":"function","name":"read"}],"input":[` + tc.item + `,{"role":"assistant","content":"REAL ANSWER"}]}`)
 			before := string(body)
 			info := &RelayInfo{RelayFormat: types.RelayFormatOpenAIResponses, ChannelMeta: &ChannelMeta{ChannelType: constant.ChannelTypeDeepSeek, ChannelSetting: dto.ChannelSettings{ReasoningContentRepair: true}}}
 			got, err := RepairReasoningRequest(body, info)
@@ -61,7 +61,7 @@ func TestDeepSeekInterruptedHistoryDoesNotDisableOtherTurns(t *testing.T) {
 		{"malformed call blocks its own group", `{"type":"reasoning","content":[]},{"type":"function_call","call_id":"a","name":"read","arguments":"{"}`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			body := []byte(`{"model":"deepseek-flash","tools":[{"type":"function","name":"read"}],"input":[` + tc.history + `,{"role":"user","content":"NEW TURN"},{"type":"function_call","call_id":"b","name":"read","arguments":"{}"},{"type":"function_call_output","call_id":"b","output":"REAL RESULT"}]}`)
+			body := []byte(`{"model":"deepseek-flash","reasoning":{"effort":"high"},"tools":[{"type":"function","name":"read"}],"input":[` + tc.history + `,{"role":"user","content":"NEW TURN"},{"type":"function_call","call_id":"b","name":"read","arguments":"{}"},{"type":"function_call_output","call_id":"b","output":"REAL RESULT"}]}`)
 			info := &RelayInfo{RelayFormat: types.RelayFormatOpenAIResponses, ChannelMeta: &ChannelMeta{ChannelType: constant.ChannelTypeDeepSeek, ChannelSetting: dto.ChannelSettings{ReasoningContentRepair: true}}}
 			got, err := RepairReasoningRequest(body, info)
 			require.NoError(t, err)

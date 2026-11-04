@@ -109,10 +109,9 @@ func RepairReasoningRequest(data []byte, info *RelayInfo) ([]byte, error) {
 }
 
 // Explicit disabling always wins, including overrides applied by a channel.
-// For known DeepSeek thinking models, the model name is enough to infer the
-// default even on an OpenAI-compatible channel. This is intentionally limited
-// to the same model families that the native DeepSeek adaptor recognizes;
-// arbitrary gateway model names are never guessed.
+// Thinking is enabled only by an embedded request option. Model names are
+// deliberately excluded here so an OpenAI-compatible gateway cannot be
+// treated as a thinking model merely because of its model label.
 func reasoningRepairEnabled(root gjson.Result) bool {
 	enabled := false
 	for _, path := range []string{"reasoning_effort", "reasoning.effort", "thinking.type", "reasoning.enabled", "enable_thinking"} {
@@ -133,14 +132,7 @@ func reasoningRepairEnabled(root gjson.Result) bool {
 			enabled = true
 		}
 	}
-	model := strings.ToLower(strings.TrimSpace(root.Get("model").String()))
-	for _, prefix := range []string{"deepseek/", "deepseek-ai/"} {
-		model = strings.TrimPrefix(model, prefix)
-	}
-	deepSeekThinkingDefault := model == "deepseek-reasoner" ||
-		model == "deepseek-flash" ||
-		strings.HasPrefix(model, "deepseek-v4")
-	return enabled || deepSeekThinkingDefault
+	return enabled
 }
 
 func missingReasoning(value gjson.Result) bool {

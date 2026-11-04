@@ -5,11 +5,11 @@
 ## 生效范围
 
 - 正文恢复和缺失占位仅处理最终发往上游的 Chat Completions / Responses JSON，且最终参数启用了思考。判断发生在模型映射、协议转换和参数覆盖之后；显式关闭思考优先。
-- 未显式指定思考时，只识别 `deepseek-reasoner`、`deepseek-flash` / V4 系列等已知思考模型的默认行为；这同样适用于 OpenAI 兼容渠道的对应模型名，不猜测其他模型。显式关闭思考始终优先。
+- 思考是否开启只依据最终请求中的 `reasoning_effort`、`reasoning.effort`、`reasoning.enabled`、`thinking.type` 或 `enable_thinking` 等字段；不根据模型名称自动推断。显式关闭思考始终优先。
 - Chat 历史：同一条 assistant 消息缺少 `reasoning_content` 时，可从其已有的字符串 `reasoning` 补齐。
 - Responses 历史：同一条 reasoning item 缺少 `content` 时，可从其已有的字符串 `reasoning_content` 或 `reasoning_text` 补为 `reasoning_text` 内容块。
 - Responses 格式修复：开关开启后，历史 reasoning 条目同时缺少 `summary` 和 `content`（或两者为 null）时，补入 `summary: []`。这项结构修复也适用于其他模型或下一轮未开启思考的请求；不生成正文，保留已有摘要、正文和加密数据。
-- DeepSeek 缺失历史占位：开启思考且请求中存在可识别的本地 assistant / 工具调用历史时，为缺少正文的历史轮次添加明确的缺失说明。当前请求可以没有 `tools` 声明（ZCode/Sub2API 转换后可能出现这种情况）；全新的 user-only 请求不会注入占位。适用于 DeepSeek 渠道，也适用于最终模型名为 `deepseek-*`、`deepseek/...` 或 `deepseek-ai/deepseek-*` 的 OpenAI 兼容渠道。后一类渠道仍须显式开启思考。
+- DeepSeek 缺失历史占位：请求字段明确开启思考且请求中存在可识别的本地 assistant / 工具调用历史时，为缺少正文的历史轮次添加明确的缺失说明。当前请求可以没有 `tools` 声明（ZCode/Sub2API 转换后可能出现这种情况）；全新的 user-only 请求不会注入占位。适用于 DeepSeek 渠道，也适用于最终模型名为 `deepseek-*`、`deepseek/...` 或 `deepseek-ai/deepseek-*` 的 OpenAI 兼容渠道。模型名仅用于限定 DeepSeek 兼容处理范围，不用于推断思考是否开启。
 - Chat 补入缺失的 `reasoning_content`；Responses 优先补到已有空 reasoning 条目的 `content`，整条 reasoning 丢失时在对应 assistant / 并行工具调用组前插入合法条目。摘要不冒充原文；加密和签名条目保持原样，Responses 必要时单独插入明文说明。
 - 原生 Responses HTTP 流和 WebSocket 流：按 `item_id`、`output_index`、`content_index` 收集已有正文，补齐 `response.output_item.done` 和成功的最终 response 中缺失的正文。保留已有正文及其他扩展字段。
 - 请求体透传优先，跳过修复；Claude / Gemini 原生格式不修改。转换器已经丢弃的扩展字段无法在最终 JSON 阶段恢复。

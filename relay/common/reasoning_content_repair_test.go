@@ -73,9 +73,9 @@ func TestRepairReasoningRequest(t *testing.T) {
 		{"default off", `{"reasoning_effort":"high","messages":[{"role":"assistant","reasoning":"actual thought"}]}`, "messages.0.reasoning_content", "", types.RelayFormatOpenAI, false, false, 1},
 		{"explicit off wins", `{"reasoning_effort":"high","thinking":{"type":"disabled"},"messages":[{"role":"assistant","reasoning":"actual thought"}]}`, "messages.0.reasoning_content", "", types.RelayFormatOpenAI, true, false, 43},
 		{"unknown default untouched", `{"messages":[{"role":"assistant","reasoning":"actual thought"}]}`, "messages.0.reasoning_content", "", types.RelayFormatOpenAI, true, false, 1},
-		{"openai deepseek chat default", `{"model":"deepseek-v4.1-flash","messages":[{"role":"assistant","content":"answer"}]}`, "messages.0.reasoning_content", unavailableReasoningText, types.RelayFormatOpenAI, true, true, constant.ChannelTypeOpenAI},
+		{"openai deepseek chat without thinking flag", `{"model":"deepseek-v4.1-flash","messages":[{"role":"assistant","content":"answer"}]}`, "messages.0.reasoning_content", "", types.RelayFormatOpenAI, true, false, constant.ChannelTypeOpenAI},
 		{"openai deepseek explicit off", `{"model":"deepseek-v4.1-flash","reasoning_effort":"none","messages":[{"role":"assistant","content":"answer"}]}`, "messages.0.reasoning_content", "", types.RelayFormatOpenAI, true, false, constant.ChannelTypeOpenAI},
-		{"deepseek v4 default", `{"model":"deepseek-v4.1-flash","input":[{"type":"reasoning","reasoning_text":"actual thought"}]}`, "input.0.content.0.text", "actual thought", types.RelayFormatOpenAIResponses, true, true, constant.ChannelTypeDeepSeek},
+		{"deepseek v4 with thinking flag", `{"model":"deepseek-v4.1-flash","reasoning":{"effort":"high"},"input":[{"type":"reasoning","reasoning_text":"actual thought"}]}`, "input.0.content.0.text", "actual thought", types.RelayFormatOpenAIResponses, true, true, constant.ChannelTypeDeepSeek},
 		{"existing content kept", `{"reasoning_effort":"high","messages":[{"role":"assistant","reasoning_content":"original","reasoning":"alias"}]}`, "messages.0.reasoning_content", "original", types.RelayFormatOpenAI, true, true, 1},
 		{"ordinary answer is not reasoning", `{"reasoning_effort":"high","messages":[{"role":"assistant","content":"answer"}]}`, "messages.0.reasoning_content", "", types.RelayFormatOpenAI, true, true, 1},
 		{"summary is not full reasoning", `{"reasoning":{"effort":"high"},"input":[{"type":"reasoning","summary":[{"type":"summary_text","text":"summary"}]}]}`, "input.0.content.0.text", "", types.RelayFormatOpenAIResponses, true, true, 1},
@@ -93,6 +93,29 @@ func TestRepairReasoningRequest(t *testing.T) {
 			if tc.want == "" || tc.want == "original" {
 				assert.Equal(t, tc.body, string(got), "no-op requests retain original bytes")
 			}
+		})
+	}
+}
+
+func TestReasoningRepairUsesEmbeddedThinkingFields(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"reasoning effort", `{"model":"arbitrary-model","reasoning_effort":"high","messages":[]}`, true},
+		{"nested reasoning effort", `{"model":"arbitrary-model","reasoning":{"effort":"medium"},"messages":[]}`, true},
+		{"reasoning enabled", `{"model":"arbitrary-model","reasoning":{"enabled":true},"messages":[]}`, true},
+		{"thinking type", `{"model":"arbitrary-model","thinking":{"type":"enabled"},"messages":[]}`, true},
+		{"enable thinking", `{"model":"arbitrary-model","enable_thinking":true,"messages":[]}`, true},
+		{"model name alone is inactive", `{"model":"deepseek-v4.1-flash","messages":[]}`, false},
+		{"explicit disabled", `{"model":"deepseek-v4.1-flash","reasoning_effort":"none","messages":[]}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := &RelayInfo{RelayFormat: types.RelayFormatOpenAI, ChannelMeta: &ChannelMeta{ChannelSetting: dto.ChannelSettings{ReasoningContentRepair: true}}}
+			_, err := RepairReasoningRequest([]byte(tc.body), info)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, info.ReasoningContentRepairActive)
 		})
 	}
 }

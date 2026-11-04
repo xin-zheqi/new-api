@@ -50,7 +50,7 @@ func TestMissingDeepSeekReasoningHistoryIsMarkedWithoutChangingExistingItems(t *
 }
 
 func TestDeepSeekFallbackRepairsEachMissingTurnAndPreservesRealReasoning(t *testing.T) {
-	body := []byte(`{"model":"deepseek-flash","tools":[{"type":"function","name":"read"}],"input":[
+	body := []byte(`{"model":"deepseek-flash","reasoning":{"effort":"high"},"tools":[{"type":"function","name":"read"}],"input":[
 		{"type":"reasoning","id":"real","content":[{"type":"reasoning_text","text":"original full reasoning"}],"extra":42},
 		{"type":"function_call","call_id":"a","name":"read","arguments":"{}"},
 		{"type":"function_call_output","call_id":"a","output":"REAL TOOL RESULT"},
@@ -140,7 +140,7 @@ func TestThinkingDisabledOnlyNormalizesExistingResponsesItem(t *testing.T) {
 }
 
 func TestDeepSeekChatFallbackKeepsAnswersToolsAndExistingThoughts(t *testing.T) {
-	body := []byte(`{"model":"deepseek-v4.1-flash","tools":[{"type":"function","function":{"name":"read"}}],"messages":[
+	body := []byte(`{"model":"deepseek-v4.1-flash","reasoning_effort":"high","tools":[{"type":"function","function":{"name":"read"}}],"messages":[
 		{"role":"assistant","content":"original answer","reasoning_content":"original thought"},
 		{"role":"user","content":"continue"},
 		{"role":"assistant","content":null,"tool_calls":[{"id":"a","type":"function","function":{"name":"read","arguments":"{}"}}]},
@@ -156,8 +156,8 @@ func TestDeepSeekChatFallbackKeepsAnswersToolsAndExistingThoughts(t *testing.T) 
 	assert.Equal(t, gjson.GetBytes(body, "messages.2.tool_calls").Raw, gjson.GetBytes(got, "messages.2.tool_calls").Raw)
 }
 
-func TestOpenAIChannelDeepSeekChatFallbackInfersThinkingModel(t *testing.T) {
-	body := []byte(`{"model":"deepseek-v4.1-flash","messages":[
+func TestOpenAIChannelDeepSeekChatFallbackUsesThinkingField(t *testing.T) {
+	body := []byte(`{"model":"deepseek-v4.1-flash","reasoning_effort":"high","messages":[
 		{"role":"assistant","content":"old answer"},
 		{"role":"user","content":"continue"},
 		{"role":"assistant","content":null,"tool_calls":[{"id":"a","type":"function","function":{"name":"read","arguments":"{}"}}]},
@@ -199,7 +199,7 @@ func TestDeepSeekFallbackSkipsOversizedHistoryWithoutPartialPlaceholders(t *test
 	// 257 separate assistant turns exceed the bounded repair budget. Returning
 	// a partially filled history would still fail upstream and grow on replay.
 	input := strings.Repeat(`{"role":"assistant","content":"old"},{"role":"user","content":"next"},`, 256) + `{"role":"assistant","content":"last"}`
-	body := []byte(`{"model":"deepseek-v4.1-flash","tools":[{"type":"function","name":"read"}],"input":[` + input + `]}`)
+	body := []byte(`{"model":"deepseek-v4.1-flash","reasoning":{"effort":"high"},"tools":[{"type":"function","name":"read"}],"input":[` + input + `]}`)
 	info := &RelayInfo{RelayFormat: types.RelayFormatOpenAIResponses, ChannelMeta: &ChannelMeta{ChannelType: constant.ChannelTypeDeepSeek, ChannelSetting: dto.ChannelSettings{ReasoningContentRepair: true}}}
 	got, err := RepairReasoningRequest(body, info)
 	require.NoError(t, err)

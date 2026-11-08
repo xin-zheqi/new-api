@@ -2956,7 +2956,7 @@ const EditChannelModal = (props) => {
                       handleChannelSettingsChange('tool_output_repair', value)
                     }
                     extraText={t(
-                      'Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.',
+                      'Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.',
                     )}
                   />
                   <Form.Switch

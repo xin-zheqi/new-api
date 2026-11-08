@@ -4282,7 +4282,7 @@
     "Remark": "Remarque",
     "Reminder threshold must be a non-negative number": "Le seuil doit être un nombre positif ou nul",
     "Reorder channel {{id}}": "Réordonner le canal {{id}}",
-    "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.": "Répare l’historique explicite des outils Responses : réutilise les résultats associés ou signale leur absence, sans exécuter d’outil. Ignore l’historique distant et la transmission directe du corps.",
+    "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.": "Répare l’historique explicite des outils Chat Completions et Responses : réutilise les résultats associés ou signale leur absence, sans exécuter d’outil. Ignore l’historique Responses distant et la transmission directe du corps.",
     "Repair missing tool outputs": "Réparer les résultats d’outils manquants",
     "replace": "Remplacer",
     "Replace PDF": "Remplacer PDF",

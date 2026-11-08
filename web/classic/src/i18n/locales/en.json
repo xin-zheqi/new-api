@@ -4440,7 +4440,7 @@
     "Remark": "Remark",
     "Reminder threshold must be a non-negative number": "Reminder threshold must be a non-negative number",
     "Reorder channel {{id}}": "Reorder channel {{id}}",
-    "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.": "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.",
+    "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.": "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.",
     "Repair missing tool outputs": "Repair missing tool outputs",
     "replace": "replace",
     "Replace PDF": "Replace PDF",

@@ -4575,7 +4575,7 @@
     "Repair": "Восстановить",
     "Repair Channel Consistency": "Восстановить согласованность каналов",
     "Repair channel consistency?": "Восстановить согласованность каналов?",
-    "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.": "Исправляет явно переданную историю инструментов Responses: использует найденные результаты или помечает отсутствующие как недоступные, не запуская инструменты. Удалённая история и прямая передача тела запроса пропускаются.",
+    "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.": "Исправляет явно переданную историю инструментов Chat Completions и Responses: использует найденные результаты или помечает отсутствующие как недоступные, не запуская инструменты. Удалённая история Responses и прямая передача тела запроса пропускаются.",
     "Repair missing tool outputs": "Восстанавливать результаты инструментов",
     "Repeat the administrator password": "Повторите пароль администратора",
     "replace": "Замена",

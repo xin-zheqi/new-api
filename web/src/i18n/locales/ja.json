@@ -4575,7 +4575,7 @@
     "Repair": "修復",
     "Repair Channel Consistency": "チャネル整合性を修復",
     "Repair channel consistency?": "チャネル整合性を修復しますか？",
-    "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.": "Responses に明示されたツール履歴を修復します。一致する結果を再利用し、欠落は取得不能として記録します。ツールは実行せず、リモート会話履歴とリクエスト本文のパススルーは対象外です。",
+    "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.": "Chat Completions と Responses に明示されたツール履歴を修復します。一致する結果を再利用し、欠落は取得不能として記録します。ツールは実行せず、リモートの Responses 履歴とリクエスト本文のパススルーは対象外です。",
     "Repair missing tool outputs": "不足したツール結果を補完",
     "Repeat the administrator password": "管理者パスワードの再入力",
     "replace": "置換",

@@ -4575,7 +4575,7 @@
     "Repair": "Sửa",
     "Repair Channel Consistency": "Sửa tính nhất quán kênh",
     "Repair channel consistency?": "Sửa tính nhất quán kênh?",
-    "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.": "Sửa lịch sử công cụ được gửi rõ ràng trong Responses: dùng lại kết quả khớp hoặc đánh dấu kết quả thiếu là không khả dụng, không chạy công cụ. Bỏ qua lịch sử hội thoại từ xa và chế độ chuyển tiếp nguyên trạng nội dung yêu cầu.",
+    "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.": "Sửa lịch sử công cụ được gửi rõ ràng trong Chat Completions và Responses: dùng lại kết quả khớp hoặc đánh dấu kết quả thiếu là không khả dụng, không chạy công cụ. Bỏ qua lịch sử Responses từ xa và chế độ chuyển tiếp nguyên trạng nội dung yêu cầu.",
     "Repair missing tool outputs": "Bổ sung kết quả công cụ bị thiếu",
     "Repeat the administrator password": "Nhập lại mật khẩu quản trị viên",
     "replace": "Thay thế",

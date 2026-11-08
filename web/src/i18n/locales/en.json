@@ -4575,7 +4575,7 @@
     "Repair": "Repair",
     "Repair Channel Consistency": "Repair Channel Consistency",
     "Repair channel consistency?": "Repair channel consistency?",
-    "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.": "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.",
+    "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.": "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.",
     "Repair missing tool outputs": "Repair missing tool outputs",
     "Repeat the administrator password": "Repeat the administrator password",
     "replace": "replace",

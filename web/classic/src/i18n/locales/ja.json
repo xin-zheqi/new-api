@@ -4253,7 +4253,7 @@
     "Remark": "備考",
     "Reminder threshold must be a non-negative number": "通知のしきい値には 0 以上の数値を指定してください",
     "Reorder channel {{id}}": "チャンネル {{id}} の優先度を変更",
-    "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.": "Responses に明示されたツール履歴を修復します。一致する結果を再利用し、欠落は取得不能として記録します。ツールは実行せず、リモート会話履歴とリクエスト本文のパススルーは対象外です。",
+    "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.": "Chat Completions と Responses に明示されたツール履歴を修復します。一致する結果を再利用し、欠落は取得不能として記録します。ツールは実行せず、リモートの Responses 履歴とリクエスト本文のパススルーは対象外です。",
     "Repair missing tool outputs": "不足したツール結果を補完",
     "replace": "置換",
     "Replace PDF": "PDFを置換",

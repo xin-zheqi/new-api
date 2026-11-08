@@ -4575,7 +4575,7 @@
     "Repair": "修復",
     "Repair Channel Consistency": "修復渠道一致性",
     "Repair channel consistency?": "修復渠道一致性？",
-    "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.": "修復 Responses 明確傳入的工具歷史：重用相符結果，缺失時標記為不可用，不執行工具；遠端工作階段歷史及請求本文直通時略過。",
+    "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.": "修復 Chat Completions 和 Responses 明確傳入的工具歷史：重用相符結果，缺失時標記為不可用，不執行工具；遠端 Responses 工作階段歷史及請求本文直通時略過。",
     "Repair missing tool outputs": "工具結果補齊",
     "Repeat the administrator password": "重複輸入管理員密碼",
     "replace": "替換",

@@ -40,19 +40,31 @@ type toolHistoryOutput struct {
 	group int
 }
 
-// RepairToolOutputRequest is an opt-in repair for explicit Responses history.
-// It runs after overrides, independently of thinking. Ambiguous or incomplete
-// history is left untouched, and nothing is retained across calls. Stateful
-// request identifiers do not disable repair for call items supplied locally;
-// remote-only history is handled only when the provider names the missing ID.
+// RepairToolOutputRequest is an opt-in repair for explicit Chat Completions
+// or Responses history. It runs after overrides, independently of thinking.
+// Ambiguous or incomplete history is left untouched, and nothing is retained
+// across calls. Stateful Responses identifiers do not disable repair for call
+// items supplied locally; remote-only history is handled only when the provider
+// names the missing ID.
 func RepairToolOutputRequest(data []byte, info *RelayInfo) ([]byte, error) {
 	if info == nil {
 		return data, nil
 	}
 	info.ToolOutputRepairStats = nil
-	if info.ChannelMeta == nil || !info.ChannelSetting.ToolOutputRepair || info.ChannelSetting.PassThroughBodyEnabled || info.GetFinalRequestRelayFormat() != types.RelayFormatOpenAIResponses {
+	if info.ChannelMeta == nil || !info.ChannelSetting.ToolOutputRepair || info.ChannelSetting.PassThroughBodyEnabled {
 		return data, nil
 	}
+	switch info.GetFinalRequestRelayFormat() {
+	case types.RelayFormatOpenAIResponses:
+		return repairResponsesToolOutputRequest(data, info)
+	case types.RelayFormatOpenAI:
+		return repairChatToolOutputRequest(data, info)
+	default:
+		return data, nil
+	}
+}
+
+func repairResponsesToolOutputRequest(data []byte, info *RelayInfo) ([]byte, error) {
 	root := gjson.ParseBytes(data)
 	// A stateful identifier may point to remote history, but explicit call items
 	// in this request are still locally inspectable. The scanner below only
@@ -193,6 +205,150 @@ func RepairToolOutputRequest(data []byte, info *RelayInfo) ([]byte, error) {
 			// Append after this batch's calls and real results, before the next
 			// conversation turn. Original items never move or get overwritten.
 			patches = append(patches, jsonTextPatch{start: group.end, end: group.end, value: missing.String()})
+		}
+	}
+	if len(patches) == 0 {
+		return data, nil
+	}
+	sort.Slice(patches, func(i, j int) bool { return patches[i].start < patches[j].start })
+	info.ToolOutputRepairStats = &stats
+	return []byte(applyJSONTextPatches(string(data), patches)), nil
+}
+
+type chatToolCall struct {
+	id     string
+	output bool
+}
+
+type chatToolGroup struct {
+	calls []*chatToolCall
+	byID  map[string]*chatToolCall
+	end   int
+}
+
+type chatToolMessage struct {
+	Role       string `json:"role"`
+	ToolCallID string `json:"tool_call_id"`
+	Content    string `json:"content"`
+}
+
+// repairChatToolOutputRequest closes missing Chat Completions tool-result
+// blocks. OpenAI-compatible servers require every assistant tool_calls entry to
+// be answered before the next non-tool message. Existing results and unrelated
+// fields are preserved; unsafe or ambiguous history is left untouched.
+func repairChatToolOutputRequest(data []byte, info *RelayInfo) ([]byte, error) {
+	root := gjson.ParseBytes(data)
+	messages := root.Get("messages")
+	if !messages.IsArray() {
+		return data, nil
+	}
+	var groups []*chatToolGroup
+	var current *chatToolGroup
+	var patches []jsonTextPatch
+	stats := ToolOutputRepairStats{}
+	count, callCount, outputs := 0, 0, 0
+	valid := true
+	var repairErr error
+	messages.ForEach(func(_, message gjson.Result) bool {
+		count++
+		if count > 4096 || !message.IsObject() {
+			valid = false
+			return false
+		}
+		role := message.Get("role").String()
+		switch role {
+		case "assistant":
+			calls := message.Get("tool_calls")
+			if !calls.Exists() || calls.Type == gjson.Null {
+				current = nil
+				return true
+			}
+			if !calls.IsArray() {
+				valid = false
+				return false
+			}
+			group := &chatToolGroup{byID: make(map[string]*chatToolCall), end: message.Index + len(message.Raw)}
+			calls.ForEach(func(_, rawCall gjson.Result) bool {
+				id := rawCall.Get("id")
+				if !rawCall.IsObject() || id.Type != gjson.String || id.String() == "" || len(id.String()) > 256 || callCount >= 256 || group.byID[id.String()] != nil {
+					valid = false
+					return false
+				}
+				call := &chatToolCall{id: id.String()}
+				group.calls = append(group.calls, call)
+				group.byID[call.id] = call
+				callCount++
+				return true
+			})
+			if !valid {
+				return false
+			}
+			if len(group.calls) == 0 {
+				current = nil
+				return true
+			}
+			groups = append(groups, group)
+			current = group
+		case "tool":
+			id := message.Get("tool_call_id")
+			if current == nil || id.Type != gjson.String || id.String() == "" {
+				valid = false
+				return false
+			}
+			call := current.byID[id.String()]
+			outputs++
+			if call == nil || call.output || outputs > 256 {
+				valid = false
+				return false
+			}
+			content := message.Get("content")
+			if content.Type != gjson.String && !content.IsArray() {
+				encoded, err := common.Marshal(unavailableToolOutput)
+				if err != nil {
+					repairErr = err
+					valid = false
+					return false
+				}
+				raw, err := sjson.SetRaw(message.Raw, "content", string(encoded))
+				if err != nil {
+					repairErr = err
+					valid = false
+					return false
+				}
+				patches = append(patches, jsonTextPatch{start: message.Index, end: message.Index + len(message.Raw), value: raw})
+				stats.MissingOutputs++
+			}
+			call.output = true
+			current.end = message.Index + len(message.Raw)
+		default:
+			current = nil
+		}
+		return true
+	})
+	if repairErr != nil {
+		return data, repairErr
+	}
+	if !valid || callCount == 0 {
+		return data, nil
+	}
+	for _, group := range groups {
+		var missing strings.Builder
+		for _, call := range group.calls {
+			if call.output {
+				continue
+			}
+			encoded, err := common.Marshal(chatToolMessage{Role: "tool", ToolCallID: call.id, Content: unavailableToolOutput})
+			if err != nil {
+				return data, err
+			}
+			if missing.Len() > 0 {
+				missing.WriteByte(',')
+			}
+			missing.Write(encoded)
+			stats.MissingOutputs++
+		}
+		if missing.Len() > 0 {
+			patches = append(patches, jsonTextPatch{start: group.end, end: group.end, value: "," + missing.String()})
 		}
 	}
 	if len(patches) == 0 {

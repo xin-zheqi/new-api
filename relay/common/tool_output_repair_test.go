@@ -1,6 +1,7 @@
 package common
 
 import (
+	"io"
 	"strconv"
 	"strings"
 	"testing"
@@ -166,7 +167,7 @@ func TestToolOutputRepairGatesAndBounds(t *testing.T) {
 	}{
 		{"default off", false, false, types.RelayFormatOpenAIResponses},
 		{"passthrough", true, true, types.RelayFormatOpenAIResponses},
-		{"native chat", true, false, types.RelayFormatOpenAI},
+		{"chat body without messages", true, false, types.RelayFormatOpenAI},
 		{"native claude", true, false, types.RelayFormatClaude},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -188,6 +189,120 @@ func TestToolOutputRepairGatesAndBounds(t *testing.T) {
 	got, err := RepairToolOutputRequest(body, info)
 	require.NoError(t, err)
 	assert.Equal(t, body, got, "oversized history must not be partially repaired")
+}
+
+func TestChatToolOutputRepairClosesEachBatchAndPreservesResults(t *testing.T) {
+	body := []byte(`{"model":"arbitrary-chat-model","messages":[
+		{"role":"assistant","content":null,"tool_calls":[{"id":"a","type":"function","function":{"name":"read","arguments":"{}"}},{"id":"b","type":"function","function":{"name":"write","arguments":"{}"}}]},
+		{"role":"tool","tool_call_id":"a","content":"REAL RESULT","extension":42},
+		{"role":"user","content":"continue"},
+		{"role":"assistant","content":null,"tool_calls":[{"id":"c","type":"function","function":{"name":"patch","arguments":"{}"}}]},
+		{"role":"assistant","content":"next answer"},
+		{"role":"user","content":"finish"}
+	],"unknown":{"preserve":true}}`)
+	info := &RelayInfo{RelayFormat: types.RelayFormatOpenAI, ChannelMeta: &ChannelMeta{ChannelSetting: dto.ChannelSettings{ToolOutputRepair: true}}}
+	got, err := RepairToolOutputRequest(body, info)
+	require.NoError(t, err)
+	require.True(t, gjson.ValidBytes(got))
+	messages := gjson.GetBytes(got, "messages").Array()
+	require.Len(t, messages, 8)
+	assert.Equal(t, "a", messages[1].Get("tool_call_id").String())
+	assert.Equal(t, "REAL RESULT", messages[1].Get("content").String())
+	assert.Equal(t, "42", messages[1].Get("extension").Raw)
+	assert.Equal(t, "b", messages[2].Get("tool_call_id").String())
+	assert.Equal(t, "user", messages[3].Get("role").String())
+	assert.Equal(t, "c", messages[5].Get("tool_call_id").String())
+	assert.Equal(t, "next answer", messages[6].Get("content").String())
+	assert.True(t, gjson.GetBytes(got, "unknown.preserve").Bool())
+	for _, index := range []int{2, 5} {
+		assert.Equal(t, "tool", messages[index].Get("role").String())
+		result := gjson.Parse(messages[index].Get("content").String())
+		assert.Equal(t, "tool_output_unavailable", result.Get("error.code").String())
+		assert.Contains(t, result.Get("error.message").String(), "Execution status is unknown")
+	}
+	assert.Equal(t, &ToolOutputRepairStats{MissingOutputs: 2}, info.ToolOutputRepairStats)
+	assert.NotContains(t, string(body), "tool_output_unavailable", "retry source is immutable")
+	again, err := RepairToolOutputRequest(got, info)
+	require.NoError(t, err)
+	assert.Equal(t, got, again, "repair must be idempotent")
+	assert.Nil(t, info.ToolOutputRepairStats)
+}
+
+func TestNewChannelJSONBodyAppliesChatToolOutputRepair(t *testing.T) {
+	body := []byte(`{"model":"arbitrary-chat-model","messages":[{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"read","arguments":"{}"}}]},{"role":"user","content":"continue"}]}`)
+	info := &RelayInfo{RelayFormat: types.RelayFormatOpenAI, ChannelMeta: &ChannelMeta{ChannelSetting: dto.ChannelSettings{ToolOutputRepair: true}}}
+	requestBody, closer, err := NewChannelJSONBody(body, info)
+	require.NoError(t, err)
+	defer closer.Close()
+	got, err := io.ReadAll(requestBody)
+	require.NoError(t, err)
+	messages := gjson.GetBytes(got, "messages").Array()
+	require.Len(t, messages, 3)
+	assert.Equal(t, "tool", messages[1].Get("role").String())
+	assert.Equal(t, "a", messages[1].Get("tool_call_id").String())
+	assert.Equal(t, &ToolOutputRepairStats{MissingOutputs: 1}, info.ToolOutputRepairStats)
+}
+
+func TestChatToolOutputRepairReplacesMissingResultContent(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"read","arguments":"{}"}}]},{"role":"tool","tool_call_id":"a","content":null,"extra":"keep"}]}`)
+	info := &RelayInfo{RelayFormat: types.RelayFormatOpenAI, ChannelMeta: &ChannelMeta{ChannelSetting: dto.ChannelSettings{ToolOutputRepair: true}}}
+	got, err := RepairToolOutputRequest(body, info)
+	require.NoError(t, err)
+	messages := gjson.GetBytes(got, "messages").Array()
+	require.Len(t, messages, 2)
+	result := gjson.Parse(messages[1].Get("content").String())
+	assert.Equal(t, "tool_output_unavailable", result.Get("error.code").String())
+	assert.Equal(t, "keep", messages[1].Get("extra").String())
+	assert.Equal(t, &ToolOutputRepairStats{MissingOutputs: 1}, info.ToolOutputRepairStats)
+}
+
+func TestChatToolOutputRepairLeavesUnsafeHistoryUnchanged(t *testing.T) {
+	call := `{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"read","arguments":"{}"}}]}`
+	for _, tc := range []struct{ name, messages string }{
+		{"complete", call + `,{"role":"tool","tool_call_id":"a","content":"real"}`},
+		{"duplicate call id", `{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"read","arguments":"{}"}},{"id":"a","type":"function","function":{"name":"write","arguments":"{}"}}]}`},
+		{"malformed call id", `{"role":"assistant","tool_calls":[{"id":123,"type":"function","function":{"name":"read","arguments":"{}"}}]}`},
+		{"orphan result", `{"role":"tool","tool_call_id":"a","content":"real"}` + `,` + call},
+		{"duplicate result", call + `,{"role":"tool","tool_call_id":"a","content":"one"},{"role":"tool","tool_call_id":"a","content":"two"}`},
+		{"result after user", call + `,{"role":"user","content":"continue"},{"role":"tool","tool_call_id":"a","content":"real"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"messages":[` + tc.messages + `]}`)
+			info := &RelayInfo{RelayFormat: types.RelayFormatOpenAI, ChannelMeta: &ChannelMeta{ChannelSetting: dto.ChannelSettings{ToolOutputRepair: true}}}
+			got, err := RepairToolOutputRequest(body, info)
+			require.NoError(t, err)
+			assert.Equal(t, body, got)
+			assert.Nil(t, info.ToolOutputRepairStats)
+		})
+	}
+}
+
+func TestChatToolOutputRepairAllowsIDsReusedAcrossBatches(t *testing.T) {
+	call := `{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"read","arguments":"{}"}}]}`
+	body := []byte(`{"messages":[` + call + `,{"role":"tool","tool_call_id":"a","content":"first result"},{"role":"user","content":"again"},` + call + `,{"role":"user","content":"continue"}]}`)
+	info := &RelayInfo{RelayFormat: types.RelayFormatOpenAI, ChannelMeta: &ChannelMeta{ChannelSetting: dto.ChannelSettings{ToolOutputRepair: true}}}
+	got, err := RepairToolOutputRequest(body, info)
+	require.NoError(t, err)
+	messages := gjson.GetBytes(got, "messages").Array()
+	require.Len(t, messages, 6)
+	assert.Equal(t, "first result", messages[1].Get("content").String())
+	assert.Equal(t, "a", messages[4].Get("tool_call_id").String())
+	assert.Equal(t, "user", messages[5].Get("role").String())
+	assert.Equal(t, &ToolOutputRepairStats{MissingOutputs: 1}, info.ToolOutputRepairStats)
+}
+
+func TestChatToolOutputRepairBoundsCallCount(t *testing.T) {
+	calls := make([]map[string]any, 0, 257)
+	for i := range 257 {
+		calls = append(calls, map[string]any{"id": strconv.Itoa(i), "type": "function", "function": map[string]any{"name": "read", "arguments": "{}"}})
+	}
+	body, err := common.Marshal(map[string]any{"messages": []any{map[string]any{"role": "assistant", "tool_calls": calls}}})
+	require.NoError(t, err)
+	info := &RelayInfo{RelayFormat: types.RelayFormatOpenAI, ChannelMeta: &ChannelMeta{ChannelSetting: dto.ChannelSettings{ToolOutputRepair: true}}}
+	got, err := RepairToolOutputRequest(body, info)
+	require.NoError(t, err)
+	assert.Equal(t, body, got, "oversized Chat history must not be partially repaired")
+	assert.Nil(t, info.ToolOutputRepairStats)
 }
 
 func BenchmarkToolOutputRepairRequest(b *testing.B) {

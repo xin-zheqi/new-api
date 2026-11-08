@@ -4312,7 +4312,7 @@
     "Remark": "Примечание",
     "Reminder threshold must be a non-negative number": "Порог уведомления должен быть неотрицательным числом",
     "Reorder channel {{id}}": "Изменить порядок канала {{id}}",
-    "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.": "Исправляет явно переданную историю инструментов Responses: использует найденные результаты или помечает отсутствующие как недоступные, не запуская инструменты. Удалённая история и прямая передача тела запроса пропускаются.",
+    "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.": "Исправляет явно переданную историю инструментов Chat Completions и Responses: использует найденные результаты или помечает отсутствующие как недоступные, не запуская инструменты. Удалённая история Responses и прямая передача тела запроса пропускаются.",
     "Repair missing tool outputs": "Восстанавливать результаты инструментов",
     "replace": "Замена",
     "Replace PDF": "Заменить PDF",

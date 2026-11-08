@@ -4423,7 +4423,7 @@
     "Remark": "备注",
     "Reminder threshold must be a non-negative number": "提醒阈值必须是非负数",
     "Reorder channel {{id}}": "调整渠道 {{id}} 的优先级",
-    "Repair explicit Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful history and body passthrough are skipped.": "修复 Responses 显式工具历史：复用匹配结果，缺失时标记为不可用，不执行工具；远端会话历史和请求体透传时跳过。",
+    "Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.": "修复 Chat Completions 和 Responses 显式工具历史：复用匹配结果，缺失时标记为不可用，不执行工具；远端 Responses 会话历史和请求体透传时跳过。",
     "Repair missing tool outputs": "工具结果补齐",
     "replace": "替换",
     "Replace PDF": "替换 PDF",

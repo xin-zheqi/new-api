@@ -189,6 +189,7 @@ import { ParamOverrideEditorDialog } from '../dialogs/param-override-editor-dial
 import { StatusCodeRiskDialog } from '../dialogs/status-code-risk-dialog'
 import { ModelMappingEditor } from '../model-mapping-editor'
 import { ReasoningContentRepairSetting } from '../reasoning-content-repair-setting'
+import { ReasoningEffortMappingSetting } from '../reasoning-effort-mapping-setting'
 import { ResponsesWebSocketSetting } from '../responses-websocket-setting'
 import { ToolOutputRepairSetting } from '../tool-output-repair-setting'
 import {
@@ -293,6 +294,7 @@ const SENSITIVE_FORM_FIELDS = [
   'force_format',
   'thinking_to_content',
   'reasoning_content_repair',
+  'reasoning_effort_mapping',
   'tool_output_repair',
   'proxy',
   'http_protocol',
@@ -355,6 +357,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.force_format ||
     values.thinking_to_content ||
     values.reasoning_content_repair ||
+    values.reasoning_effort_mapping?.length ||
     values.tool_output_repair ||
     values.pass_through_body_enabled ||
     values.disable_image_generation ||
@@ -771,6 +774,7 @@ export function ChannelMutateDrawer({
   const currentForceFormat = form.watch('force_format')
   const currentThinkingToContent = form.watch('thinking_to_content')
   const currentReasoningContentRepair = form.watch('reasoning_content_repair')
+  const currentReasoningEffortMapping = form.watch('reasoning_effort_mapping')
   const currentToolOutputRepair = form.watch('tool_output_repair')
   const currentPassThroughBodyEnabled = form.watch('pass_through_body_enabled')
   const currentRejectEmptyResponse = form.watch('reject_empty_response')
@@ -1057,6 +1061,7 @@ export function ChannelMutateDrawer({
     currentForceFormat ||
     currentThinkingToContent ||
     currentReasoningContentRepair ||
+    currentReasoningEffortMapping?.length ||
     currentToolOutputRepair ||
     currentPassThroughBodyEnabled ||
     currentRejectEmptyResponse ||
@@ -4246,6 +4251,9 @@ export function ChannelMutateDrawer({
                               />
 
                               <ReasoningContentRepairSetting
+                                disabled={sensitiveLocked}
+                              />
+                              <ReasoningEffortMappingSetting
                                 disabled={sensitiveLocked}
                               />
                               <ToolOutputRepairSetting

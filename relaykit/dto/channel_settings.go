@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
@@ -17,6 +19,9 @@ type ChannelSettings struct {
 	// ReasoningContentRepair preserves available reasoning, normalizes Responses
 	// history, and marks missing DeepSeek thinking history when tools are used.
 	ReasoningContentRepair bool `json:"reasoning_content_repair,omitempty"`
+	// ReasoningEffortMapping replaces only existing outbound effort strings.
+	// Empty mappings keep the original request path and bytes unchanged.
+	ReasoningEffortMapping map[string]string `json:"reasoning_effort_mapping,omitempty"`
 	// ToolOutputRepair repairs explicit Responses tool history only. Missing
 	// results are marked unavailable, never executed or reported as successful.
 	ToolOutputRepair            bool   `json:"tool_output_repair,omitempty"`
@@ -42,10 +47,32 @@ type ChannelSettings struct {
 }
 
 const (
-	HTTPProtocolAuto         = "auto"
-	HTTPProtocolHTTP1        = "http1"
-	MaxHTTP2ConnectionShards = 8
+	HTTPProtocolAuto           = "auto"
+	HTTPProtocolHTTP1          = "http1"
+	MaxHTTP2ConnectionShards   = 8
+	MaxReasoningEffortMappings = 64
+	MaxReasoningEffortLength   = 64
 )
+
+// ValidateReasoningEffortMapping validates channel configuration at save time.
+// Values are deliberately not provider enums: compatible gateways can support
+// private strength names, while the chosen upstream remains their authority.
+func (s *ChannelSettings) ValidateReasoningEffortMapping() error {
+	if s == nil || len(s.ReasoningEffortMapping) == 0 {
+		return nil
+	}
+	if len(s.ReasoningEffortMapping) > MaxReasoningEffortMappings {
+		return fmt.Errorf("reasoning_effort_mapping must not exceed %d entries", MaxReasoningEffortMappings)
+	}
+	for source, target := range s.ReasoningEffortMapping {
+		for _, value := range [...]string{source, target} {
+			if value == "" || strings.TrimSpace(value) != value || !utf8.ValidString(value) || utf8.RuneCountInString(value) > MaxReasoningEffortLength || strings.ContainsFunc(value, unicode.IsControl) {
+				return fmt.Errorf("reasoning_effort_mapping entries must contain 1-%d characters without surrounding whitespace or control characters", MaxReasoningEffortLength)
+			}
+		}
+	}
+	return nil
+}
 
 // ValidateHTTPTransport validates save-time HTTP transport channel settings.
 func (s *ChannelSettings) ValidateHTTPTransport() error {

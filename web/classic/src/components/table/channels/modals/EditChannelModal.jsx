@@ -72,6 +72,11 @@ import { useSecureVerification } from '../../../../hooks/common/useSecureVerific
 import { parseChannelConnectionString } from '../../../../helpers/token';
 import { createApiCalls } from '../../../../services/secureVerification';
 import AdvancedCustomRoutes from './AdvancedCustomRoutes';
+import ReasoningEffortMappingEditor from './ReasoningEffortMappingEditor';
+import {
+  reasoningEffortMappingRows,
+  serializeReasoningEffortMapping,
+} from './reasoningEffortMapping';
 import { UserContext } from '../../../../context/User';
 import {
   collectInvalidStatusCodeEntries,
@@ -216,6 +221,7 @@ const EditChannelModal = (props) => {
     thinking_to_content: false,
     reasoning_content_repair: false,
     tool_output_repair: false,
+    reasoning_effort_mapping: [],
     proxy: '',
     first_response_timeout_seconds: 30,
     first_response_timeout_auto_ban: false,
@@ -902,6 +908,9 @@ const EditChannelModal = (props) => {
           data.reasoning_content_repair =
             parsedSettings.reasoning_content_repair === true;
           data.tool_output_repair = parsedSettings.tool_output_repair === true;
+          data.reasoning_effort_mapping = reasoningEffortMappingRows(
+            parsedSettings.reasoning_effort_mapping,
+          );
           data.proxy = parsedSettings.proxy || '';
           data.first_response_timeout_seconds =
             typeof parsedSettings.first_response_timeout_seconds === 'number'
@@ -922,6 +931,7 @@ const EditChannelModal = (props) => {
           data.thinking_to_content = false;
           data.reasoning_content_repair = false;
           data.tool_output_repair = false;
+          data.reasoning_effort_mapping = [];
           data.proxy = '';
           data.first_response_timeout_seconds = 0;
           data.first_response_timeout_auto_ban = false;
@@ -935,6 +945,7 @@ const EditChannelModal = (props) => {
         data.thinking_to_content = false;
         data.reasoning_content_repair = false;
         data.tool_output_repair = false;
+        data.reasoning_effort_mapping = [];
         data.proxy = '';
         data.first_response_timeout_seconds = 0;
         data.first_response_timeout_auto_ban = false;
@@ -1124,6 +1135,7 @@ const EditChannelModal = (props) => {
         data.thinking_to_content ||
         data.reasoning_content_repair ||
         data.tool_output_repair ||
+        data.reasoning_effort_mapping.length > 0 ||
         data.pass_through_body_enabled ||
         data.force_format ||
         data.claude_beta_query ||
@@ -1639,6 +1651,15 @@ const EditChannelModal = (props) => {
     const formValues = formApiRef.current ? formApiRef.current.getValues() : {};
     let localInputs = { ...formValues };
     localInputs.param_override = inputs.param_override;
+    let reasoningEffortMapping;
+    try {
+      reasoningEffortMapping = serializeReasoningEffortMapping(
+        inputs.reasoning_effort_mapping,
+      );
+    } catch (error) {
+      showError(t(error.message));
+      return;
+    }
 
     if (localInputs.type === 57) {
       if (batch) {
@@ -1846,6 +1867,7 @@ const EditChannelModal = (props) => {
       thinking_to_content: localInputs.thinking_to_content || false,
       reasoning_content_repair: localInputs.reasoning_content_repair || false,
       tool_output_repair: localInputs.tool_output_repair || false,
+      reasoning_effort_mapping: reasoningEffortMapping,
       proxy: localInputs.proxy || '',
       first_response_timeout_seconds: Math.max(
         0,
@@ -1964,6 +1986,7 @@ const EditChannelModal = (props) => {
     delete localInputs.thinking_to_content;
     delete localInputs.reasoning_content_repair;
     delete localInputs.tool_output_repair;
+    delete localInputs.reasoning_effort_mapping;
     delete localInputs.proxy;
     delete localInputs.first_response_timeout_seconds;
     delete localInputs.first_response_timeout_auto_ban;
@@ -2958,6 +2981,12 @@ const EditChannelModal = (props) => {
                     extraText={t(
                       'Repair explicit Chat Completions and Responses tool history. Reuse matching results or mark missing results as unavailable; never executes tools. Stateful Responses history and body passthrough are skipped.',
                     )}
+                  />
+                  <ReasoningEffortMappingEditor
+                    value={inputs.reasoning_effort_mapping}
+                    onChange={(rows) =>
+                      handleInputChange('reasoning_effort_mapping', rows)
+                    }
                   />
                   <Form.Switch
                     field='pass_through_body_enabled'

@@ -41,6 +41,38 @@ func TestChannelValidateSettingsRejectsInvalidHTTPTransport(t *testing.T) {
 	}
 }
 
+func TestChannelValidateSettingsReasoningEffortMapping(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		setting string
+		valid   bool
+	}{
+		{"legacy settings remain valid", `{"thinking_to_content":true,"proxy":""}`, true},
+		{"mapping round trip", `{"reasoning_effort_mapping":{"xhigh":"max"},"reasoning_content_repair":true}`, true},
+		{"invalid target rejected at save", `{"reasoning_effort_mapping":{"xhigh":""}}`, false},
+		{"wrong setting type rejected", `{"reasoning_effort_mapping":[{"from":"xhigh","to":"max"}]}`, false},
+		{"non-string target rejected", `{"reasoning_effort_mapping":{"xhigh":5}}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			channel := &Channel{Setting: &tc.setting}
+			err := channel.ValidateSettings()
+			if !tc.valid {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if tc.name == "mapping round trip" {
+				setting := channel.GetSetting()
+				assert.Equal(t, map[string]string{"xhigh": "max"}, setting.ReasoningEffortMapping)
+				assert.True(t, setting.ReasoningContentRepair)
+				channel.SetSetting(setting)
+				require.NoError(t, channel.ValidateSettings())
+				assert.Equal(t, setting, channel.GetSetting())
+			}
+		})
+	}
+}
+
 func TestAdvancedCustomChannelRequiresModelListRouteOnlyWhenUpdateChecksEnabled(t *testing.T) {
 	inferenceRoute := dto.AdvancedCustomRoute{
 		IncomingPath: "/v1/chat/completions",

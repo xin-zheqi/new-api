@@ -6,12 +6,17 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
-// NewChannelJSONBody applies provider schema compatibility and opt-in history
-// repairs after conversion and parameter overrides. Passthrough callers keep
-// their original body; none of these transformations mutate retry input.
+// NewChannelJSONBody applies channel effort mapping, schema compatibility and
+// opt-in history repairs after conversion and parameter overrides. Passthrough
+// callers keep their original body; none of these transformations mutate retry
+// input. Mapping comes first so history repair sees the strength sent upstream.
 func NewChannelJSONBody(data []byte, info *RelayInfo) (common.ReplayableBody, io.Closer, error) {
+	data, err := ApplyReasoningEffortMapping(data, info)
+	if err != nil {
+		return nil, nil, err
+	}
 	data = NormalizeDeepSeekSchemas(data, info)
-	data, err := RepairReasoningRequest(data, info)
+	data, err = RepairReasoningRequest(data, info)
 	if err != nil {
 		return nil, nil, err
 	}

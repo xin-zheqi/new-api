@@ -79,6 +79,17 @@ export const HTTP_PROTOCOL_AUTO = 'auto'
 export const HTTP_PROTOCOL_HTTP1 = 'http1'
 export const MAX_HTTP2_CONNECTION_SHARDS = 8
 
+export const MAX_REASONING_EFFORT_MAPPINGS = 64
+
+const reasoningEffortMappingValue = z
+  .string()
+  .trim()
+  .min(1, 'Reasoning effort mappings require both values.')
+  .refine(
+    (value) => [...value].length <= 64 && !/\p{Cc}/u.test(value),
+    'Reasoning effort mapping values must be at most 64 characters and contain no control characters.'
+  )
+
 export function normalizeHttpProtocol(
   value: string | undefined | null
 ): 'auto' | 'http1' {
@@ -263,6 +274,18 @@ export const channelFormSchema = z
     force_format: z.boolean().optional(),
     thinking_to_content: z.boolean().optional(),
     reasoning_content_repair: z.boolean().optional(),
+    reasoning_effort_mapping: z
+      .array(
+        z.object({
+          from: reasoningEffortMappingValue,
+          to: reasoningEffortMappingValue,
+        })
+      )
+      .max(
+        MAX_REASONING_EFFORT_MAPPINGS,
+        'Reasoning effort mapping supports at most 64 entries.'
+      )
+      .optional(),
     tool_output_repair: z.boolean().optional(),
     proxy: z
       .string()
@@ -301,6 +324,17 @@ export const channelFormSchema = z
     upstream_model_update_ignored_models: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    const mappingSources = new Set<string>()
+    data.reasoning_effort_mapping?.forEach((row, index) => {
+      if (mappingSources.has(row.from)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['reasoning_effort_mapping', index, 'from'],
+          message: 'Reasoning effort mapping sources must be unique.',
+        })
+      }
+      mappingSources.add(row.from)
+    })
     if (
       [3, 8, 36, 45, CHANNEL_TYPE_NEW_API, CHANNEL_TYPE_TASK_PLUGIN].includes(
         data.type
@@ -458,6 +492,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   force_format: false,
   thinking_to_content: false,
   reasoning_content_repair: false,
+  reasoning_effort_mapping: [],
   tool_output_repair: false,
   proxy: '',
   http_protocol: HTTP_PROTOCOL_AUTO,
@@ -509,6 +544,7 @@ export function transformChannelToFormDefaults(
     force_format: false,
     thinking_to_content: false,
     reasoning_content_repair: false,
+    reasoning_effort_mapping: [] as { from: string; to: string }[],
     tool_output_repair: false,
     proxy: '',
     http_protocol: HTTP_PROTOCOL_AUTO as 'auto' | 'http1',
@@ -529,11 +565,19 @@ export function transformChannelToFormDefaults(
       const shards = normalizeHttp2ConnectionShards(
         parsed.http2_connection_shards
       )
+      const mapping = parsed.reasoning_effort_mapping
+      let reasoningEffortMappings: { from: string; to: string }[] = []
+      if (mapping && typeof mapping === 'object' && !Array.isArray(mapping)) {
+        reasoningEffortMappings = Object.entries(
+          mapping as Record<string, string>
+        ).map(([from, to]) => ({ from, to }))
+      }
       extraSettings = {
         task_plugin_key: parsed.task_plugin_key || '',
         force_format: parsed.force_format || false,
         thinking_to_content: parsed.thinking_to_content || false,
         reasoning_content_repair: parsed.reasoning_content_repair === true,
+        reasoning_effort_mapping: reasoningEffortMappings,
         tool_output_repair: parsed.tool_output_repair === true,
         proxy: parsed.proxy || '',
         http_protocol: protocol,
@@ -683,6 +727,15 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
     force_format: formData.force_format || false,
     thinking_to_content: formData.thinking_to_content || false,
     reasoning_content_repair: formData.reasoning_content_repair || false,
+    // Omit an empty mapping so existing requests keep the no-op default.
+    reasoning_effort_mapping: formData.reasoning_effort_mapping?.length
+      ? Object.fromEntries(
+          formData.reasoning_effort_mapping.map((row) => [
+            row.from.trim(),
+            row.to.trim(),
+          ])
+        )
+      : undefined,
     tool_output_repair: formData.tool_output_repair || false,
     proxy: formData.proxy?.trim() || '',
     pass_through_body_enabled: formData.pass_through_body_enabled || false,

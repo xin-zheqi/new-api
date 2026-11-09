@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { Toast } from '@douyinfe/semi-ui';
+import { ReadableStream } from 'node:stream/web';
+import { TextEncoder } from 'node:util';
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest';
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
@@ -64,7 +66,8 @@ const log = {
   prompt_tokens: 123,
   completion_tokens: 5,
   quota: 500000,
-  other: '{"cache_tokens":20,"cache_creation_tokens":50}',
+  cache_read_tokens: 20,
+  cache_write_tokens: 50,
 };
 const appliedQuery = (path = '/api/log/self/') => ({
   current: {
@@ -77,11 +80,26 @@ const appliedQuery = (path = '/api/log/self/') => ({
       request_id: 'req/one',
       start_timestamp: '1',
       end_timestamp: '4102444800',
+      p: '5',
+      page_size: '10',
     }),
   },
 });
-const response = (page, total, items) => ({
-  data: { success: true, data: { page, page_size: 100, total, items } },
+const response = (rows, count = rows.length) => ({
+  data: new ReadableStream({
+    start(controller) {
+      const encoder = new TextEncoder();
+      for (const row of rows) {
+        controller.enqueue(encoder.encode(`${JSON.stringify(row)}\n`));
+      }
+      if (count !== null) {
+        controller.enqueue(
+          encoder.encode(`${JSON.stringify({ complete: true, count })}\n`),
+        );
+      }
+      controller.close();
+    },
+  }),
 });
 const readBlob = (blob) =>
   new Promise((resolve, reject) => {
@@ -91,7 +109,7 @@ const readBlob = (blob) =>
     reader.readAsText(blob);
   });
 
-test('self export fetches every filtered page and captures the amount unit once', async () => {
+test('self export uses one stream for all filtered rows and captures query and currency once', async () => {
   localStorage.setItem('quota_per_unit', '500000');
   localStorage.setItem('quota_display_type', 'CNY');
   localStorage.setItem('status', '{"usd_exchange_rate":7}');
@@ -99,39 +117,31 @@ test('self export fetches every filtered page and captures the amount unit once'
   const requests = [];
   vi.spyOn(API, 'get').mockImplementation(async (url, options) => {
     requests.push({ url: new URL(url, 'https://test.invalid'), options });
-    if (requests.length === 1) {
-      // Changes after the click must not alter later pages of this file.
-      query.current.params.set('token_name', 'changed');
-      localStorage.setItem('status', '{"usd_exchange_rate":9}');
-      return response(
-        1,
-        101,
-        Array.from({ length: 100 }, (_, index) => ({ ...log, id: index + 1 })),
-      );
-    }
-    return response(2, 101, [{ ...log, id: 101 }]);
+    // Changes after the click must not alter this file's query or amounts.
+    query.current.params.set('token_name', 'changed');
+    localStorage.setItem('status', '{"usd_exchange_rate":9}');
+    return response(Array.from({ length: 101 }, () => log));
   });
   const { result } = renderHook(() => useUsageLogsExport(query));
   await act(() => result.current.exportLogs());
 
-  expect(requests).toHaveLength(2);
+  expect(requests).toHaveLength(1);
   for (const request of requests) {
-    expect(request.url.pathname).toBe('/api/log/self/');
+    expect(request.url.pathname).toBe('/api/log/self/export');
     expect(request.url.searchParams.get('token_name')).toBe('token & one');
     expect(request.url.searchParams.get('group')).toBe('group+A');
     expect(request.url.searchParams.get('request_id')).toBe('req/one');
     expect(request.url.searchParams.get('type')).toBe('2');
-    expect(request.url.searchParams.get('page_size')).toBe('100');
+    expect(request.url.searchParams.has('page_size')).toBe(false);
+    expect(request.url.searchParams.has('p')).toBe(false);
     expect(Number(request.url.searchParams.get('end_timestamp'))).toBeLessThan(
       4102444800,
     );
     expect(request.options.disableDuplicate).toBe(true);
     expect(request.options.signal.aborted).toBe(false);
+    expect(request.options.adapter).toBe('fetch');
+    expect(request.options.responseType).toBe('stream');
   }
-  expect(requests[0].url.searchParams.get('end_timestamp')).toBe(
-    requests[1].url.searchParams.get('end_timestamp'),
-  );
-  expect(requests[1].url.searchParams.get('p')).toBe('2');
   expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
   const csv = await readBlob(URL.createObjectURL.mock.calls[0][0]);
   expect(csv).toContain('"Amount (CNY)"');
@@ -146,26 +156,18 @@ test('admin export preserves username and channel scope from the applied query',
   const query = appliedQuery('/api/log/');
   query.current.params.set('username', 'admin-filter');
   query.current.params.set('channel', '7');
-  const get = vi.spyOn(API, 'get').mockResolvedValue(response(1, 1, [log]));
+  const get = vi.spyOn(API, 'get').mockResolvedValue(response([log]));
   const { result } = renderHook(() => useUsageLogsExport(query));
   await act(() => result.current.exportLogs());
   const url = new URL(get.mock.calls[0][0], 'https://test.invalid');
-  expect(url.pathname).toBe('/api/log/');
+  expect(url.pathname).toBe('/api/log/export');
   expect(url.searchParams.get('username')).toBe('admin-filter');
   expect(url.searchParams.get('channel')).toBe('7');
   expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
 });
 
-test('a failed later page reports an error and does not download a partial file', async () => {
-  vi.spyOn(API, 'get')
-    .mockResolvedValueOnce(
-      response(
-        1,
-        101,
-        Array.from({ length: 100 }, () => log),
-      ),
-    )
-    .mockRejectedValueOnce(new Error('network interrupted'));
+test('a truncated stream reports an error and does not download a partial file', async () => {
+  vi.spyOn(API, 'get').mockResolvedValue(response([log], null));
   const { result } = renderHook(() => useUsageLogsExport(appliedQuery()));
   await act(() => result.current.exportLogs());
   expect(URL.createObjectURL).not.toHaveBeenCalled();
@@ -174,11 +176,18 @@ test('a failed later page reports an error and does not download a partial file'
 });
 
 test('an empty filtered export shows an empty notice without downloading', async () => {
-  vi.spyOn(API, 'get').mockResolvedValue(response(1, 0, []));
-  const { result } = renderHook(() => useUsageLogsExport(appliedQuery()));
+  const query = appliedQuery();
+  query.current.params.set('type', '5');
+  const get = vi.spyOn(API, 'get').mockResolvedValue(response([]));
+  const { result } = renderHook(() => useUsageLogsExport(query));
   await act(() => result.current.exportLogs());
   expect(URL.createObjectURL).not.toHaveBeenCalled();
   expect(Toast.info).toHaveBeenCalledWith('No logs to export');
+  expect(
+    new URL(get.mock.calls[0][0], 'https://test.invalid').searchParams.get(
+      'type',
+    ),
+  ).toBe('5');
 });
 
 test('leaving the page cancels the active request and suppresses download and error notices', async () => {
@@ -197,8 +206,26 @@ test('leaving the page cancels the active request and suppresses download and er
   expect(result.current.exportingLogs).toBe(true);
   unmount();
   expect(get.mock.calls[0][1].signal.aborted).toBe(true);
-  resolveRequest(response(1, 1, [log]));
+  resolveRequest(response([log]));
   await exporting;
   expect(URL.createObjectURL).not.toHaveBeenCalled();
   expect(Toast.error).not.toHaveBeenCalled();
+});
+
+test('a failed request restores the export control without creating a file', async () => {
+  vi.spyOn(API, 'get').mockRejectedValue(new Error('network unavailable'));
+  const { result } = renderHook(() => useUsageLogsExport(appliedQuery()));
+  await act(() => result.current.exportLogs());
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
+  expect(Toast.error).toHaveBeenCalledWith('错误：Failed to export logs');
+  expect(result.current.exportingLogs).toBe(false);
+});
+
+test('a successful HTTP response without a readable export is rejected', async () => {
+  vi.spyOn(API, 'get').mockResolvedValue({ data: { success: true, data: [] } });
+  const { result } = renderHook(() => useUsageLogsExport(appliedQuery()));
+  await act(() => result.current.exportLogs());
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
+  expect(Toast.error).toHaveBeenCalledWith('错误：Failed to export logs');
+  expect(result.current.exportingLogs).toBe(false);
 });

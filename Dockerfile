@@ -38,14 +38,13 @@ COPY --from=builder /build/web/dist ./web/dist
 COPY --from=builder-classic /build/web/classic/dist ./web/classic/dist
 RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
 
-# Keep the runtime stage independent from previous New API images. This avoids
-# retaining old /new-api binaries in immutable parent layers on every release.
-FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
+# The CGO-disabled binary is static. A small, independent runtime keeps both
+# embedded frontends without retaining build tools or earlier application layers.
+FROM alpine:3.23.8@sha256:469c9ea410b9215eaee7976ba6c0639039b444be8e5d638f7abbada189971eb2
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates tzdata \
-    && rm -rf /var/lib/apt/lists/* \
-    && update-ca-certificates
+# Preserve trusted TLS roots and named time zones for upstream/database TLS and
+# report timestamps; neither requires the larger Debian userspace.
+RUN apk add --no-cache ca-certificates tzdata && update-ca-certificates
 
 COPY --from=builder2 /build/new-api /
 COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/

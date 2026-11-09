@@ -67,16 +67,26 @@ const record: UsageLogExportRecord = {
   completion_tokens: 56,
   quota: 5000,
   created_at: 1794180000,
-  other: '{"cache_tokens":800,"cache_creation_tokens":20}',
+  cache_read_tokens: 800,
+  cache_write_tokens: 20,
 }
 
-function pageResponse(
-  items: UsageLogExportRecord[],
-  total = items.length,
-  page = 1
-): AxiosResponse {
+function streamResponse(items: UsageLogExportRecord[]): AxiosResponse {
+  const encoder = new TextEncoder()
   return {
-    data: { success: true, data: { items, page, page_size: 100, total } },
+    data: new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const item of items) {
+          controller.enqueue(encoder.encode(`${JSON.stringify(item)}\n`))
+        }
+        controller.enqueue(
+          encoder.encode(
+            `${JSON.stringify({ complete: true, count: items.length })}\n`
+          )
+        )
+        controller.close()
+      },
+    }),
   } as AxiosResponse
 }
 
@@ -214,8 +224,8 @@ describe('usage logs export button', () => {
       .setConfig({ currency: { ...DEFAULT_CURRENCY_CONFIG } })
   })
 
-  test('exports applied admin filters from page one and uses numeric CNY charges', async () => {
-    const get = vi.spyOn(api, 'get').mockResolvedValue(pageResponse([record]))
+  test('exports all applied admin filters in one request and uses numeric CNY charges', async () => {
+    const get = vi.spyOn(api, 'get').mockResolvedValue(streamResponse([record]))
     renderExport({
       filters: [
         { id: 'model_name', value: 'public&model+v1' },
@@ -231,10 +241,8 @@ describe('usage logs export button', () => {
 
     expect(get).toHaveBeenCalledOnce()
     const url = new URL(get.mock.calls[0][0], 'https://newapi.test')
-    expect(url.pathname).toBe('/api/log')
+    expect(url.pathname).toBe('/api/log/export')
     expect(Object.fromEntries(url.searchParams)).toEqual({
-      p: '1',
-      page_size: '100',
       type: '2',
       model_name: 'public&model+v1',
       token_name: 'team&key',
@@ -267,7 +275,9 @@ describe('usage logs export button', () => {
     'keeps %s on the self endpoint without admin-only filters',
     async (_, role, switchScope) => {
       useAuthStore.getState().auth.setUser({ id: 2, username: 'self', role })
-      const get = vi.spyOn(api, 'get').mockResolvedValue(pageResponse([record]))
+      const get = vi
+        .spyOn(api, 'get')
+        .mockResolvedValue(streamResponse([record]))
       renderExport()
       if (switchScope) {
         fireEvent.click(screen.getByRole('button', { name: 'Only mine' }))
@@ -276,7 +286,7 @@ describe('usage logs export button', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Export table' }))
       })
       const url = new URL(get.mock.calls[0][0], 'https://newapi.test')
-      expect(url.pathname).toBe('/api/log/self')
+      expect(url.pathname).toBe('/api/log/self/export')
       expect(url.searchParams.has('username')).toBe(false)
       expect(url.searchParams.has('channel')).toBe(false)
       expect(url.searchParams.get('model_name')).toBe('search-model')
@@ -286,14 +296,17 @@ describe('usage logs export button', () => {
   )
 
   test('fixes filters, scope, time and currency at click while preventing duplicate exports', async () => {
-    let resolveFirst!: (response: AxiosResponse) => void
-    const firstPage = new Promise<AxiosResponse>((resolve) => {
-      resolveFirst = resolve
-    })
-    const get = vi
-      .spyOn(api, 'get')
-      .mockReturnValueOnce(firstPage)
-      .mockResolvedValueOnce(pageResponse([record], 101, 2))
+    const encoder = new TextEncoder()
+    let streamController!: ReadableStreamDefaultController<Uint8Array>
+    const response = {
+      data: new ReadableStream<Uint8Array>({
+        start(controller) {
+          streamController = controller
+          controller.enqueue(encoder.encode(`${JSON.stringify(record)}\n`))
+        },
+      }),
+    } as AxiosResponse
+    const get = vi.spyOn(api, 'get').mockResolvedValue(response)
     renderExport()
     const exportButton = screen.getByRole('button', { name: 'Export table' })
     act(() => {
@@ -321,20 +334,22 @@ describe('usage logs export button', () => {
     })
     vi.setSystemTime(new Date(now.getTime() + 60_000))
     await act(async () => {
-      resolveFirst(
-        pageResponse(
-          Array.from({ length: 100 }, () => record),
-          101
+      streamController.enqueue(
+        encoder.encode(
+          `${Array.from({ length: 100 }, () => `${JSON.stringify(record)}\n`).join('')}${JSON.stringify({ complete: true, count: 101 })}\n`
         )
       )
+      streamController.close()
     })
-    expect(get).toHaveBeenCalledTimes(2)
-    const first = new URL(get.mock.calls[0][0], 'https://newapi.test')
-    const second = new URL(get.mock.calls[1][0], 'https://newapi.test')
-    expect(second.pathname).toBe('/api/log')
-    expect(second.searchParams.get('p')).toBe('2')
-    second.searchParams.set('p', '1')
-    expect(second.toString()).toBe(first.toString())
+    expect(get).toHaveBeenCalledOnce()
+    const url = new URL(get.mock.calls[0][0], 'https://newapi.test')
+    expect(url.pathname).toBe('/api/log/export')
+    expect(url.searchParams.get('model_name')).toBe('search-model')
+    expect(url.searchParams.get('end_timestamp')).toBe(
+      String(now.getTime() / 1000)
+    )
+    expect(url.searchParams.has('p')).toBe(false)
+    expect(url.searchParams.has('page_size')).toBe(false)
     vi.runOnlyPendingTimers()
     vi.useRealTimers()
     const csv = await readBlob(createObjectURL.mock.calls[0][0])
@@ -358,7 +373,7 @@ describe('usage logs export button', () => {
           customCurrencyExchangeRate: 3,
         },
       })
-      vi.spyOn(api, 'get').mockResolvedValue(pageResponse([record]))
+      vi.spyOn(api, 'get').mockResolvedValue(streamResponse([record]))
       renderExport()
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: 'Export table' }))
@@ -371,13 +386,24 @@ describe('usage logs export button', () => {
     }
   )
 
-  test.each(['business error', 'connection error'])(
+  test.each(['invalid response', 'connection error', 'interrupted stream'])(
     'restores the button and reports %s without downloading',
     async (failure) => {
       const get = vi.spyOn(api, 'get')
-      if (failure === 'business error') {
+      if (failure === 'invalid response') {
         get.mockResolvedValue({
           data: { success: false, message: 'Query failed' },
+        } as AxiosResponse)
+      } else if (failure === 'interrupted stream') {
+        get.mockResolvedValue({
+          data: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(`${JSON.stringify(record)}\n`)
+              )
+              controller.close()
+            },
+          }),
         } as AxiosResponse)
       } else {
         get.mockRejectedValue(new Error('Connection closed'))
@@ -393,7 +419,7 @@ describe('usage logs export button', () => {
   )
 
   test('reports no matching rows and leaves the button available', async () => {
-    vi.spyOn(api, 'get').mockResolvedValue(pageResponse([]))
+    vi.spyOn(api, 'get').mockResolvedValue(streamResponse([]))
     renderExport()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Export table' }))
@@ -412,11 +438,11 @@ describe('usage logs export button', () => {
   })
 
   test('cancels the request on unmount and never downloads its late response', async () => {
-    let resolvePage!: (response: AxiosResponse) => void
+    let resolveResponse!: (response: AxiosResponse) => void
     const get = vi.spyOn(api, 'get').mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolvePage = resolve
+          resolveResponse = resolve
         })
     )
     const rendered = renderExport()
@@ -426,8 +452,26 @@ describe('usage logs export button', () => {
     rendered.unmount()
     expect(signal.aborted).toBe(true)
     await act(async () => {
-      resolvePage(pageResponse([record]))
+      resolveResponse(streamResponse([record]))
     })
+    expect(createObjectURL).not.toHaveBeenCalled()
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  test('cancels an active export stream on unmount without reporting a failure', async () => {
+    const cancel = vi.fn()
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: new ReadableStream<Uint8Array>({ cancel }),
+    } as AxiosResponse)
+    const rendered = renderExport()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export table' }))
+    })
+    expect(screen.getByRole('button', { name: 'Exporting...' })).toBeDisabled()
+    await act(async () => {
+      rendered.unmount()
+    })
+    expect(cancel).toHaveBeenCalledOnce()
     expect(createObjectURL).not.toHaveBeenCalled()
     expect(toast.error).not.toHaveBeenCalled()
   })

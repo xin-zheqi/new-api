@@ -26,18 +26,12 @@ export interface UsageLogExportRecord {
   completion_tokens?: number
   quota?: number
   created_at: number
-  other?: string
-}
-
-export interface UsageLogExportPage {
-  items: UsageLogExportRecord[] | null
-  page: number
-  page_size: number
-  total: number
+  cache_read_tokens?: number
+  cache_write_tokens?: number
 }
 
 export interface UsageLogExportOptions {
-  fetchPage: (page: number, pageSize: number) => Promise<UsageLogExportPage>
+  fetchExport: () => Promise<ReadableStream<Uint8Array>>
   headers: readonly string[]
   formatAmount: (quota: number) => number
   formatTime: (timestamp: number) => string
@@ -62,21 +56,6 @@ export function usageLogCsvRow(
   log: UsageLogExportRecord,
   options: Pick<UsageLogExportOptions, 'formatAmount' | 'formatTime'>
 ): string {
-  let other: Record<string, unknown> = {}
-  try {
-    const parsed: unknown = JSON.parse(log.other || '{}')
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      other = parsed as Record<string, unknown>
-    }
-  } catch {
-    // Older/error logs may have no valid metadata; their token columns are 0.
-  }
-  const write5m = tokenCount(other.cache_creation_tokens_5m)
-  const write1h = tokenCount(other.cache_creation_tokens_1h)
-  const cacheWrite =
-    write5m > 0 || write1h > 0
-      ? write5m + write1h
-      : tokenCount(other.cache_creation_tokens)
   // Excel keeps 15 significant digits. Remove floating-point conversion noise
   // without rounding small charges to zero or changing stored billing values.
   const amount = Number(options.formatAmount(log.quota || 0).toPrecision(15))
@@ -87,8 +66,8 @@ export function usageLogCsvRow(
     log.model_name || '',
     tokenCount(log.prompt_tokens),
     tokenCount(log.completion_tokens),
-    tokenCount(other.cache_tokens),
-    cacheWrite,
+    tokenCount(log.cache_read_tokens),
+    tokenCount(log.cache_write_tokens),
     amount,
     options.formatTime(log.created_at),
   ]
@@ -96,42 +75,77 @@ export function usageLogCsvRow(
     .join(',')
 }
 
-/** Fetch all filtered pages before downloading, never a partial report. */
+/** Read one compact response; create the file only after its completion marker. */
 export async function exportUsageLogsCsv(
   options: UsageLogExportOptions
 ): Promise<number> {
-  const pageSize = 100 // Matches the existing log API's maximum page size.
+  options.signal?.throwIfAborted()
+  const stream = await options.fetchExport()
+  const reader = stream.getReader()
   const parts = ['\uFEFF', `${options.headers.map(csvCell).join(',')}\r\n`]
-  let total: number | undefined
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let csvChunk = ''
   let exported = 0
-
-  for (let page = 1; ; page++) {
-    options.signal?.throwIfAborted()
-    const data = await options.fetchPage(page, pageSize)
-    options.signal?.throwIfAborted()
-    const items = data.items ?? []
-    if (
-      !Number.isSafeInteger(data.total) ||
-      data.total < 0 ||
-      data.page !== page ||
-      data.page_size !== pageSize ||
-      !Array.isArray(items) ||
-      (total !== undefined && data.total !== total)
-    ) {
-      throw new Error('Log export pagination changed')
-    }
-    total = data.total
-    if (items.length !== Math.min(pageSize, total - exported)) {
-      throw new Error('Log export page is incomplete')
-    }
-    if (total === 0) return 0
-    // Keep only CSV chunks in memory; do not retain whole log histories.
-    parts.push(
-      `${items.map((log) => usageLogCsvRow(log, options)).join('\r\n')}\r\n`
-    )
-    exported += items.length
-    if (exported === total) break
+  let complete = false
+  // Cancelling a pending read also closes the server's database cursor promptly.
+  const cancelReader = () => {
+    void reader.cancel().catch(() => undefined)
   }
+  options.signal?.addEventListener('abort', cancelReader, { once: true })
+
+  try {
+    while (true) {
+      options.signal?.throwIfAborted()
+      const { done, value } = await reader.read()
+      options.signal?.throwIfAborted()
+      buffer += decoder.decode(value, { stream: !done })
+      if (done) buffer += '\n'
+      let start = 0
+      for (
+        let end = buffer.indexOf('\n');
+        end !== -1;
+        end = buffer.indexOf('\n', start)
+      ) {
+        const line = buffer.slice(start, end).trim()
+        start = end + 1
+        if (!line) continue
+        if (complete) {
+          throw new Error('Unexpected data after log export completion')
+        }
+        const item = JSON.parse(line) as UsageLogExportRecord & {
+          complete?: boolean
+          count?: number
+        }
+        if (item?.complete === true) {
+          if (item.count !== exported) {
+            throw new Error('Log export count mismatch')
+          }
+          complete = true
+          continue
+        }
+        if (!item || !Number.isFinite(item.created_at)) {
+          throw new Error('Invalid log export record')
+        }
+        csvChunk += `${usageLogCsvRow(item, options)}\r\n`
+        exported++
+        if (csvChunk.length >= 65536) {
+          parts.push(csvChunk)
+          csvChunk = ''
+        }
+      }
+      buffer = buffer.slice(start)
+      if (done) break
+    }
+  } finally {
+    options.signal?.removeEventListener('abort', cancelReader)
+    await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
+  options.signal?.throwIfAborted()
+  if (!complete) throw new Error('Log export was interrupted')
+  if (exported === 0) return 0
+  if (csvChunk) parts.push(csvChunk)
 
   const url = URL.createObjectURL(
     new Blob(parts, { type: 'text/csv;charset=utf-8' })

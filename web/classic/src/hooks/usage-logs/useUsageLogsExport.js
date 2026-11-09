@@ -47,6 +47,8 @@ export function useUsageLogsExport(appliedLogQuery) {
       // Snapshot query, currency and labels once for the entire download.
       const { path, params } = appliedLogQuery.current;
       const query = new URLSearchParams(params);
+      query.delete('p');
+      query.delete('page_size');
       const now = Math.floor(Date.now() / 1000);
       const end = Number(query.get('end_timestamp'));
       query.set('end_timestamp', String(end > 0 ? Math.min(end, now) : now));
@@ -95,22 +97,24 @@ export function useUsageLogsExport(appliedLogQuery) {
         formatTime: timestamp2string,
         filename: `usage-logs-${timestamp2string(now).replace(/[: ]/g, '-')}.csv`,
         signal: controller.signal,
-        fetchPage: async (page, pageSize) => {
-          const pageQuery = new URLSearchParams(query);
-          pageQuery.set('p', String(page));
-          pageQuery.set('page_size', String(pageSize));
-          const response = await API.get(`${path}?${pageQuery}`, {
-            signal: controller.signal,
-            disableDuplicate: true,
-            skipErrorHandler: true,
-            timeout: 60000,
-          });
-          if (!response.data?.success || !response.data.data) {
-            throw new Error(
-              response.data?.message || t('Failed to export logs'),
-            );
+        fetchExport: async () => {
+          // One streamed response avoids repeated COUNT/OFFSET queries and
+          // transfers only export columns. The CSV stays in browser memory.
+          const response = await API.get(
+            `${path.replace(/\/$/, '')}/export?${query}`,
+            {
+              adapter: 'fetch',
+              responseType: 'stream',
+              signal: controller.signal,
+              disableDuplicate: true,
+              skipErrorHandler: true,
+              timeout: 120000,
+            },
+          );
+          if (typeof response.data?.getReader !== 'function') {
+            throw new Error(t('Failed to export logs'));
           }
-          return response.data.data;
+          return response.data;
         },
       });
       if (count === 0 && !controller.signal.aborted) {

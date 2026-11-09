@@ -22,7 +22,6 @@ import {
   exportUsageLogsCsv,
   usageLogCsvRow,
   type UsageLogExportOptions,
-  type UsageLogExportPage,
   type UsageLogExportRecord,
 } from '../../../../shared/usage-log-export'
 
@@ -52,16 +51,32 @@ const rowFormatting = {
 }
 
 function exportOptions(
-  fetchPage: UsageLogExportOptions['fetchPage'],
+  fetchExport: UsageLogExportOptions['fetchExport'],
   signal?: AbortSignal
 ): UsageLogExportOptions {
   return {
-    fetchPage,
+    fetchExport,
     ...rowFormatting,
     headers,
     filename: 'usage-logs.csv',
     signal,
   }
+}
+
+// Exercise the real decoder with arbitrary network chunk boundaries.
+function responseStream(
+  text: string,
+  chunkSize = 31
+): ReadableStream<Uint8Array> {
+  const bytes = new TextEncoder().encode(text)
+  return new ReadableStream({
+    start(controller) {
+      for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        controller.enqueue(bytes.slice(offset, offset + chunkSize))
+      }
+      controller.close()
+    },
+  })
 }
 
 function readBlob(blob: Blob): Promise<string> {
@@ -71,7 +86,6 @@ function readBlob(blob: Blob): Promise<string> {
     reader.addEventListener(
       'load',
       () => {
-        // Reading bytes keeps the UTF-8 BOM observable instead of decoding it away.
         resolve(
           new TextDecoder('utf-8', { ignoreBOM: true }).decode(
             reader.result as ArrayBuffer
@@ -85,74 +99,42 @@ function readBlob(blob: Blob): Promise<string> {
 }
 
 describe('usage log CSV rows', () => {
-  test('exports the nine requested fields and keeps raw token counts and exact numeric charges', () => {
-    const row = usageLogCsvRow(
-      {
-        ...record,
-        quota: 1,
-        other: JSON.stringify({
-          cache_tokens: 800,
-          cache_creation_tokens: 120,
-          billing_source: 'subscription',
-        }),
-      },
-      rowFormatting
-    )
-    expect(row).toBe(
-      '"alice","work","public-model",1234,56,800,120,0.000002,"time-100"'
-    )
-  })
-
-  test.each([
-    ['aggregate', { cache_creation_tokens: 150 }, 150],
-    [
-      'split durations replace the aggregate',
-      {
-        cache_creation_tokens: 150,
-        cache_creation_tokens_5m: 20,
-        cache_creation_tokens_1h: 30,
-      },
-      50,
-    ],
-    ['one split duration', { cache_creation_tokens_1h: 30 }, 30],
-    [
-      'zero splits fall back to aggregate',
-      {
-        cache_creation_tokens: 150,
-        cache_creation_tokens_5m: 0,
-        cache_creation_tokens_1h: 0,
-      },
-      150,
-    ],
-    [
-      'invalid counts are not charges',
-      { cache_tokens: -1, cache_creation_tokens: '40' },
-      0,
-    ],
-  ])('handles %s cache metadata', (_, metadata, expectedWrite) => {
+  test('exports nine fields and retains small numeric charges and cache counts', () => {
     expect(
       usageLogCsvRow(
-        { ...record, other: JSON.stringify(metadata) },
+        {
+          ...record,
+          quota: 1,
+          cache_read_tokens: 800,
+          cache_write_tokens: 120,
+        },
         rowFormatting
       )
-    ).toBe(
-      `"alice","work","public-model",1234,56,0,${expectedWrite},0.0025,"time-100"`
-    )
+    ).toBe('"alice","work","public-model",1234,56,800,120,0.000002,"time-100"')
   })
 
-  test.each([undefined, '', '{invalid', 'null', '[]', '42'])(
-    'keeps old/error logs with missing or malformed metadata: %s',
-    (other) => {
-      expect(usageLogCsvRow({ ...record, other }, rowFormatting)).toBe(
-        '"alice","work","public-model",1234,56,0,0,0.0025,"time-100"'
-      )
-    }
-  )
-
-  test('escapes quotes, commas and embedded newlines without altering names', () => {
+  test('defaults missing or invalid counters to zero', () => {
     expect(
       usageLogCsvRow(
-        { ...record, username: '王,"甲"', token_name: 'first\r\nsecond' },
+        {
+          created_at: 100,
+          prompt_tokens: -1,
+          completion_tokens: Number.NaN,
+          cache_read_tokens: Infinity,
+        },
+        rowFormatting
+      )
+    ).toBe('"","","",0,0,0,0,0,"time-100"')
+  })
+
+  test('escapes Chinese, quotes, commas and embedded newlines', () => {
+    expect(
+      usageLogCsvRow(
+        {
+          ...record,
+          username: '王,"甲"',
+          token_name: 'first\r\nsecond',
+        },
         rowFormatting
       )
     ).toBe(
@@ -175,7 +157,7 @@ describe('usage log CSV rows', () => {
   })
 })
 
-describe('complete usage log CSV download', () => {
+describe('complete streamed usage log CSV download', () => {
   const createObjectURL = vi.fn((_blob: Blob) => 'blob:usage-logs-export')
   const revokeObjectURL = vi.fn()
   let downloadedFilename: string | undefined
@@ -195,40 +177,23 @@ describe('complete usage log CSV download', () => {
       }
     )
   })
-
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
-  test('downloads all pages once, including repeated display IDs, with a BOM and nine column headers', async () => {
-    // The self-log endpoint repeats synthetic display IDs across independent views.
+  test('downloads 101 rows in one request with UTF-8 BOM, headers and browser cleanup', async () => {
     const rows = Array.from({ length: 101 }, (_, index) => ({
       ...record,
-      id: 1,
-      username: `user-${index}`,
+      username: `用户-${index}`,
     }))
-    const fetchPage = vi
-      .fn<UsageLogExportOptions['fetchPage']>()
-      .mockResolvedValueOnce({
-        items: rows.slice(0, 100),
-        page: 1,
-        page_size: 100,
-        total: 101,
-      })
-      .mockResolvedValueOnce({
-        items: rows.slice(100),
-        page: 2,
-        page_size: 100,
-        total: 101,
-      })
-
+    const payload = `${rows
+      .map((row) => JSON.stringify(row))
+      .join('\n')}\n{"complete":true,"count":101}\n`
+    const fetchExport = vi.fn().mockResolvedValue(responseStream(payload, 1))
     vi.useFakeTimers()
-    expect(await exportUsageLogsCsv(exportOptions(fetchPage))).toBe(101)
-    expect(fetchPage.mock.calls).toEqual([
-      [1, 100],
-      [2, 100],
-    ])
+    expect(await exportUsageLogsCsv(exportOptions(fetchExport))).toBe(101)
+    expect(fetchExport).toHaveBeenCalledOnce()
     expect(createObjectURL).toHaveBeenCalledOnce()
     expect(downloadedFilename).toBe('usage-logs.csv')
     expect(document.querySelector('a[download]')).toBeNull()
@@ -239,109 +204,113 @@ describe('complete usage log CSV download', () => {
 
     const blob = createObjectURL.mock.calls[0][0]
     expect(blob.type).toBe('text/csv;charset=utf-8')
-    const csv = await readBlob(blob)
-    const lines = csv.split('\r\n')
+    const lines = (await readBlob(blob)).split('\r\n')
     expect(lines[0]).toBe(
       `\uFEFF${headers.map((header) => `"${header}"`).join(',')}`
     )
-    expect(lines).toHaveLength(103) // Header, 101 rows, final CRLF.
+    expect(lines).toHaveLength(103)
     expect(lines[1]).toBe(
-      '"user-0","work","public-model",1234,56,0,0,0.0025,"time-100"'
+      '"用户-0","work","public-model",1234,56,0,0,0.0025,"time-100"'
     )
     expect(lines[101]).toBe(
-      '"user-100","work","public-model",1234,56,0,0,0.0025,"time-100"'
+      '"用户-100","work","public-model",1234,56,0,0,0.0025,"time-100"'
     )
   })
 
-  test('does not create a download when no logs match', async () => {
-    const fetchPage = vi
-      .fn<UsageLogExportOptions['fetchPage']>()
-      .mockResolvedValue({ items: null, page: 1, page_size: 100, total: 0 })
-    expect(await exportUsageLogsCsv(exportOptions(fetchPage))).toBe(0)
-    expect(createObjectURL).not.toHaveBeenCalled()
-    expect(downloadedFilename).toBeUndefined()
-  })
-
-  test('never downloads a partial report when a later page fails', async () => {
-    const fetchPage = vi
-      .fn<UsageLogExportOptions['fetchPage']>()
-      .mockResolvedValueOnce({
-        items: Array.from({ length: 100 }, () => record),
-        page: 1,
-        page_size: 100,
-        total: 101,
-      })
-      .mockRejectedValueOnce(new Error('Connection interrupted'))
-    await expect(exportUsageLogsCsv(exportOptions(fetchPage))).rejects.toThrow(
-      'Connection interrupted'
-    )
+  test('does not download when no non-error logs match', async () => {
+    const fetchExport = vi
+      .fn()
+      .mockResolvedValue(responseStream('{"complete":true,"count":0}\n'))
+    expect(await exportUsageLogsCsv(exportOptions(fetchExport))).toBe(0)
     expect(createObjectURL).not.toHaveBeenCalled()
   })
 
   test.each([
-    ['wrong page', { items: [record], page: 2, page_size: 100, total: 1 }],
-    ['wrong page size', { items: [record], page: 1, page_size: 20, total: 1 }],
-    ['invalid total', { items: [record], page: 1, page_size: 100, total: -1 }],
-    ['incomplete page', { items: [], page: 1, page_size: 100, total: 1 }],
+    ['missing completion marker', `${JSON.stringify(record)}\n`],
     [
-      'surplus rows',
-      { items: [record, record], page: 1, page_size: 100, total: 1 },
+      'wrong completion count',
+      `${JSON.stringify(record)}\n{"complete":true,"count":2}\n`,
     ],
-  ])('rejects %s rather than claiming a complete export', async (_, page) => {
-    const fetchPage = vi
-      .fn<UsageLogExportOptions['fetchPage']>()
-      .mockResolvedValue(page)
-    await expect(exportUsageLogsCsv(exportOptions(fetchPage))).rejects.toThrow()
+    ['malformed JSON', `${JSON.stringify(record)}\n{invalid\n`],
+    ['invalid record', '{"success":false,"message":"failed"}\n'],
+    [
+      'data after completion',
+      `{"complete":true,"count":0}\n${JSON.stringify(record)}\n`,
+    ],
+  ])('refuses a partial download: %s', async (_, payload) => {
+    const fetchExport = vi.fn().mockResolvedValue(responseStream(payload))
+    await expect(
+      exportUsageLogsCsv(exportOptions(fetchExport))
+    ).rejects.toThrow()
+    expect(createObjectURL).not.toHaveBeenCalled()
+    expect(downloadedFilename).toBeUndefined()
+  })
+
+  test('does not download after a network read failure', async () => {
+    let reads = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (reads++ === 0) {
+          controller.enqueue(
+            new TextEncoder().encode(JSON.stringify(record) + '\n')
+          )
+        } else controller.error(new Error('Connection interrupted'))
+      },
+    })
+    await expect(
+      exportUsageLogsCsv(exportOptions(async () => stream))
+    ).rejects.toThrow('Connection interrupted')
     expect(createObjectURL).not.toHaveBeenCalled()
   })
 
-  test('aborts when the total changes during pagination', async () => {
-    const fetchPage = vi
-      .fn<UsageLogExportOptions['fetchPage']>()
-      .mockResolvedValueOnce({
-        items: Array.from({ length: 100 }, () => record),
-        page: 1,
-        page_size: 100,
-        total: 101,
-      })
-      .mockResolvedValueOnce({
-        items: [record, record],
-        page: 2,
-        page_size: 100,
-        total: 102,
-      })
-    await expect(exportUsageLogsCsv(exportOptions(fetchPage))).rejects.toThrow()
-    expect(createObjectURL).not.toHaveBeenCalled()
-  })
-
-  test('does not query after cancellation before export', async () => {
+  test('does not request after cancellation', async () => {
     const controller = new AbortController()
     controller.abort()
-    const fetchPage = vi.fn<UsageLogExportOptions['fetchPage']>()
+    const fetchExport = vi.fn()
     await expect(
-      exportUsageLogsCsv(exportOptions(fetchPage, controller.signal))
+      exportUsageLogsCsv(exportOptions(fetchExport, controller.signal))
     ).rejects.toMatchObject({ name: 'AbortError' })
-    expect(fetchPage).not.toHaveBeenCalled()
+    expect(fetchExport).not.toHaveBeenCalled()
+  })
+
+  test('cancels a pending stream read and never downloads a partial report', async () => {
+    const controller = new AbortController()
+    const cancel = vi.fn()
+    let reading!: () => void
+    const pendingRead = new Promise<void>((resolve) => {
+      reading = resolve
+    })
+    const stream = new ReadableStream<Uint8Array>({ pull: reading, cancel })
+    const exporting = exportUsageLogsCsv(
+      exportOptions(async () => stream, controller.signal)
+    )
+    const cancelled = expect(exporting).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+    await pendingRead
+    controller.abort()
+    await cancelled
+    expect(cancel).toHaveBeenCalledOnce()
     expect(createObjectURL).not.toHaveBeenCalled()
   })
 
-  test('does not download if cancelled while the final page is pending', async () => {
+  test('does not download if cancelled while waiting for the response', async () => {
     const controller = new AbortController()
-    let resolvePage!: (page: UsageLogExportPage) => void
-    const fetchPage = vi.fn<UsageLogExportOptions['fetchPage']>(
-      () =>
-        new Promise((resolve) => {
-          resolvePage = resolve
-        })
-    )
+    let resolveResponse!: (stream: ReadableStream<Uint8Array>) => void
+    const fetchExport = () =>
+      new Promise<ReadableStream<Uint8Array>>((resolve) => {
+        resolveResponse = resolve
+      })
     const exporting = exportUsageLogsCsv(
-      exportOptions(fetchPage, controller.signal)
+      exportOptions(fetchExport, controller.signal)
     )
     const cancelled = expect(exporting).rejects.toMatchObject({
       name: 'AbortError',
     })
     controller.abort()
-    resolvePage({ items: [record], page: 1, page_size: 100, total: 1 })
+    resolveResponse(
+      responseStream(`${JSON.stringify(record)}\n{"complete":true,"count":1}\n`)
+    )
     await cancelled
     expect(createObjectURL).not.toHaveBeenCalled()
   })

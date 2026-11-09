@@ -27,11 +27,8 @@ import { Button } from '@/components/ui/button'
 import { getCurrencyDisplay } from '@/lib/currency'
 import { formatDateTimeStr, formatTimestamp } from '@/lib/format'
 
-import {
-  exportUsageLogsCsv,
-  type UsageLogExportPage,
-} from '../../../../shared/usage-log-export'
-import { getAllLogs, getUserLogs } from '../api'
+import { exportUsageLogsCsv } from '../../../../shared/usage-log-export'
+import { getUsageLogExport } from '../api'
 import { buildApiParams } from '../lib/utils'
 import { useLogsViewScope } from './usage-logs-provider'
 
@@ -75,7 +72,6 @@ export function UsageLogsExportButton<TData>(props: {
         unit = meta.kind === 'currency' ? meta.currencyCode : meta.symbol
         scale = meta.exchangeRate / config.quotaPerUnit
       }
-      const fetchPage = isAdmin ? getAllLogs : getUserLogs
       const count = await exportUsageLogsCsv({
         headers: [
           t('Username'),
@@ -88,22 +84,8 @@ export function UsageLogsExportButton<TData>(props: {
           t('Amount ({{unit}})', { unit }),
           t('Time'),
         ],
-        fetchPage: async (page, pageSize) => {
-          const response = await fetchPage(
-            { ...params, p: page, page_size: pageSize },
-            {
-              signal: activeController.signal,
-              timeout: 60000,
-              disableDuplicate: true,
-              skipBusinessError: true,
-              skipErrorHandler: true,
-            }
-          )
-          if (!response.success || !response.data) {
-            throw new Error(response.message || 'Log export failed')
-          }
-          return response.data as UsageLogExportPage
-        },
+        fetchExport: () =>
+          getUsageLogExport(params, isAdmin, activeController.signal),
         formatAmount: (quota) => quota * scale,
         formatTime: formatTimestamp,
         filename: `usage-logs-${formatDateTimeStr(now).replaceAll(/[: ]/g, '-')}.csv`,

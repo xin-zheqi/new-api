@@ -83,6 +83,31 @@ export const getUserLogs = (
   config?: ApiRequestConfig
 ) => fetchLogs('/api/log', params, false, config)
 
+export async function getUsageLogExport(
+  params: GetLogsParams,
+  isAdmin: boolean,
+  signal: AbortSignal
+): Promise<ReadableStream<Uint8Array>> {
+  const { p: _page, page_size: _pageSize, ...filters } = params
+  const path = buildApiPath('/api/log', isAdmin)
+  const response = await api.get<ReadableStream<Uint8Array>>(
+    `${path}/export?${buildQueryParams(filters)}`,
+    {
+      adapter: 'fetch',
+      responseType: 'stream',
+      signal,
+      timeout: 120000,
+      disableDuplicate: true,
+      skipBusinessError: true,
+      skipErrorHandler: true,
+    }
+  )
+  if (!response.data || typeof response.data.getReader !== 'function') {
+    throw new Error('Invalid log export response')
+  }
+  return response.data
+}
+
 export const getLogStats = (params: GetLogStatsParams = {}) =>
   fetchLogStats('/api/log', params, true)
 

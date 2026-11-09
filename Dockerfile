@@ -13,6 +13,7 @@ WORKDIR /build/web/classic
 COPY web/classic/package.json ./
 RUN bun install --frozen-lockfile
 COPY ./web/classic ./
+COPY ./web/shared /build/web/shared
 COPY ./VERSION /build/VERSION
 RUN VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build
 

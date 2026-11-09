@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@douyinfe/semi-ui';
 import {
@@ -45,6 +45,7 @@ import ToolSurchargeDetails from '../../components/table/usage-logs/components/T
 import PolicyDecisionRecord from '../../components/table/usage-logs/components/PolicyDecisionRecord';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 import ResponseModelMismatch from '../../components/table/usage-logs/components/ResponseModelMismatch';
+import { useUsageLogsExport } from './useUsageLogsExport';
 
 function renderStructuredLogContent(other, fallback, t) {
   const op = other?.op;
@@ -91,6 +92,9 @@ export const useLogsData = () => {
   const [logCount, setLogCount] = useState(0);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [logType, setLogType] = useState(0);
+  // Export the last successful query, not edits that have not been searched yet.
+  const appliedLogQuery = useRef(null);
+  const { exportLogs, exportingLogs } = useUsageLogsExport(appliedLogQuery);
 
   // User and admin
   const isAdminUser = isAdmin();
@@ -971,6 +975,10 @@ export const useLogsData = () => {
     const { success, message, data } = res.data;
     if (success) {
       const newPageData = data.items;
+      appliedLogQuery.current = {
+        path: isAdminUser ? '/api/log/' : '/api/log/self/',
+        params: new URLSearchParams(url.slice(url.indexOf('?') + 1)),
+      };
       setActivePage(data.page);
       setPageSize(data.page_size);
       setLogCount(data.total);
@@ -1055,6 +1063,9 @@ export const useLogsData = () => {
     logType,
     stat,
     isAdminUser,
+    exportLogs,
+    exportingLogs,
+    canExportLogs: appliedLogQuery.current !== null,
 
     // Form state
     formApi,

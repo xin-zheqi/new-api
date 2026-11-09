@@ -49,6 +49,7 @@ import {
   LogsFilterInput,
   LogsFilterToolbar,
 } from './logs-filter-toolbar'
+import { UsageLogsExportButton } from './usage-logs-export-button'
 import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
@@ -416,6 +417,12 @@ export function CommonLogsFilterBar<TData>(
       table={props.table}
       stats={statsBar}
       actionStart={sensitiveToggle}
+      actionEnd={
+        <UsageLogsExportButton
+          table={props.table}
+          disabled={fetchingLogs > 0}
+        />
+      }
       primaryFilters={
         <>
           {dateRangeFilter}

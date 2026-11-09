@@ -31,6 +31,9 @@ const LogsFilters = ({
   formApi,
   setLogType,
   loading,
+  exportLogs,
+  exportingLogs,
+  canExportLogs,
   isAdminUser,
   t,
 }) => {
@@ -153,7 +156,7 @@ const LogsFilters = ({
             </Form.Select>
           </div>
 
-          <div className='flex gap-2 w-full sm:w-auto justify-end'>
+          <div className='flex flex-wrap gap-2 w-full sm:w-auto justify-end'>
             <Button
               type='tertiary'
               htmlType='submit'
@@ -183,6 +186,16 @@ const LogsFilters = ({
               size='small'
             >
               {t('列设置')}
+            </Button>
+            <Button
+              type='tertiary'
+              htmlType='button'
+              onClick={exportLogs}
+              loading={exportingLogs}
+              disabled={loading || exportingLogs || !canExportLogs}
+              size='small'
+            >
+              {exportingLogs ? t('Exporting...') : t('Export table')}
             </Button>
           </div>
         </div>

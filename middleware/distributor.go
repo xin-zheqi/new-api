@@ -92,7 +92,9 @@ func Distribute() func(c *gin.Context) {
 				}
 				return
 			}
-			if !channel.IsAvailable() {
+			// Existing-task reads may reuse an explicit pin after its window
+			// closes. Preserve their base-status check; gate new admissions only.
+			if channel.Status != common.ChannelStatusEnabled || shouldSelectChannel && !channel.IsScheduleActiveAt(time.Now()) {
 				if pin.Source == taskdto.PinSourceOriginTask {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, "origin_task_channel_disabled", types.ErrorCode("origin_task_channel_disabled"))
 				} else {

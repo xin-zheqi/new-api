@@ -22,9 +22,6 @@ func ChannelSatisfiesFilters(ch *Channel, modelName string, filters []dto.Channe
 	if ch == nil {
 		return false, ""
 	}
-	if !ch.IsScheduleActiveAt(time.Now()) {
-		return false, ""
-	}
 	for _, kind := range filterEvalOrder {
 		for _, filter := range filters {
 			if filter.Kind != kind {

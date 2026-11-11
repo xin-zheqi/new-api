@@ -212,8 +212,14 @@ func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters
 	}
 
 	filtered := make([]Ability, 0, len(abilities))
+	now := time.Now()
 	for _, ability := range abilities {
 		channel := channelsByID[ability.ChannelId]
+		// Check admission during selection, keeping protocol filters reusable
+		// by existing-task reads that must remain accessible outside a window.
+		if !channel.IsScheduleActiveAt(now) {
+			continue
+		}
 		if ok, _ := ChannelSatisfiesFilters(channel, modelName, filters); ok {
 			filtered = append(filtered, ability)
 		}

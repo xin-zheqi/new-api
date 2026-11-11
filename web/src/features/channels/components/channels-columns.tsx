@@ -935,6 +935,16 @@ export function useChannelsColumns(
           }
 
           // Regular channel row
+          if (status === 1 && channel.schedule_active === false) {
+            return (
+              <StatusBadge
+                label={t('Scheduled pause')}
+                variant='neutral'
+                size='sm'
+                copyable={false}
+              />
+            )
+          }
           const config =
             CHANNEL_STATUS_CONFIG[
               status as keyof typeof CHANNEL_STATUS_CONFIG

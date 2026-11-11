@@ -664,6 +664,10 @@ func executeTaskSubmissionWith(
 		var channel *model.Channel
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
+			if !lockedCh.IsScheduleActiveAt(time.Now()) {
+				taskErr = service.TaskErrorWrapperLocal(errors.New("the channel of the origin task is disabled"), "origin_task_channel_disabled", http.StatusBadRequest)
+				break
+			}
 			channel = lockedCh
 			policy.BeginAttempt(channel, relayInfo.UsingGroup)
 			if retryParam.GetRetry() > 0 {

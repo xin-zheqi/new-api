@@ -494,6 +494,13 @@ export const getChannelsColumns = ({
       title: t('状态'),
       dataIndex: 'status',
       render: (text, record, index) => {
+        if (text === 1 && record.schedule_active === false) {
+          return (
+            <Tag color='grey' type='light' shape='circle'>
+              {t('Scheduled pause')}
+            </Tag>
+          );
+        }
         if (text === 3) {
           if (record.other_info === '') {
             record.other_info = '{}';

@@ -178,6 +178,7 @@ import {
   collectNewDisallowedStatusCodeRedirects,
 } from '../../lib/status-code-risk-guard'
 import type { Channel } from '../../types'
+import { ChannelScheduleSetting } from '../channel-schedule-setting'
 import { useChannels } from '../channels-provider'
 import { AdvancedCustomEditorDialog } from '../dialogs/advanced-custom-editor-dialog'
 import { FetchModelsDialog } from '../dialogs/fetch-models-dialog'
@@ -295,6 +296,7 @@ const SENSITIVE_FORM_FIELDS = [
   'thinking_to_content',
   'reasoning_content_repair',
   'reasoning_effort_mapping',
+  'channel_schedule',
   'tool_output_repair',
   'proxy',
   'http_protocol',
@@ -351,6 +353,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.tag?.trim() ||
     values.remark?.trim() ||
     values.priority ||
+    values.channel_schedule?.periods.length ||
     values.weight ||
     values.proxy?.trim() ||
     values.system_prompt?.trim() ||
@@ -763,6 +766,7 @@ export function ChannelMutateDrawer({
   const currentSettings = form.watch('settings')
   const currentAdvancedCustom = form.watch('advanced_custom')
   const currentPriority = form.watch('priority')
+  const currentChannelSchedule = form.watch('channel_schedule.periods')
   const currentWeight = form.watch('weight')
   const currentTestModel = form.watch('test_model')
   const currentAutoBan = form.watch('auto_ban')
@@ -1045,6 +1049,7 @@ export function ChannelMutateDrawer({
   const advancedSummary = advancedHaveErrors ? t('Error') : undefined
   const routingStrategyConfigured = Boolean(
     currentPriority ||
+    currentChannelSchedule?.length ||
     currentWeight ||
     currentTestModel?.trim() ||
     (currentAutoBan ?? 1) !== 1
@@ -3818,6 +3823,10 @@ export function ChannelMutateDrawer({
                                 )}
                               />
                             </div>
+
+                            <ChannelScheduleSetting
+                              disabled={sensitiveLocked}
+                            />
 
                             <FormField
                               control={form.control}

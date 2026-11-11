@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -170,6 +171,9 @@ func GetChannel(
 		return nil, nil
 	}
 	err = DB.First(&channel, "id = ?", channel.Id).Error
+	if err == nil && !channel.IsAvailableAt(time.Now()) {
+		return nil, nil
+	}
 	return &channel, err
 }
 

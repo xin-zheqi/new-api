@@ -15,6 +15,11 @@ func TestIsChannelEnabledForAnyGroupModelDBBatchesGroupsAndNormalizedModel(t *te
 	t.Cleanup(func() {
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 	})
+	// An enabled ability must reference its actual channel so admission can
+	// also enforce that channel's status and configured time window.
+	for _, id := range []int{7, 9} {
+		require.NoError(t, DB.Create(&Channel{Id: id, Key: "fixture", Status: common.ChannelStatusEnabled}).Error)
+	}
 
 	require.NoError(t, DB.Create(&Ability{
 		Group:     "vip",

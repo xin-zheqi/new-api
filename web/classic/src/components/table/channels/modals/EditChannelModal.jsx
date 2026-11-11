@@ -73,6 +73,11 @@ import { parseChannelConnectionString } from '../../../../helpers/token';
 import { createApiCalls } from '../../../../services/secureVerification';
 import AdvancedCustomRoutes from './AdvancedCustomRoutes';
 import ReasoningEffortMappingEditor from './ReasoningEffortMappingEditor';
+import ChannelScheduleEditor from './ChannelScheduleEditor';
+import {
+  channelScheduleFormValues,
+  serializeChannelSchedule,
+} from './channelSchedule';
 import {
   reasoningEffortMappingRows,
   serializeReasoningEffortMapping,
@@ -222,6 +227,7 @@ const EditChannelModal = (props) => {
     reasoning_content_repair: false,
     tool_output_repair: false,
     reasoning_effort_mapping: [],
+    ...channelScheduleFormValues(),
     proxy: '',
     first_response_timeout_seconds: 30,
     first_response_timeout_auto_ban: false,
@@ -911,6 +917,10 @@ const EditChannelModal = (props) => {
           data.reasoning_effort_mapping = reasoningEffortMappingRows(
             parsedSettings.reasoning_effort_mapping,
           );
+          Object.assign(
+            data,
+            channelScheduleFormValues(parsedSettings.channel_schedule),
+          );
           data.proxy = parsedSettings.proxy || '';
           data.first_response_timeout_seconds =
             typeof parsedSettings.first_response_timeout_seconds === 'number'
@@ -932,6 +942,7 @@ const EditChannelModal = (props) => {
           data.reasoning_content_repair = false;
           data.tool_output_repair = false;
           data.reasoning_effort_mapping = [];
+          Object.assign(data, channelScheduleFormValues());
           data.proxy = '';
           data.first_response_timeout_seconds = 0;
           data.first_response_timeout_auto_ban = false;
@@ -946,6 +957,7 @@ const EditChannelModal = (props) => {
         data.reasoning_content_repair = false;
         data.tool_output_repair = false;
         data.reasoning_effort_mapping = [];
+        Object.assign(data, channelScheduleFormValues());
         data.proxy = '';
         data.first_response_timeout_seconds = 0;
         data.first_response_timeout_auto_ban = false;
@@ -1136,6 +1148,7 @@ const EditChannelModal = (props) => {
         data.reasoning_content_repair ||
         data.tool_output_repair ||
         data.reasoning_effort_mapping.length > 0 ||
+        data.channel_schedule_periods.length > 0 ||
         data.pass_through_body_enabled ||
         data.force_format ||
         data.claude_beta_query ||
@@ -1652,7 +1665,12 @@ const EditChannelModal = (props) => {
     let localInputs = { ...formValues };
     localInputs.param_override = inputs.param_override;
     let reasoningEffortMapping;
+    let channelSchedule;
     try {
+      channelSchedule = serializeChannelSchedule(
+        inputs.channel_schedule_timezone,
+        inputs.channel_schedule_periods,
+      );
       reasoningEffortMapping = serializeReasoningEffortMapping(
         inputs.reasoning_effort_mapping,
       );
@@ -1868,6 +1886,7 @@ const EditChannelModal = (props) => {
       reasoning_content_repair: localInputs.reasoning_content_repair || false,
       tool_output_repair: localInputs.tool_output_repair || false,
       reasoning_effort_mapping: reasoningEffortMapping,
+      channel_schedule: channelSchedule,
       proxy: localInputs.proxy || '',
       first_response_timeout_seconds: Math.max(
         0,
@@ -1987,6 +2006,8 @@ const EditChannelModal = (props) => {
     delete localInputs.reasoning_content_repair;
     delete localInputs.tool_output_repair;
     delete localInputs.reasoning_effort_mapping;
+    delete localInputs.channel_schedule_timezone;
+    delete localInputs.channel_schedule_periods;
     delete localInputs.proxy;
     delete localInputs.first_response_timeout_seconds;
     delete localInputs.first_response_timeout_auto_ban;
@@ -2722,6 +2743,17 @@ const EditChannelModal = (props) => {
                       />
                     </Col>
                   </Row>
+
+                  <ChannelScheduleEditor
+                    timezone={inputs.channel_schedule_timezone}
+                    periods={inputs.channel_schedule_periods}
+                    onTimezoneChange={(value) =>
+                      handleInputChange('channel_schedule_timezone', value)
+                    }
+                    onPeriodsChange={(value) =>
+                      handleInputChange('channel_schedule_periods', value)
+                    }
+                  />
 
                   <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
                     {t('生图工具控制')}

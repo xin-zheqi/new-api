@@ -569,7 +569,7 @@ func (s *responsesWSSession) restoreConnectionContext(c *gin.Context, model stri
 	// The channel type is not rechecked: a locked channel keeps its type, and
 	// the FilterResponsesWebSocket rules were applied when it was selected.
 	channel, err := appmodel.CacheGetChannel(s.lockedChannelID)
-	if err != nil || channel == nil || channel.Status != common.ChannelStatusEnabled || !channel.GetSetting().ResponsesWebSocketEnabled {
+	if err != nil || !channel.IsAvailable() || !channel.GetSetting().ResponsesWebSocketEnabled {
 		return types.NewErrorWithStatusCode(errors.New("Responses WebSocket is disabled for this channel"), types.ErrorCode(appdto.FilterResponsesWebSocket), http.StatusForbidden, types.ErrOptionWithSkipRetry())
 	}
 	keyEnabled := channel.Key == s.lockedKey

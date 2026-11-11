@@ -88,6 +88,8 @@ function ChannelCardComponent({
   // only the informative states (e.g. auto-disabled, unknown) and tag rows.
   const showStatusBadge =
     isTagRow ||
+    (row.original.status === CHANNEL_STATUS.ENABLED &&
+      row.original.schedule_active === false) ||
     (row.original.status !== CHANNEL_STATUS.ENABLED &&
       row.original.status !== CHANNEL_STATUS.MANUAL_DISABLED)
 

@@ -2,6 +2,7 @@ package model
 
 import (
 	"slices"
+	"time"
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
@@ -19,6 +20,9 @@ var filterEvalOrder = []dto.ChannelFilterKind{
 // then task_plugin_identity) for error attribution.
 func ChannelSatisfiesFilters(ch *Channel, modelName string, filters []dto.ChannelFilter) (bool, dto.ChannelFilterKind) {
 	if ch == nil {
+		return false, ""
+	}
+	if !ch.IsScheduleActiveAt(time.Now()) {
 		return false, ""
 	}
 	for _, kind := range filterEvalOrder {
@@ -43,6 +47,22 @@ func filterCandidateIDs(ids []int, modelName string, filters []dto.ChannelFilter
 		return ids, ""
 	}
 	kept = ids
+	now := time.Now()
+	// Retain the cached slice on the common no-rejection path. Schedule
+	// evaluation uses precompiled local-time periods and no database access.
+	for i, id := range ids {
+		if channel, exists := channelsIDM[id]; exists && !channel.IsScheduleActiveAt(now) {
+			kept = make([]int, i, len(ids)-1)
+			copy(kept, ids[:i])
+			for _, remaining := range ids[i+1:] {
+				candidate, found := channelsIDM[remaining]
+				if !found || candidate.IsScheduleActiveAt(now) {
+					kept = append(kept, remaining)
+				}
+			}
+			break
+		}
+	}
 	for _, kind := range filterEvalOrder {
 		kindFilters := filtersByKind(filters, kind)
 		if len(kindFilters) == 0 {

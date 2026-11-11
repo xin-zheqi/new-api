@@ -41,6 +41,7 @@ export const channelSchema = z.object({
   openai_organization: z.string().nullish(),
   test_model: z.string().nullish(),
   status: z.number(), // 1: enabled, 0: manual disabled, 2: auto disabled
+  schedule_active: z.boolean().optional(),
   name: z.string(),
   weight: z.number().nullish(),
   created_time: z.number(),
@@ -81,6 +82,7 @@ export type Channel = z.infer<typeof channelSchema>
 // ============================================================================
 
 export interface ChannelSettings {
+  channel_schedule?: ChannelSchedule
   force_format?: boolean
   thinking_to_content?: boolean
   reasoning_content_repair?: boolean
@@ -96,6 +98,11 @@ export interface ChannelSettings {
   reject_empty_response?: boolean
   http_protocol?: 'auto' | 'http1' | string
   http2_connection_shards?: number
+}
+
+export interface ChannelSchedule {
+  timezone: string
+  periods: { start: string; end: string }[]
 }
 
 export interface ChannelOtherSettings {

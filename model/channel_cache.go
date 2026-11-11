@@ -329,6 +329,7 @@ func CacheUpdateChannel(channel *Channel) {
 		channelSyncLock.Unlock()
 		return
 	}
+	channel.prepareSchedule()
 
 	if channelsIDM == nil {
 		channelsIDM = make(map[int]*Channel)

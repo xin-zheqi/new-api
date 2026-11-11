@@ -19,6 +19,9 @@ func IsChannelEnabledForGroupModel(group string, modelName string, channelID int
 	if group2model2channels == nil {
 		return false
 	}
+	if channel, ok := channelsIDM[channelID]; !ok || !channel.IsAvailable() {
+		return false
+	}
 
 	if isChannelIDInList(group2model2channels[group][modelName], channelID) {
 		return true
@@ -46,22 +49,7 @@ func IsChannelEnabledForAnyGroupModel(groups []string, modelName string, channel
 }
 
 func isChannelEnabledForGroupModelDB(group string, modelName string, channelID int) bool {
-	var count int64
-	err := DB.Model(&Ability{}).
-		Where(commonGroupCol+" = ? and model = ? and channel_id = ? and enabled = ?", group, modelName, channelID, true).
-		Count(&count).Error
-	if err == nil && count > 0 {
-		return true
-	}
-	normalized := ratio_setting.RoutingMatchModelName(modelName)
-	if normalized == "" || normalized == modelName {
-		return false
-	}
-	count = 0
-	err = DB.Model(&Ability{}).
-		Where(commonGroupCol+" = ? and model = ? and channel_id = ? and enabled = ?", group, normalized, channelID, true).
-		Count(&count).Error
-	return err == nil && count > 0
+	return isChannelEnabledForAnyGroupModelDB([]string{group}, modelName, channelID)
 }
 
 func isChannelEnabledForAnyGroupModelDB(groups []string, modelName string, channelID int) bool {
@@ -73,11 +61,11 @@ func isChannelEnabledForAnyGroupModelDB(groups []string, modelName string, chann
 	if normalized != "" && normalized != modelName {
 		models = append(models, normalized)
 	}
-	var count int64
-	err := DB.Model(&Ability{}).
-		Where(commonGroupCol+" IN ? and model IN ? and channel_id = ? and enabled = ?", groups, models, channelID, true).
-		Count(&count).Error
-	return err == nil && count > 0
+	abilities := DB.Model(&Ability{}).Select("channel_id").
+		Where(commonGroupCol+" IN ? and model IN ? and channel_id = ? and enabled = ?", groups, models, channelID, true)
+	channel := &Channel{}
+	err := DB.Select("id", "status", "setting").Where("id IN (?)", abilities).Limit(1).Find(channel).Error
+	return err == nil && channel.Id > 0 && channel.IsAvailable()
 }
 
 func isChannelIDInList(list []int, channelID int) bool {

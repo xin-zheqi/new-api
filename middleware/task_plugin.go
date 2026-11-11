@@ -1092,7 +1092,7 @@ func applyOriginTaskIntent(c *gin.Context, intent map[string]any, meta pluginrun
 	}
 
 	channel, err := model.CacheGetChannel(channelID)
-	if err != nil || channel == nil || channel.Status != common.ChannelStatusEnabled {
+	if err != nil || !channel.IsAvailable() {
 		return &originTaskIntentError{Code: "origin_task_channel_disabled", Message: "origin task channel is disabled", StatusCode: http.StatusBadRequest}
 	}
 	service.GetChannelConstraints(c).AddPin(dto.ChannelPin{

@@ -92,7 +92,7 @@ func Distribute() func(c *gin.Context) {
 				}
 				return
 			}
-			if channel.Status != common.ChannelStatusEnabled {
+			if !channel.IsAvailable() {
 				if pin.Source == taskdto.PinSourceOriginTask {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, "origin_task_channel_disabled", types.ErrorCode("origin_task_channel_disabled"))
 				} else {
@@ -164,7 +164,7 @@ func Distribute() func(c *gin.Context) {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil {
-						if preferred.Status != common.ChannelStatusEnabled {
+						if !preferred.IsAvailable() {
 							if policy.LegacySessionMode && service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 								abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorAffinityChannelDisabled))
 								return

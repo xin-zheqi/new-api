@@ -940,6 +940,9 @@ type channelTestSummary struct {
 
 func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, testUserID int, allowDisable bool, timeout time.Duration) channelTestSummary {
 	summary := channelTestSummary{}
+	if channel == nil || !channel.IsScheduleActiveAt(time.Now()) {
+		return summary
+	}
 	isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 	tik := time.Now()
 	testCtx, cancel := channelTestContext(ctx, timeout)
@@ -982,7 +985,7 @@ func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, test
 		summary.Disabled++
 	}
 
-	if result.localErr == nil && result.context != nil && !isChannelEnabled && service.ShouldEnableChannel(newAPIError, channel.Status) {
+	if result.localErr == nil && result.context != nil && !isChannelEnabled && channel.IsScheduleActiveAt(time.Now()) && service.ShouldEnableChannel(newAPIError, channel.Status) {
 		service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 		summary.Enabled++
 	}
@@ -1154,6 +1157,9 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 	selected := make([]*model.Channel, 0, len(channels))
 	for _, channel := range channels {
 		if channel == nil || channel.Status == common.ChannelStatusManuallyDisabled {
+			continue
+		}
+		if !channel.IsScheduleActiveAt(time.Now()) {
 			continue
 		}
 		if !channel.GetOtherSettings().IsAutoTestEnabled() {

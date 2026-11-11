@@ -13,9 +13,10 @@ import (
 )
 
 type ChannelSettings struct {
-	TaskPluginKey     string `json:"task_plugin_key,omitempty"`
-	ForceFormat       bool   `json:"force_format,omitempty"`
-	ThinkingToContent bool   `json:"thinking_to_content,omitempty"`
+	ChannelSchedule   *ChannelSchedule `json:"channel_schedule,omitempty"`
+	TaskPluginKey     string           `json:"task_plugin_key,omitempty"`
+	ForceFormat       bool             `json:"force_format,omitempty"`
+	ThinkingToContent bool             `json:"thinking_to_content,omitempty"`
 	// ReasoningContentRepair preserves available reasoning, normalizes Responses
 	// history, and marks missing DeepSeek thinking history when tools are used.
 	ReasoningContentRepair bool `json:"reasoning_content_repair,omitempty"`

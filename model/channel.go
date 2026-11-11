@@ -57,7 +57,11 @@ type Channel struct {
 	OtherSettings string `json:"settings" gorm:"column:settings"` // 其他设置，存储azure版本等不需要检索的信息，详见dto.ChannelOtherSettings
 
 	// cache info
-	Keys []string `json:"-" gorm:"-"`
+	Keys               []string `json:"-" gorm:"-"`
+	ScheduleActive     *bool    `json:"schedule_active,omitempty" gorm:"-"`
+	schedule           *dto.CompiledChannelSchedule
+	scheduleConfigured bool
+	schedulePrepared   bool
 }
 
 const ChannelStatusReasonAllKeysDisabled = "All keys are disabled"
@@ -1019,6 +1023,9 @@ func (channel *Channel) ValidateSettings() error {
 	if err := channelParams.ValidateReasoningEffortMapping(); err != nil {
 		return err
 	}
+	if _, err := channelParams.ChannelSchedule.Compile(); err != nil {
+		return err
+	}
 	channelOtherSettings := &dto.ChannelOtherSettings{}
 	if channel.OtherSettings != "" {
 		err := common.UnmarshalJsonStr(channel.OtherSettings, channelOtherSettings)
@@ -1070,6 +1077,7 @@ func (channel *Channel) SetSetting(setting dto.ChannelSettings) {
 		return
 	}
 	channel.Setting = common.GetPointer[string](string(settingBytes))
+	channel.prepareSchedule()
 }
 
 func (channel *Channel) GetOtherSettings() dto.ChannelOtherSettings {

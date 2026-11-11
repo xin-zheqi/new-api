@@ -90,7 +90,7 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	if err != nil {
 		return service.TaskErrorWrapperLocal(err, "channel_not_found", http.StatusBadRequest)
 	}
-	if ch.Status != common.ChannelStatusEnabled {
+	if !ch.IsAvailable() {
 		return service.TaskErrorWrapperLocal(errors.New("the channel of the origin task is disabled"), "task_channel_disable", http.StatusBadRequest)
 	}
 	info.LockedChannel = ch
@@ -177,7 +177,7 @@ func ApplyChannelPin(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError
 	if err != nil {
 		return service.TaskErrorWrapperLocal(err, "origin_task_channel_disabled", http.StatusBadRequest)
 	}
-	if ch.Status != common.ChannelStatusEnabled {
+	if !ch.IsAvailable() {
 		return service.TaskErrorWrapperLocal(errors.New("the channel of the origin task is disabled"), "origin_task_channel_disabled", http.StatusBadRequest)
 	}
 	info.LockedChannel = ch

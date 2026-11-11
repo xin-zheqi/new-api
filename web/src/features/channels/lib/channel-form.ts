@@ -28,7 +28,7 @@ import {
   MODEL_FETCHABLE_TYPES,
   OPENAI_FIELD_PASSTHROUGH_TYPES,
 } from '../constants'
-import type { Channel } from '../types'
+import type { Channel, ChannelSchedule } from '../types'
 import {
   CHANNEL_TYPE_ADVANCED_CUSTOM,
   advancedCustomConfigUsesRelativeUpstreamPath,
@@ -80,6 +80,56 @@ export const HTTP_PROTOCOL_HTTP1 = 'http1'
 export const MAX_HTTP2_CONNECTION_SHARDS = 8
 
 export const MAX_REASONING_EFFORT_MAPPINGS = 64
+export const MAX_CHANNEL_SCHEDULE_PERIODS = 32
+export const DEFAULT_CHANNEL_SCHEDULE_TIMEZONE = 'Asia/Shanghai'
+
+const scheduleTimeMessage =
+  'Time ranges must use HH:mm (24:00 is allowed only as an end time).'
+
+const channelScheduleSchema = z
+  .object({
+    timezone: z.string().trim(),
+    periods: z
+      .array(
+        z
+          .object({
+            start: z
+              .string()
+              .regex(/^([01]\d|2[0-3]):[0-5]\d$/, scheduleTimeMessage),
+            end: z
+              .string()
+              .regex(/^(([01]\d|2[0-3]):[0-5]\d|24:00)$/, scheduleTimeMessage),
+          })
+          .refine((period) => period.start !== period.end, {
+            message: 'Start and end times must differ.',
+            path: ['end'],
+          })
+      )
+      .max(
+        MAX_CHANNEL_SCHEDULE_PERIODS,
+        'Channel active hours support at most 32 time ranges.'
+      ),
+  })
+  .superRefine((schedule, ctx) => {
+    // A zone without periods never limits a legacy channel or blocks its save.
+    if (schedule.periods.length === 0) return
+    try {
+      if (
+        !/^[A-Za-z][A-Za-z0-9_+/-]*$/.test(schedule.timezone) ||
+        schedule.timezone.length > 128 ||
+        schedule.timezone === 'Local'
+      ) {
+        throw new Error('Invalid timezone')
+      }
+      new Intl.DateTimeFormat('en', { timeZone: schedule.timezone })
+    } catch {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['timezone'],
+        message: 'Enter a valid IANA time zone.',
+      })
+    }
+  })
 
 const reasoningEffortMappingValue = z
   .string()
@@ -271,6 +321,7 @@ export const channelFormSchema = z
     batch_add_set_key_prefix_2_name: z.boolean().optional(),
     key_mode: z.enum(['append', 'replace']).optional(), // For editing multi-key channels
     // Channel extra settings (stored in setting JSON, not sent directly)
+    channel_schedule: channelScheduleSchema.optional(),
     force_format: z.boolean().optional(),
     thinking_to_content: z.boolean().optional(),
     reasoning_content_repair: z.boolean().optional(),
@@ -489,6 +540,10 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   batch_add_set_key_prefix_2_name: false,
   key_mode: 'append',
   // Channel extra settings
+  channel_schedule: {
+    timezone: DEFAULT_CHANNEL_SCHEDULE_TIMEZONE,
+    periods: [],
+  },
   force_format: false,
   thinking_to_content: false,
   reasoning_content_repair: false,
@@ -540,6 +595,10 @@ export function transformChannelToFormDefaults(
 ): ChannelFormValues {
   // Parse channel extra settings from setting field
   let extraSettings = {
+    channel_schedule: {
+      timezone: DEFAULT_CHANNEL_SCHEDULE_TIMEZONE,
+      periods: [],
+    } as ChannelSchedule,
     task_plugin_key: '',
     force_format: false,
     thinking_to_content: false,
@@ -573,6 +632,24 @@ export function transformChannelToFormDefaults(
         ).map(([from, to]) => ({ from, to }))
       }
       extraSettings = {
+        channel_schedule:
+          parsed.channel_schedule &&
+          typeof parsed.channel_schedule === 'object' &&
+          Array.isArray(parsed.channel_schedule.periods)
+            ? {
+                timezone:
+                  typeof parsed.channel_schedule.timezone === 'string'
+                    ? parsed.channel_schedule.timezone
+                    : '',
+                periods: parsed.channel_schedule.periods.map(
+                  (period: Partial<ChannelSchedule['periods'][number]>) => ({
+                    start:
+                      typeof period?.start === 'string' ? period.start : '',
+                    end: typeof period?.end === 'string' ? period.end : '',
+                  })
+                ),
+              }
+            : { timezone: DEFAULT_CHANNEL_SCHEDULE_TIMEZONE, periods: [] },
         task_plugin_key: parsed.task_plugin_key || '',
         force_format: parsed.force_format || false,
         thinking_to_content: parsed.thinking_to_content || false,
@@ -720,6 +797,15 @@ export function transformChannelToFormDefaults(
  */
 export function buildSettingJSON(formData: ChannelFormValues): string {
   const settingObj: Record<string, unknown> = {
+    // Empty periods remove the restriction instead of persisting a blank rule.
+    channel_schedule: formData.channel_schedule?.periods.length
+      ? {
+          timezone: new Intl.DateTimeFormat('en', {
+            timeZone: formData.channel_schedule.timezone.trim(),
+          }).resolvedOptions().timeZone,
+          periods: formData.channel_schedule.periods,
+        }
+      : undefined,
     task_plugin_key:
       formData.type === CHANNEL_TYPE_TASK_PLUGIN
         ? formData.task_plugin_key?.trim() || ''

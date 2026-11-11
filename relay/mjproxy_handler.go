@@ -488,7 +488,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			if err != nil {
 				return service.MidjourneyErrorWrapper(constant.MjRequestError, "get_channel_info_failed")
 			}
-			if channel.Status != common.ChannelStatusEnabled {
+			if !channel.IsAvailable() {
 				return service.MidjourneyErrorWrapper(constant.MjRequestError, "该任务所属渠道已被禁用")
 			}
 			c.Set("base_url", channel.GetBaseURL())

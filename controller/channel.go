@@ -66,6 +66,7 @@ func parseStatusFilter(statusParam string) int {
 }
 
 func sanitizeChannelForRead(channel *model.Channel, includeSensitiveConfig bool) {
+	channel.SetScheduleReadState(time.Now())
 	channel.Key = ""
 	if channel.ChannelInfo.IsMultiKey {
 		channel.ChannelInfo.MultiKeyDisabledReason = nil

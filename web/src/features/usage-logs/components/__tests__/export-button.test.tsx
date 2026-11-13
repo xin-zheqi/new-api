@@ -69,6 +69,10 @@ const record: UsageLogExportRecord = {
   created_at: 1794180000,
   cache_read_tokens: 800,
   cache_write_tokens: 20,
+  is_stream: true,
+  request_path: '/v1/responses',
+  first_response_time_ms: 250,
+  use_time: 9,
 }
 
 function streamResponse(items: UsageLogExportRecord[]): AxiosResponse {
@@ -259,10 +263,10 @@ describe('usage logs export button', () => {
     vi.useRealTimers()
     const csv = await readBlob(createObjectURL.mock.calls[0][0])
     expect(csv.split('\r\n')[0]).toBe(
-      '"Username","Token Name","Model Name","Input tokens","Output tokens","Cache read tokens","Cache write tokens","Amount (CNY)","Time"'
+      '"Username","Token Name","Model Name","Request type","Request interface","Input tokens","Output tokens","Cache read tokens","Cache write tokens","Amount (CNY)","Time","Time to first token (s)","Total request time (s)"'
     )
     expect(csv.split('\r\n')[1]).toMatch(
-      /^"alice","team&key","public\+model",1234,56,800,20,0.07,"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d"$/
+      /^"alice","team&key","public\+model","Streaming","responses",1234,56,800,20,0.07,"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d",0.25,9$/
     )
     expect(screen.getByRole('button', { name: 'Export table' })).toBeEnabled()
     expect(toast.error).not.toHaveBeenCalled()

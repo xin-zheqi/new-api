@@ -68,6 +68,10 @@ const log = {
   quota: 500000,
   cache_read_tokens: 20,
   cache_write_tokens: 50,
+  is_stream: false,
+  request_path: '/v1/chat/completions',
+  first_response_time_ms: 145.5,
+  use_time: 8,
 };
 const appliedQuery = (path = '/api/log/self/') => ({
   current: {
@@ -145,9 +149,13 @@ test('self export uses one stream for all filtered rows and captures query and c
   expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
   const csv = await readBlob(URL.createObjectURL.mock.calls[0][0]);
   expect(csv).toContain('"Amount (CNY)"');
-  expect(csv).toContain(
-    '"sample-user","sample-token","sample-model",123,5,20,50,7,',
+  expect(csv.split('\r\n')[0]).toBe(
+    '"Username","Token Name","Model Name","Request type","Request interface","Input tokens","Output tokens","Cache read tokens","Cache write tokens","Amount (CNY)","Time","Time to first token (s)","Total request time (s)"',
   );
+  expect(csv).toContain(
+    '"sample-user","sample-token","sample-model","Non-streaming","chat",123,5,20,50,7,',
+  );
+  expect(csv.split('\r\n')[1]).toMatch(/,0\.1455,8$/);
   expect(csv.trim().split('\r\n')).toHaveLength(102);
   expect(result.current.exportingLogs).toBe(false);
 });

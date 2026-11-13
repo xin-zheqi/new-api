@@ -602,6 +602,10 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
+	// User-facing history omits diagnostic error entries before both counting
+	// and paging. Keep billed consume rows, including interrupted streams, so
+	// visible usage still matches the user's charges. Admin queries are separate.
+	tx = tx.Where("(logs.type <> ? OR logs.type IS NULL)", LogTypeError)
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
 		return nil, 0, err

@@ -28,6 +28,10 @@ export interface UsageLogExportRecord {
   created_at: number
   cache_read_tokens?: number
   cache_write_tokens?: number
+  is_stream?: boolean
+  request_path?: string
+  first_response_time_ms?: number | null
+  use_time?: number
 }
 
 export interface UsageLogExportOptions {
@@ -35,6 +39,7 @@ export interface UsageLogExportOptions {
   headers: readonly string[]
   formatAmount: (quota: number) => number
   formatTime: (timestamp: number) => string
+  requestTypeLabels: { streaming: string; nonStreaming: string }
   filename: string
   signal?: AbortSignal
 }
@@ -52,9 +57,48 @@ function tokenCount(value: unknown): number {
     : 0
 }
 
+function requestInterface(path: unknown): string {
+  if (typeof path !== 'string') return ''
+  // Use the client's recorded route, not the channel's converted upstream API.
+  // Strip query strings before falling back to an unfamiliar route.
+  const route = path.split(/[?#]/, 1)[0].replace(/\/$/, '')
+  if (route.endsWith('/chat/completions')) return 'chat'
+  if (route.endsWith('/responses/compact')) return 'responses/compact'
+  if (route.endsWith('/responses')) return 'responses'
+  if (route.endsWith('/messages')) return 'messages'
+  if (/\/models\/[^/]+:(?:streamGenerateContent|generateContent)$/.test(route)) {
+    return 'gemini'
+  }
+  if (route.endsWith('/embeddings')) return 'embeddings'
+  if (route.includes('/images/')) return 'images'
+  if (route.includes('/audio/')) return 'audio'
+  if (route.endsWith('/rerank')) return 'rerank'
+  if (route.endsWith('/moderations')) return 'moderations'
+  if (route.endsWith('/completions')) return 'completions'
+  if (route.endsWith('/search')) return 'search'
+  if (route.endsWith('/fetch')) return 'fetch'
+  if (
+    route === '/v1/videos' ||
+    route.startsWith('/v1/videos/') ||
+    route.startsWith('/v1/video/generations')
+  ) {
+    return 'videos'
+  }
+  return route
+}
+
+function durationSeconds(value: unknown, scale = 1): string | number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value / scale
+    : ''
+}
+
 export function usageLogCsvRow(
   log: UsageLogExportRecord,
-  options: Pick<UsageLogExportOptions, 'formatAmount' | 'formatTime'>
+  options: Pick<
+    UsageLogExportOptions,
+    'formatAmount' | 'formatTime' | 'requestTypeLabels'
+  >
 ): string {
   // Excel keeps 15 significant digits. Remove floating-point conversion noise
   // without rounding small charges to zero or changing stored billing values.
@@ -64,12 +108,18 @@ export function usageLogCsvRow(
     log.username || '',
     log.token_name || '',
     log.model_name || '',
+    log.is_stream === true
+      ? options.requestTypeLabels.streaming
+      : options.requestTypeLabels.nonStreaming,
+    requestInterface(log.request_path),
     tokenCount(log.prompt_tokens),
     tokenCount(log.completion_tokens),
     tokenCount(log.cache_read_tokens),
     tokenCount(log.cache_write_tokens),
     amount,
     options.formatTime(log.created_at),
+    durationSeconds(log.first_response_time_ms, 1000),
+    durationSeconds(log.use_time),
   ]
     .map(csvCell)
     .join(',')

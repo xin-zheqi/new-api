@@ -37,6 +37,12 @@ type UsageLogExportRow struct {
 	CacheWriteTokens float64 `json:"cache_write_tokens"`
 	Quota            int64   `json:"quota"`
 	CreatedAt        int64   `json:"created_at"`
+	IsStream         bool    `json:"is_stream"`
+	RequestPath      string  `json:"request_path"`
+	// Preserve the stored units: first response is milliseconds, total time is
+	// seconds. A missing/invalid legacy first-response metric stays unavailable.
+	FirstResponseTimeMS *float64 `json:"first_response_time_ms"`
+	UseTime             int64    `json:"use_time"`
 }
 
 // StreamUsageLogs reads one database cursor instead of counting and repeatedly
@@ -88,7 +94,7 @@ func StreamUsageLogs(ctx context.Context, filter UsageLogExportFilter, emit func
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("logs.")
 	}
-	rows, err := tx.Select("logs.username, logs.token_name, logs.model_name, logs.prompt_tokens, logs.completion_tokens, logs.quota, logs.created_at, logs.other").Order(order).Rows()
+	rows, err := tx.Select("logs.username, logs.token_name, logs.model_name, logs.prompt_tokens, logs.completion_tokens, logs.quota, logs.created_at, logs.other, logs.is_stream, logs.use_time").Order(order).Rows()
 	if err != nil {
 		return err
 	}
@@ -99,26 +105,37 @@ func StreamUsageLogs(ctx context.Context, filter UsageLogExportFilter, emit func
 		}
 		// Nullable legacy columns export as empty/zero, just like the list DTO.
 		var username, tokenName, modelName, other sql.NullString
-		var promptTokens, completionTokens, quota, createdAt sql.NullInt64
-		if err := rows.Scan(&username, &tokenName, &modelName, &promptTokens, &completionTokens, &quota, &createdAt, &other); err != nil {
+		var promptTokens, completionTokens, quota, createdAt, useTime sql.NullInt64
+		var isStream sql.NullBool
+		if err := rows.Scan(&username, &tokenName, &modelName, &promptTokens, &completionTokens, &quota, &createdAt, &other, &isStream, &useTime); err != nil {
 			return err
 		}
 		row := UsageLogExportRow{
 			Username: username.String, TokenName: tokenName.String, ModelName: modelName.String,
 			PromptTokens: promptTokens.Int64, CompletionTokens: completionTokens.Int64,
 			Quota: quota.Int64, CreatedAt: createdAt.Int64,
+			IsStream: isStream.Bool, UseTime: useTime.Int64,
 		}
-		var cache struct {
-			Read    common.RawMessage `json:"cache_tokens"`
-			Write   common.RawMessage `json:"cache_creation_tokens"`
-			Write5m common.RawMessage `json:"cache_creation_tokens_5m"`
-			Write1h common.RawMessage `json:"cache_creation_tokens_1h"`
+		var metadata struct {
+			Read              common.RawMessage `json:"cache_tokens"`
+			Write             common.RawMessage `json:"cache_creation_tokens"`
+			Write5m           common.RawMessage `json:"cache_creation_tokens_5m"`
+			Write1h           common.RawMessage `json:"cache_creation_tokens_1h"`
+			RequestPath       common.RawMessage `json:"request_path"`
+			FirstResponseTime common.RawMessage `json:"frt"`
 		}
-		if other.String != "" && common.UnmarshalJsonStr(other.String, &cache) == nil {
+		if other.String != "" && common.UnmarshalJsonStr(other.String, &metadata) == nil {
+			// Decode only public request facts and keep malformed legacy fields
+			// independent, so they cannot discard valid timing/cache values.
+			_ = common.Unmarshal(metadata.RequestPath, &row.RequestPath)
+			var firstResponseTime *float64
+			if common.Unmarshal(metadata.FirstResponseTime, &firstResponseTime) == nil && firstResponseTime != nil && *firstResponseTime >= 0 {
+				row.FirstResponseTimeMS = firstResponseTime
+			}
 			// Match the table's per-field number validation. One malformed legacy
 			// counter must not discard the other valid counters or their decimals.
 			var counts [4]float64
-			for i, raw := range [...]common.RawMessage{cache.Read, cache.Write, cache.Write5m, cache.Write1h} {
+			for i, raw := range [...]common.RawMessage{metadata.Read, metadata.Write, metadata.Write5m, metadata.Write1h} {
 				if len(raw) == 0 || common.Unmarshal(raw, &counts[i]) != nil || counts[i] < 0 {
 					counts[i] = 0
 				}

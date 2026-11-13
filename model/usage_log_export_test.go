@@ -33,6 +33,8 @@ type usageLogExportFixture struct {
 	Group             string
 	RequestID         string
 	UpstreamRequestID string
+	IsStream          bool
+	UseTime           int
 }
 
 func TestUsageLogExportDatabaseMatrix(t *testing.T) {
@@ -81,7 +83,7 @@ func TestUsageLogExportDatabaseMatrix(t *testing.T) {
 			require.NoError(t, db.Raw(versionQuery).Scan(&version).Error)
 			t.Logf("database: %s %s", dialect, version)
 			fixtures := []usageLogExportFixture{
-				{ID: 1, UserID: 10, Type: LogTypeConsume, Username: "alice", TokenName: "token", ModelName: "model_one", PromptTokens: 100, CompletionTokens: 12, Quota: 345, CreatedAt: 100, Other: `{"cache_tokens":30,"cache_creation_tokens":99,"cache_creation_tokens_5m":4,"cache_creation_tokens_1h":6,"admin_info":{"secret":"never exported"}}`, ChannelID: 2, Group: "default", RequestID: "req1", UpstreamRequestID: "up1"},
+				{ID: 1, UserID: 10, Type: LogTypeConsume, Username: "alice", TokenName: "token", ModelName: "model_one", PromptTokens: 100, CompletionTokens: 12, Quota: 345, CreatedAt: 100, Other: `{"cache_tokens":30,"cache_creation_tokens":99,"cache_creation_tokens_5m":4,"cache_creation_tokens_1h":6,"request_path":"/v1/responses","frt":1250.5,"admin_info":{"secret":"never exported"}}`, ChannelID: 2, Group: "default", RequestID: "req1", UpstreamRequestID: "up1", IsStream: true, UseTime: 7},
 				{ID: 2, UserID: 20, Type: LogTypeConsume, Username: "bob", TokenName: "other", ModelName: "modelXone", CreatedAt: 200, Other: `{"cache_tokens":2,"cache_creation_tokens":7}`, ChannelID: 3, Group: "vip", RequestID: "req2", UpstreamRequestID: "up2"},
 				{ID: 3, UserID: 10, Type: LogTypeError, Username: "alice", TokenName: "token", ModelName: "model_one", CreatedAt: 300, ChannelID: 2, Group: "default"},
 				{ID: 4, UserID: 10, Type: LogTypeRefund, Username: "alice", TokenName: "refund", ModelName: "model_two", CreatedAt: 50, Other: `{`},
@@ -98,7 +100,8 @@ func TestUsageLogExportDatabaseMatrix(t *testing.T) {
 				assert.Equal(t, []string{"other", "last", "token", "refund"}, []string{got[0].TokenName, got[1].TokenName, got[2].TokenName, got[3].TokenName})
 				assert.Equal(t, float64(7), got[0].CacheWriteTokens)
 				assert.Equal(t, float64(8), got[1].CacheWriteTokens)
-				assert.Equal(t, UsageLogExportRow{Username: "alice", TokenName: "token", ModelName: "model_one", PromptTokens: 100, CompletionTokens: 12, Quota: 345, CreatedAt: 100, CacheReadTokens: 30, CacheWriteTokens: 10}, got[2])
+				firstResponseTime := 1250.5
+				assert.Equal(t, UsageLogExportRow{Username: "alice", TokenName: "token", ModelName: "model_one", PromptTokens: 100, CompletionTokens: 12, Quota: 345, CreatedAt: 100, CacheReadTokens: 30, CacheWriteTokens: 10, IsStream: true, RequestPath: "/v1/responses", FirstResponseTimeMS: &firstResponseTime, UseTime: 7}, got[2])
 				assert.Zero(t, got[3].CacheReadTokens)
 				assert.Zero(t, got[3].CacheWriteTokens)
 			})
@@ -149,6 +152,54 @@ func TestUsageLogExportDatabaseMatrix(t *testing.T) {
 				}))
 				assert.Equal(t, []string{"legacy-null"}, got)
 				require.NoError(t, db.Table("usage_export_test_logs").Where("id = ?", legacy.ID).Delete(&usageLogExportFixture{}).Error)
+			})
+			t.Run("legacy null request columns remain exportable", func(t *testing.T) {
+				legacy := usageLogExportFixture{ID: 7, UserID: 10, TokenName: "legacy-request", RequestID: "legacy-request"}
+				require.NoError(t, db.Table("usage_export_test_logs").Create(&legacy).Error)
+				require.NoError(t, db.Table("usage_export_test_logs").Where("id = ?", legacy.ID).Updates(map[string]any{"is_stream": nil, "use_time": nil, "other": nil}).Error)
+				var got []UsageLogExportRow
+				require.NoError(t, StreamUsageLogs(context.Background(), UsageLogExportFilter{RequestID: "legacy-request"}, func(row UsageLogExportRow) error {
+					got = append(got, row)
+					return nil
+				}))
+				require.Len(t, got, 1)
+				assert.False(t, got[0].IsStream)
+				assert.Empty(t, got[0].RequestPath)
+				assert.Nil(t, got[0].FirstResponseTimeMS)
+				assert.Zero(t, got[0].UseTime)
+				require.NoError(t, db.Table("usage_export_test_logs").Where("id = ?", legacy.ID).Delete(&usageLogExportFixture{}).Error)
+			})
+			t.Run("request metadata validates independently of cache counters", func(t *testing.T) {
+				zero, fractional := float64(0), 250.25
+				for _, tc := range []struct {
+					name, metadata, path string
+					firstResponseTime    *float64
+				}{
+					{"chat fractional milliseconds", `{"request_path":"/v1/chat/completions","frt":250.25,"cache_tokens":3}`, "/v1/chat/completions", &fractional},
+					{"zero is a recorded duration", `{"request_path":"/v1/messages","frt":0,"cache_tokens":3}`, "/v1/messages", &zero},
+					{"invalid path keeps timing", `{"request_path":{},"frt":250.25,"cache_tokens":3}`, "", &fractional},
+					{"missing timing remains unavailable", `{"request_path":"/v1/responses","cache_tokens":3}`, "/v1/responses", nil},
+					{"null timing remains unavailable", `{"frt":null,"cache_tokens":3}`, "", nil},
+					{"negative timing remains unavailable", `{"frt":-1,"cache_tokens":3}`, "", nil},
+					{"string timing remains unavailable", `{"frt":"250","cache_tokens":3}`, "", nil},
+					{"overflow timing remains unavailable", `{"frt":1e400,"cache_tokens":3}`, "", nil},
+				} {
+					t.Run(tc.name, func(t *testing.T) {
+						require.NoError(t, db.Table("usage_export_test_logs").Where("id = ?", 1).Update("other", tc.metadata).Error)
+						var got []UsageLogExportRow
+						require.NoError(t, StreamUsageLogs(context.Background(), UsageLogExportFilter{RequestID: "req1"}, func(row UsageLogExportRow) error {
+							got = append(got, row)
+							return nil
+						}))
+						require.Len(t, got, 1)
+						assert.Equal(t, tc.path, got[0].RequestPath)
+						assert.Equal(t, tc.firstResponseTime, got[0].FirstResponseTimeMS)
+						assert.Equal(t, float64(3), got[0].CacheReadTokens)
+						assert.True(t, got[0].IsStream)
+						assert.Equal(t, int64(7), got[0].UseTime)
+						assert.Equal(t, int64(345), got[0].Quota)
+					})
+				}
 			})
 			t.Run("legacy cache fields validate independently", func(t *testing.T) {
 				for _, tc := range []struct {

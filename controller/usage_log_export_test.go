@@ -33,7 +33,7 @@ func TestUsageLogExportHTTP(t *testing.T) {
 		require.NoError(t, sqlDB.Close())
 	})
 	require.NoError(t, db.Create(&[]model.Log{
-		{UserId: 10, Type: model.LogTypeConsume, Username: "alice", TokenName: "token", ModelName: "model", CreatedAt: 100, Other: `{"cache_tokens":3,"admin_info":{"secret":"private"}}`, Content: "private log content", Ip: "private ip"},
+		{UserId: 10, Type: model.LogTypeConsume, Username: "alice", TokenName: "token", ModelName: "model", CreatedAt: 100, Other: `{"cache_tokens":3,"request_path":"/v1/responses","frt":1250.5,"admin_info":{"secret":"private"}}`, Content: "private log content", Ip: "private ip", IsStream: true, UseTime: 7},
 		{UserId: 20, Type: model.LogTypeConsume, Username: "bob", TokenName: "other", CreatedAt: 200},
 		{UserId: 10, Type: model.LogTypeError, Username: "alice", TokenName: "error", Content: "private error"},
 	}).Error)
@@ -77,7 +77,18 @@ func TestUsageLogExportHTTP(t *testing.T) {
 					assert.False(t, scanner.Scan(), "completion marker must be final")
 					break
 				}
-				require.Len(t, value, 9, "only spreadsheet columns may leave the server")
+				require.Len(t, value, 13, "only spreadsheet columns may leave the server")
+				if value["username"] == "alice" {
+					assert.Equal(t, true, value["is_stream"])
+					assert.Equal(t, "/v1/responses", value["request_path"])
+					assert.Equal(t, 1250.5, value["first_response_time_ms"])
+					assert.Equal(t, float64(7), value["use_time"])
+				} else {
+					assert.Equal(t, false, value["is_stream"])
+					assert.Empty(t, value["request_path"])
+					assert.Nil(t, value["first_response_time_ms"])
+					assert.Equal(t, float64(0), value["use_time"])
+				}
 				names = append(names, value["username"].(string))
 			}
 			require.NoError(t, scanner.Err())

@@ -29,12 +29,16 @@ const headers = [
   'Username',
   'Token name',
   'Model name',
+  'Request type',
+  'Request interface',
   'Input tokens',
   'Output tokens',
   'Cache read tokens',
   'Cache write tokens',
   'Amount (USD)',
   'Time',
+  'Time to first token (s)',
+  'Total request time (s)',
 ]
 const record: UsageLogExportRecord = {
   username: 'alice',
@@ -44,10 +48,15 @@ const record: UsageLogExportRecord = {
   completion_tokens: 56,
   quota: 1250,
   created_at: 100,
+  is_stream: true,
+  request_path: '/v1/chat/completions',
+  first_response_time_ms: 125.5,
+  use_time: 7,
 }
 const rowFormatting = {
   formatAmount: (quota: number) => quota / 500_000,
   formatTime: (timestamp: number) => `time-${timestamp}`,
+  requestTypeLabels: { streaming: 'Streaming', nonStreaming: 'Non-streaming' },
 }
 
 function exportOptions(
@@ -99,7 +108,7 @@ function readBlob(blob: Blob): Promise<string> {
 }
 
 describe('usage log CSV rows', () => {
-  test('exports nine fields and retains small numeric charges and cache counts', () => {
+  test('exports thirteen fields and retains numeric charges, timing and cache counts', () => {
     expect(
       usageLogCsvRow(
         {
@@ -110,7 +119,9 @@ describe('usage log CSV rows', () => {
         },
         rowFormatting
       )
-    ).toBe('"alice","work","public-model",1234,56,800,120,0.000002,"time-100"')
+    ).toBe(
+      '"alice","work","public-model","Streaming","chat",1234,56,800,120,0.000002,"time-100",0.1255,7'
+    )
   })
 
   test('defaults missing or invalid counters to zero', () => {
@@ -124,7 +135,7 @@ describe('usage log CSV rows', () => {
         },
         rowFormatting
       )
-    ).toBe('"","","",0,0,0,0,0,"time-100"')
+    ).toBe('"","","","Non-streaming","",0,0,0,0,0,"time-100","",""')
   })
 
   test('escapes Chinese, quotes, commas and embedded newlines', () => {
@@ -138,7 +149,7 @@ describe('usage log CSV rows', () => {
         rowFormatting
       )
     ).toBe(
-      '"王,""甲""","first\r\nsecond","public-model",1234,56,0,0,0.0025,"time-100"'
+      '"王,""甲""","first\r\nsecond","public-model","Streaming","chat",1234,56,0,0,0.0025,"time-100",0.1255,7'
     )
   })
 
@@ -152,8 +163,55 @@ describe('usage log CSV rows', () => {
     '\u0000=1',
   ])('treats formula-like names as text: %j', (name) => {
     expect(usageLogCsvRow({ ...record, username: name }, rowFormatting)).toBe(
-      `"'${name}","work","public-model",1234,56,0,0,0.0025,"time-100"`
+      `"'${name}","work","public-model","Streaming","chat",1234,56,0,0,0.0025,"time-100",0.1255,7`
     )
+  })
+
+  test.each([
+    ['/v1/chat/completions', 'chat'],
+    ['/pg/chat/completions', 'chat'],
+    ['/v1/responses?key=private', 'responses'],
+    ['/v1/responses/compact', 'responses/compact'],
+    ['/v1/messages/', 'messages'],
+    ['/v1beta/models/gemini-test:streamGenerateContent?key=private', 'gemini'],
+    ['/v1/embeddings', 'embeddings'],
+    ['/v1/images/generations', 'images'],
+    ['/v1/audio/transcriptions', 'audio'],
+    ['/v1/rerank', 'rerank'],
+    ['/v1/videos/job-123', 'videos'],
+    ['/v1/alpha/search', 'search'],
+    ['/vendor/custom?key=private#secret', '/vendor/custom'],
+    [undefined, ''],
+  ])(
+    'exports the original downstream interface %s as %s',
+    (requestPath, expected) => {
+      expect(
+        usageLogCsvRow({ ...record, request_path: requestPath }, rowFormatting)
+      ).toContain(`,"${expected}",1234,56,`)
+    }
+  )
+
+  test.each([null, undefined, -1, Number.NaN, Infinity])(
+    'leaves unavailable first-response timing blank: %s',
+    (value) => {
+      const csv = usageLogCsvRow(
+        { ...record, first_response_time_ms: value, use_time: -1 },
+        rowFormatting
+      )
+      expect(csv).toMatch(/,"time-100","",""$/)
+    }
+  )
+
+  test('preserves zero durations and uses snapshotted translated request labels', () => {
+    expect(
+      usageLogCsvRow(
+        { ...record, is_stream: false, first_response_time_ms: 0, use_time: 0 },
+        {
+          ...rowFormatting,
+          requestTypeLabels: { streaming: '流式', nonStreaming: '非流式' },
+        }
+      )
+    ).toContain('"非流式","chat",1234,56,0,0,0.0025,"time-100",0,0')
   })
 })
 
@@ -210,10 +268,10 @@ describe('complete streamed usage log CSV download', () => {
     )
     expect(lines).toHaveLength(103)
     expect(lines[1]).toBe(
-      '"用户-0","work","public-model",1234,56,0,0,0.0025,"time-100"'
+      '"用户-0","work","public-model","Streaming","chat",1234,56,0,0,0.0025,"time-100",0.1255,7'
     )
     expect(lines[101]).toBe(
-      '"用户-100","work","public-model",1234,56,0,0,0.0025,"time-100"'
+      '"用户-100","work","public-model","Streaming","chat",1234,56,0,0,0.0025,"time-100",0.1255,7'
     )
   })
 
@@ -252,7 +310,7 @@ describe('complete streamed usage log CSV download', () => {
       pull(controller) {
         if (reads++ === 0) {
           controller.enqueue(
-            new TextEncoder().encode(JSON.stringify(record) + '\n')
+            new TextEncoder().encode(`${JSON.stringify(record)}\n`)
           )
         } else controller.error(new Error('Connection interrupted'))
       },

@@ -2,6 +2,7 @@ package openai
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -20,6 +21,15 @@ import (
 )
 
 const chatToGeminiStreamStateKey = "relaykit.chat_to_gemini_stream_state"
+
+// upstreamOpenAIError wraps an already identified error object. A successful
+// HTTP status must not prevent retries; leave detection and retry guards to callers.
+func upstreamOpenAIError(oaiError types.OpenAIError, statusCode int) *types.NewAPIError {
+	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices {
+		statusCode = http.StatusServiceUnavailable
+	}
+	return types.WithOpenAIError(oaiError, statusCode)
+}
 
 // 辅助函数
 func HandleStreamFormat(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {

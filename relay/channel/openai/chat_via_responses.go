@@ -39,7 +39,7 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	}
 
 	if oaiError := responsesResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		return nil, upstreamOpenAIError(*oaiError, resp.StatusCode)
 	}
 
 	responseValue, usage, err := convertResponsesResponseForClient(c, info, &responsesResp)

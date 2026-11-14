@@ -280,14 +280,7 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	simpleResponse.Model = relaycommon.ClientResponseModel(info, simpleResponse.Model)
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		statusCode := resp.StatusCode
-		// An explicit upstream error is not a successful response, even when
-		// transported with HTTP 2xx. Keep detection unchanged and let the
-		// existing retry policy handle it as a service failure.
-		if statusCode >= http.StatusOK && statusCode < 300 {
-			statusCode = http.StatusServiceUnavailable
-		}
-		return nil, types.WithOpenAIError(*oaiError, statusCode)
+		return nil, upstreamOpenAIError(*oaiError, resp.StatusCode)
 	}
 
 	for _, choice := range simpleResponse.Choices {

@@ -28,7 +28,7 @@ func OaiResponsesCompactionHandler(c *gin.Context, info *relaycommon.RelayInfo, 
 	}
 	info.ObserveUpstreamResponseJSON(responseBody)
 	if oaiError := compactResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		return nil, upstreamOpenAIError(*oaiError, resp.StatusCode)
 	}
 	// Some compatible providers include model metadata in compact responses.
 	// Apply the same alias rule as /responses without touching compacted items.

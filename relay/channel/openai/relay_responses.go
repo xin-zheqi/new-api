@@ -31,7 +31,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	}
 	info.ObserveUpstreamResponseModel(responsesResponse.Model)
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		return nil, upstreamOpenAIError(*oaiError, resp.StatusCode)
 	}
 
 	// Keep model aliases client-visible. The upstream model is still retained

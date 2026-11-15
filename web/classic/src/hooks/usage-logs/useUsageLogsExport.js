@@ -87,6 +87,7 @@ export function useUsageLogsExport(appliedLogQuery) {
           t('Token Name'),
           t('Model Name'),
           t('Request type'),
+          t('Request status'),
           t('Request interface'),
           t('Input tokens'),
           t('Output tokens'),
@@ -100,6 +101,10 @@ export function useUsageLogsExport(appliedLogQuery) {
         requestTypeLabels: {
           streaming: t('Streaming'),
           nonStreaming: t('Non-streaming'),
+        },
+        requestStatusLabels: {
+          succeeded: t('Request succeeded'),
+          canceled: t('Canceled by user'),
         },
         formatAmount: (quota) => quota * scale,
         formatTime: timestamp2string,

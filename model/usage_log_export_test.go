@@ -201,6 +201,61 @@ func TestUsageLogExportDatabaseMatrix(t *testing.T) {
 					})
 				}
 			})
+			t.Run("cancellation uses explicit metadata without changing other fields", func(t *testing.T) {
+				for _, tc := range []struct {
+					name, streamStatus string
+					canceled           bool
+					nullStreamColumn   bool
+				}{
+					{name: "legacy metadata without stream status"},
+					{name: "client disconnected", streamStatus: `{"end_reason":"client_gone"}`, canceled: true},
+					{name: "protocol cancelled", streamStatus: `{"response_status":"cancelled"}`, canceled: true},
+					{name: "protocol canceled alias", streamStatus: `{"response_status":"canceled"}`, canceled: true},
+					{name: "legacy null stream column", streamStatus: `{"end_reason":"client_gone"}`, canceled: true, nullStreamColumn: true},
+					{name: "EOF is not cancellation", streamStatus: `{"end_reason":"eof","status":"ok"}`},
+					{name: "timeout is not cancellation", streamStatus: `{"end_reason":"timeout","status":"error"}`},
+					{name: "error text is not cancellation", streamStatus: `{"end_reason":"scanner_error","status":"error","end_error":"context canceled","errors":["client_gone"]}`},
+					{name: "failed protocol is not cancellation", streamStatus: `{"response_status":"failed","status":"error"}`},
+					{name: "generic status is not cancellation", streamStatus: `{"status":"cancelled"}`},
+					{name: "unknown casing is not inferred", streamStatus: `{"end_reason":"CLIENT_GONE","response_status":"Cancelled"}`},
+					{name: "invalid end reason keeps protocol fact", streamStatus: `{"end_reason":{},"response_status":"cancelled"}`, canceled: true},
+					{name: "invalid protocol keeps client fact", streamStatus: `{"end_reason":"client_gone","response_status":[]}`, canceled: true},
+					{name: "invalid status shape", streamStatus: `"client_gone"`},
+					{name: "null status", streamStatus: `null`},
+				} {
+					t.Run(tc.name, func(t *testing.T) {
+						metadata := `{"cache_tokens":3,"cache_creation_tokens":2,"request_path":"/v1/responses","frt":1250.5`
+						if tc.streamStatus != "" {
+							metadata += `,"stream_status":` + tc.streamStatus
+						}
+						metadata += `}`
+						fields := map[string]interface{}{"other": metadata, "is_stream": true}
+						if tc.nullStreamColumn {
+							fields["is_stream"] = nil
+							// Restore the fixture before the following regression group.
+							defer func() {
+								require.NoError(t, db.Table("usage_export_test_logs").Where("id = ?", 1).Update("is_stream", true).Error)
+							}()
+						}
+						require.NoError(t, db.Table("usage_export_test_logs").Where("id = ?", 1).Updates(fields).Error)
+						var got []UsageLogExportRow
+						require.NoError(t, StreamUsageLogs(context.Background(), UsageLogExportFilter{RequestID: "req1"}, func(row UsageLogExportRow) error {
+							got = append(got, row)
+							return nil
+						}))
+						require.Len(t, got, 1)
+						assert.Equal(t, tc.canceled, got[0].IsCanceled)
+						assert.Equal(t, !tc.nullStreamColumn, got[0].IsStream)
+						assert.Equal(t, float64(3), got[0].CacheReadTokens)
+						assert.Equal(t, float64(2), got[0].CacheWriteTokens)
+						assert.Equal(t, "/v1/responses", got[0].RequestPath)
+						require.NotNil(t, got[0].FirstResponseTimeMS)
+						assert.Equal(t, 1250.5, *got[0].FirstResponseTimeMS)
+						assert.Equal(t, int64(345), got[0].Quota)
+						assert.Equal(t, int64(7), got[0].UseTime)
+					})
+				}
+			})
 			t.Run("legacy cache fields validate independently", func(t *testing.T) {
 				for _, tc := range []struct {
 					name        string

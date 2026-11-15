@@ -30,6 +30,7 @@ const headers = [
   'Token name',
   'Model name',
   'Request type',
+  'Request status',
   'Request interface',
   'Input tokens',
   'Output tokens',
@@ -57,6 +58,10 @@ const rowFormatting = {
   formatAmount: (quota: number) => quota / 500_000,
   formatTime: (timestamp: number) => `time-${timestamp}`,
   requestTypeLabels: { streaming: 'Streaming', nonStreaming: 'Non-streaming' },
+  requestStatusLabels: {
+    succeeded: 'Request succeeded',
+    canceled: 'Canceled by user',
+  },
 }
 
 function exportOptions(
@@ -108,7 +113,7 @@ function readBlob(blob: Blob): Promise<string> {
 }
 
 describe('usage log CSV rows', () => {
-  test('exports thirteen fields and retains numeric charges, timing and cache counts', () => {
+  test('exports fourteen fields and retains numeric charges, timing and cache counts', () => {
     expect(
       usageLogCsvRow(
         {
@@ -120,7 +125,7 @@ describe('usage log CSV rows', () => {
         rowFormatting
       )
     ).toBe(
-      '"alice","work","public-model","Streaming","chat",1234,56,800,120,0.000002,"time-100",0.1255,7'
+      '"alice","work","public-model","Streaming","Request succeeded","chat",1234,56,800,120,0.000002,"time-100",0.1255,7'
     )
   })
 
@@ -135,7 +140,9 @@ describe('usage log CSV rows', () => {
         },
         rowFormatting
       )
-    ).toBe('"","","","Non-streaming","",0,0,0,0,0,"time-100","",""')
+    ).toBe(
+      '"","","","Non-streaming","Request succeeded","",0,0,0,0,0,"time-100","",""'
+    )
   })
 
   test('escapes Chinese, quotes, commas and embedded newlines', () => {
@@ -149,7 +156,7 @@ describe('usage log CSV rows', () => {
         rowFormatting
       )
     ).toBe(
-      '"王,""甲""","first\r\nsecond","public-model","Streaming","chat",1234,56,0,0,0.0025,"time-100",0.1255,7'
+      '"王,""甲""","first\r\nsecond","public-model","Streaming","Request succeeded","chat",1234,56,0,0,0.0025,"time-100",0.1255,7'
     )
   })
 
@@ -163,7 +170,7 @@ describe('usage log CSV rows', () => {
     '\u0000=1',
   ])('treats formula-like names as text: %j', (name) => {
     expect(usageLogCsvRow({ ...record, username: name }, rowFormatting)).toBe(
-      `"'${name}","work","public-model","Streaming","chat",1234,56,0,0,0.0025,"time-100",0.1255,7`
+      `"'${name}","work","public-model","Streaming","Request succeeded","chat",1234,56,0,0,0.0025,"time-100",0.1255,7`
     )
   })
 
@@ -209,9 +216,28 @@ describe('usage log CSV rows', () => {
         {
           ...rowFormatting,
           requestTypeLabels: { streaming: '流式', nonStreaming: '非流式' },
+          requestStatusLabels: { succeeded: '请求成功', canceled: '用户取消' },
         }
       )
-    ).toContain('"非流式","chat",1234,56,0,0,0.0025,"time-100",0,0')
+    ).toContain('"非流式","请求成功","chat",1234,56,0,0,0.0025,"time-100",0,0')
+  })
+
+  test.each([
+    [true, 'Canceled by user'],
+    [false, 'Request succeeded'],
+    [undefined, 'Request succeeded'],
+    ['false', 'Request succeeded'],
+    ['true', 'Request succeeded'],
+    [1, 'Request succeeded'],
+  ])('exports cancellation value %j as %s', (isCanceled, expected) => {
+    // The streamed JSON is an external boundary even with a typed DTO. Only
+    // an explicit boolean true may label a row as canceled.
+    const csv = usageLogCsvRow(
+      { ...record, is_canceled: isCanceled as boolean },
+      rowFormatting
+    )
+    expect(csv.split(',')).toHaveLength(headers.length)
+    expect(csv).toContain(`,"Streaming","${expected}","chat",1234,56,`)
   })
 })
 
@@ -244,6 +270,7 @@ describe('complete streamed usage log CSV download', () => {
     const rows = Array.from({ length: 101 }, (_, index) => ({
       ...record,
       username: `用户-${index}`,
+      is_canceled: index === 1 ? true : undefined,
     }))
     const payload = `${rows
       .map((row) => JSON.stringify(row))
@@ -268,10 +295,13 @@ describe('complete streamed usage log CSV download', () => {
     )
     expect(lines).toHaveLength(103)
     expect(lines[1]).toBe(
-      '"用户-0","work","public-model","Streaming","chat",1234,56,0,0,0.0025,"time-100",0.1255,7'
+      '"用户-0","work","public-model","Streaming","Request succeeded","chat",1234,56,0,0,0.0025,"time-100",0.1255,7'
+    )
+    expect(lines[2]).toBe(
+      '"用户-1","work","public-model","Streaming","Canceled by user","chat",1234,56,0,0,0.0025,"time-100",0.1255,7'
     )
     expect(lines[101]).toBe(
-      '"用户-100","work","public-model","Streaming","chat",1234,56,0,0,0.0025,"time-100",0.1255,7'
+      '"用户-100","work","public-model","Streaming","Request succeeded","chat",1234,56,0,0,0.0025,"time-100",0.1255,7'
     )
   })
 

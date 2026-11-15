@@ -29,6 +29,7 @@ export interface UsageLogExportRecord {
   cache_read_tokens?: number
   cache_write_tokens?: number
   is_stream?: boolean
+  is_canceled?: boolean
   request_path?: string
   first_response_time_ms?: number | null
   use_time?: number
@@ -40,6 +41,7 @@ export interface UsageLogExportOptions {
   formatAmount: (quota: number) => number
   formatTime: (timestamp: number) => string
   requestTypeLabels: { streaming: string; nonStreaming: string }
+  requestStatusLabels: { succeeded: string; canceled: string }
   filename: string
   signal?: AbortSignal
 }
@@ -66,7 +68,9 @@ function requestInterface(path: unknown): string {
   if (route.endsWith('/responses/compact')) return 'responses/compact'
   if (route.endsWith('/responses')) return 'responses'
   if (route.endsWith('/messages')) return 'messages'
-  if (/\/models\/[^/]+:(?:streamGenerateContent|generateContent)$/.test(route)) {
+  if (
+    /\/models\/[^/]+:(?:streamGenerateContent|generateContent)$/.test(route)
+  ) {
     return 'gemini'
   }
   if (route.endsWith('/embeddings')) return 'embeddings'
@@ -97,7 +101,7 @@ export function usageLogCsvRow(
   log: UsageLogExportRecord,
   options: Pick<
     UsageLogExportOptions,
-    'formatAmount' | 'formatTime' | 'requestTypeLabels'
+    'formatAmount' | 'formatTime' | 'requestTypeLabels' | 'requestStatusLabels'
   >
 ): string {
   // Excel keeps 15 significant digits. Remove floating-point conversion noise
@@ -111,6 +115,9 @@ export function usageLogCsvRow(
     log.is_stream === true
       ? options.requestTypeLabels.streaming
       : options.requestTypeLabels.nonStreaming,
+    log.is_canceled === true
+      ? options.requestStatusLabels.canceled
+      : options.requestStatusLabels.succeeded,
     requestInterface(log.request_path),
     tokenCount(log.prompt_tokens),
     tokenCount(log.completion_tokens),

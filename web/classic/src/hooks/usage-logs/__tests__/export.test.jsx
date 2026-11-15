@@ -124,7 +124,11 @@ test('self export uses one stream for all filtered rows and captures query and c
     // Changes after the click must not alter this file's query or amounts.
     query.current.params.set('token_name', 'changed');
     localStorage.setItem('status', '{"usd_exchange_rate":9}');
-    return response(Array.from({ length: 101 }, () => log));
+    return response(
+      Array.from({ length: 101 }, (_, index) =>
+        index === 1 ? { ...log, is_canceled: true } : log,
+      ),
+    );
   });
   const { result } = renderHook(() => useUsageLogsExport(query));
   await act(() => result.current.exportLogs());
@@ -150,10 +154,13 @@ test('self export uses one stream for all filtered rows and captures query and c
   const csv = await readBlob(URL.createObjectURL.mock.calls[0][0]);
   expect(csv).toContain('"Amount (CNY)"');
   expect(csv.split('\r\n')[0]).toBe(
-    '"Username","Token Name","Model Name","Request type","Request interface","Input tokens","Output tokens","Cache read tokens","Cache write tokens","Amount (CNY)","Time","Time to first token (s)","Total request time (s)"',
+    '"Username","Token Name","Model Name","Request type","Request status","Request interface","Input tokens","Output tokens","Cache read tokens","Cache write tokens","Amount (CNY)","Time","Time to first token (s)","Total request time (s)"',
   );
   expect(csv).toContain(
-    '"sample-user","sample-token","sample-model","Non-streaming","chat",123,5,20,50,7,',
+    '"sample-user","sample-token","sample-model","Non-streaming","Request succeeded","chat",123,5,20,50,7,',
+  );
+  expect(csv).toContain(
+    '"sample-user","sample-token","sample-model","Non-streaming","Canceled by user","chat",123,5,20,50,7,',
   );
   expect(csv.split('\r\n')[1]).toMatch(/,0\.1455,8$/);
   expect(csv.trim().split('\r\n')).toHaveLength(102);

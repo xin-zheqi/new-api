@@ -78,6 +78,7 @@ export function UsageLogsExportButton<TData>(props: {
           t('Token Name'),
           t('Model Name'),
           t('Request type'),
+          t('Request status'),
           t('Request interface'),
           t('Input tokens'),
           t('Output tokens'),
@@ -91,6 +92,10 @@ export function UsageLogsExportButton<TData>(props: {
         requestTypeLabels: {
           streaming: t('Streaming'),
           nonStreaming: t('Non-streaming'),
+        },
+        requestStatusLabels: {
+          succeeded: t('Request succeeded'),
+          canceled: t('Canceled by user'),
         },
         fetchExport: () =>
           getUsageLogExport(params, isAdmin, activeController.signal),

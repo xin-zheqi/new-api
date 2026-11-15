@@ -38,6 +38,7 @@ type UsageLogExportRow struct {
 	Quota            int64   `json:"quota"`
 	CreatedAt        int64   `json:"created_at"`
 	IsStream         bool    `json:"is_stream"`
+	IsCanceled       bool    `json:"is_canceled"`
 	RequestPath      string  `json:"request_path"`
 	// Preserve the stored units: first response is milliseconds, total time is
 	// seconds. A missing/invalid legacy first-response metric stays unavailable.
@@ -123,6 +124,7 @@ func StreamUsageLogs(ctx context.Context, filter UsageLogExportFilter, emit func
 			Write1h           common.RawMessage `json:"cache_creation_tokens_1h"`
 			RequestPath       common.RawMessage `json:"request_path"`
 			FirstResponseTime common.RawMessage `json:"frt"`
+			StreamStatus      common.RawMessage `json:"stream_status"`
 		}
 		if other.String != "" && common.UnmarshalJsonStr(other.String, &metadata) == nil {
 			// Decode only public request facts and keep malformed legacy fields
@@ -131,6 +133,18 @@ func StreamUsageLogs(ctx context.Context, filter UsageLogExportFilter, emit func
 			var firstResponseTime *float64
 			if common.Unmarshal(metadata.FirstResponseTime, &firstResponseTime) == nil && firstResponseTime != nil && *firstResponseTime >= 0 {
 				row.FirstResponseTimeMS = firstResponseTime
+			}
+			var streamStatus struct {
+				EndReason      common.RawMessage `json:"end_reason"`
+				ResponseStatus common.RawMessage `json:"response_status"`
+			}
+			if len(metadata.StreamStatus) > 0 && common.Unmarshal(metadata.StreamStatus, &streamStatus) == nil {
+				var endReason, responseStatus string
+				_ = common.Unmarshal(streamStatus.EndReason, &endReason)
+				_ = common.Unmarshal(streamStatus.ResponseStatus, &responseStatus)
+				// Only explicit cancellation facts count; EOF, timeouts and error
+				// messages do not establish that the client canceled a request.
+				row.IsCanceled = endReason == "client_gone" || responseStatus == "cancelled" || responseStatus == "canceled"
 			}
 			// Match the table's per-field number validation. One malformed legacy
 			// counter must not discard the other valid counters or their decimals.

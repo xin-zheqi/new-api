@@ -3247,6 +3247,9 @@
     "Current period started": "当前周期开始",
     "Used quota": "已用额度",
     "Model limits": "模型限制",
-    "Public page for checking API key quota.": "公开查询 API Key 的额度与使用情况。"
+    "Public page for checking API key quota.": "公开查询 API Key 的额度与使用情况。",
+    "Canceled by user": "用户取消",
+    "Request status": "请求状态",
+    "Request succeeded": "请求成功"
   }
 }

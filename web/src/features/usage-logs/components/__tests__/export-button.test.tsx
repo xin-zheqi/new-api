@@ -229,7 +229,11 @@ describe('usage logs export button', () => {
   })
 
   test('exports all applied admin filters in one request and uses numeric CNY charges', async () => {
-    const get = vi.spyOn(api, 'get').mockResolvedValue(streamResponse([record]))
+    const get = vi
+      .spyOn(api, 'get')
+      .mockResolvedValue(
+        streamResponse([record, { ...record, is_canceled: true }])
+      )
     renderExport({
       filters: [
         { id: 'model_name', value: 'public&model+v1' },
@@ -263,10 +267,13 @@ describe('usage logs export button', () => {
     vi.useRealTimers()
     const csv = await readBlob(createObjectURL.mock.calls[0][0])
     expect(csv.split('\r\n')[0]).toBe(
-      '"Username","Token Name","Model Name","Request type","Request interface","Input tokens","Output tokens","Cache read tokens","Cache write tokens","Amount (CNY)","Time","Time to first token (s)","Total request time (s)"'
+      '"Username","Token Name","Model Name","Request type","Request status","Request interface","Input tokens","Output tokens","Cache read tokens","Cache write tokens","Amount (CNY)","Time","Time to first token (s)","Total request time (s)"'
     )
     expect(csv.split('\r\n')[1]).toMatch(
-      /^"alice","team&key","public\+model","Streaming","responses",1234,56,800,20,0.07,"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d",0.25,9$/
+      /^"alice","team&key","public\+model","Streaming","Request succeeded","responses",1234,56,800,20,0.07,"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d",0.25,9$/
+    )
+    expect(csv.split('\r\n')[2]).toContain(
+      '"Streaming","Canceled by user","responses",1234,56,800,20,0.07,'
     )
     expect(screen.getByRole('button', { name: 'Export table' })).toBeEnabled()
     expect(toast.error).not.toHaveBeenCalled()

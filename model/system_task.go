@@ -207,6 +207,18 @@ func GetLatestSystemTasks(taskTypes []string) (map[string]*SystemTask, error) {
 	if len(taskTypes) == 0 {
 		return tasksByType, nil
 	}
+	// A single scheduled type needs only its newest row, without grouping all
+	// matching history. Keep the batched lookup for multiple enabled types.
+	if len(taskTypes) == 1 {
+		task, err := GetLatestSystemTask(taskTypes[0])
+		if err != nil {
+			return nil, err
+		}
+		if task != nil {
+			tasksByType[task.Type] = task
+		}
+		return tasksByType, nil
+	}
 
 	subQuery := DB.Model(&SystemTask{}).
 		Select("MAX(id)").

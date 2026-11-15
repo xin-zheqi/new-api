@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"math/big"
 	"sort"
 	"strings"
 
@@ -162,8 +163,8 @@ func GetUserTokenModelUsage(userId int, keyword string, startTimestamp int64, en
 		itemByTokenId[token.Id] = item
 	}
 
+	var totalAggregates []*tokenModelUsageTotalAggregate
 	if len(tokenIds) > 0 {
-		var totalAggregates []*tokenModelUsageTotalAggregate
 		err := getTokenUsageLogBase(userId, tokenIds, startTimestamp, endTimestamp).
 			Select("token_id, COALESCE(SUM(quota), 0) AS quota, COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, COALESCE(SUM(completion_tokens), 0) AS completion_tokens, COALESCE(SUM(prompt_tokens), 0) + COALESCE(SUM(completion_tokens), 0) AS total_tokens, COUNT(*) AS requests").
 			Group("token_id").
@@ -192,9 +193,21 @@ func GetUserTokenModelUsage(userId int, keyword string, startTimestamp int64, en
 		return items[i].TokenId > items[j].TokenId
 	})
 
-	summary, err := getUserTokenModelUsageSummaryByTokenIds(userId, total, tokenIds, startTimestamp, endTimestamp)
+	// These totals already cover every matching token, before pagination. Reuse
+	// them instead of scanning the same logs again for sums and active-key count.
+	summary, err := summarizeTokenModelUsageTotals(total, totalAggregates)
 	if err != nil {
-		return nil, 0, TokenModelUsageSummary{}, err
+		common.SysError("failed to summarize token model usage totals: " + err.Error())
+		return nil, 0, TokenModelUsageSummary{}, errors.New("查询令牌用量失败")
+	}
+	if total > 0 && len(tokenIds) > 0 {
+		if err := getTokenUsageLogBase(userId, tokenIds, startTimestamp, endTimestamp).
+			Where("model_name <> ?", "").
+			Distinct("model_name").
+			Count(&summary.ModelCount).Error; err != nil {
+			common.SysError("failed to count token model usage models: " + err.Error())
+			return nil, 0, TokenModelUsageSummary{}, errors.New("查询令牌用量失败")
+		}
 	}
 
 	endIdx := startIdx + num
@@ -243,6 +256,31 @@ func GetUserTokenModelUsage(userId int, keyword string, startTimestamp int64, en
 	}
 
 	return pageItems, total, summary, nil
+}
+
+func summarizeTokenModelUsageTotals(totalKeyCount int64, totals []*tokenModelUsageTotalAggregate) (TokenModelUsageSummary, error) {
+	summary := TokenModelUsageSummary{TotalKeyCount: totalKeyCount}
+	if totalKeyCount == 0 {
+		return summary, nil
+	}
+	summary.ActiveKeyCount = int64(len(totals))
+	// Preserve SQL SUM's final int64 boundary, including cancellation between
+	// historical positive and negative values. Intermediate sums must not wrap.
+	var sums [5]big.Int
+	var value big.Int
+	for _, total := range totals {
+		for index, amount := range [...]int64{total.Quota, total.PromptTokens, total.CompletionTokens, total.TotalTokens, total.Requests} {
+			value.SetInt64(amount)
+			sums[index].Add(&sums[index], &value)
+		}
+	}
+	for index, target := range [...]*int64{&summary.Quota, &summary.PromptTokens, &summary.CompletionTokens, &summary.TotalTokens, &summary.Requests} {
+		if !sums[index].IsInt64() {
+			return TokenModelUsageSummary{}, errors.New("token model usage summary exceeds int64")
+		}
+		*target = sums[index].Int64()
+	}
+	return summary, nil
 }
 
 func GetUserTokenModelUsageSummary(userId int, keyword string, startTimestamp int64, endTimestamp int64) (TokenModelUsageSummary, error) {

@@ -165,13 +165,14 @@ func TestRedisEmailVerificationRateLimiterPreservesResponseAndTTL(t *testing.T) 
 }
 
 func TestRedisFixedWindowIsAtomicUnderConcurrency(t *testing.T) {
-	redisServer, _ := useRateLimitMiniRedis(t)
+	client := useRateLimitScriptRedis(t)
 	const (
 		requestCount = 20
 		maximumCount = 7
 		duration     = int64(41)
 	)
-	key := redisIPRateLimitKey("CONCURRENT", "192.0.2.40")
+	key := redisIPRateLimitKey("CONCURRENT-"+common.GetUUID(), "192.0.2.40")
+	t.Cleanup(func() { require.NoError(t, client.Del(context.Background(), key).Err()) })
 
 	var allowedCount atomic.Int64
 	errorsFound := make(chan error, requestCount)
@@ -197,10 +198,12 @@ func TestRedisFixedWindowIsAtomicUnderConcurrency(t *testing.T) {
 	}
 
 	assert.Equal(t, int64(maximumCount), allowedCount.Load())
-	count, err := redisServer.Get(key)
+	count, err := client.Get(context.Background(), key).Result()
 	require.NoError(t, err)
 	assert.Equal(t, "20", count)
-	assert.Equal(t, time.Duration(duration)*time.Second, redisServer.TTL(key))
+	ttl, err := client.TTL(context.Background(), key).Result()
+	require.NoError(t, err)
+	assert.InDelta(t, duration, ttl.Seconds(), 2)
 }
 
 func TestRedisFixedWindowResetsAtBoundary(t *testing.T) {

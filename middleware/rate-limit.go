@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 )
 
 const redisRateLimitNamespace = "rateLimit:v2"
@@ -19,7 +20,7 @@ const redisRateLimitNamespace = "rateLimit:v2"
 // simple fixed-window behavior: traffic at a window boundary can burst up to
 // twice the configured limit. Do not replace this with a sliding-window ZSET
 // unless that externally visible behavior is intentionally changed.
-const redisFixedWindowScript = `
+var redisFixedWindowScript = redis.NewScript(`
 local count = redis.call('INCR', KEYS[1])
 if count == 1 then
   redis.call('EXPIRE', KEYS[1], ARGV[2])
@@ -33,7 +34,7 @@ if count > tonumber(ARGV[1]) then
   return {0, count, ttl}
 end
 return {1, count, ttl}
-`
+`)
 
 var inMemoryRateLimiter common.InMemoryRateLimiter
 
@@ -76,9 +77,11 @@ func redisFixedWindowTake(ctx context.Context, key string, maxRequestNum int, du
 		return false, 0, 0, errors.New("rate limit duration must be positive")
 	}
 
-	values, err := common.RDB.Eval(
+	// Send only the script hash normally. Run falls back to EVAL on NOSCRIPT
+	// (e.g. after a Redis restart), without repeating an executed increment.
+	values, err := redisFixedWindowScript.Run(
 		ctx,
-		redisFixedWindowScript,
+		common.RDB,
 		[]string{key},
 		maxRequestNum,
 		duration,
@@ -272,7 +275,7 @@ func SearchRateLimit() func(c *gin.Context) {
 	return userRateLimitFactory(common.SearchRateLimitNum, common.SearchRateLimitDuration, "SR")
 }
 
-const ticketRateLimitScript = `
+var ticketRateLimitScript = redis.NewScript(`
 local count = redis.call("INCR", KEYS[1])
 if count == 1 then
   redis.call("EXPIRE", KEYS[1], ARGV[2])
@@ -281,7 +284,7 @@ if count <= tonumber(ARGV[1]) then
   return 1
 end
 return 0
-`
+`)
 
 func ticketRateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
 	if !common.RedisEnabled {
@@ -295,7 +298,7 @@ func ticketRateLimitFactory(maxRequestNum int, duration int64, mark string) func
 			return
 		}
 		key := fmt.Sprintf("rateLimit:%s:user:%d", mark, userId)
-		allowed, err := common.RDB.Eval(c.Request.Context(), ticketRateLimitScript, []string{key}, maxRequestNum, duration).Int64()
+		allowed, err := ticketRateLimitScript.Run(c.Request.Context(), common.RDB, []string{key}, maxRequestNum, duration).Int64()
 		if err != nil {
 			common.SysError("ticket rate limit failed: " + err.Error())
 			c.Status(http.StatusInternalServerError)

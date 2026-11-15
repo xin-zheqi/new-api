@@ -1,7 +1,10 @@
 package openai
 
 import (
+	"strings"
 	"testing"
+
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,8 +21,10 @@ func TestCollectStreamFunctionCallNamesDedupesSameIndex(t *testing.T) {
 		`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"c2","type":"function","function":{"name":"get_time","arguments":""}}]}}]}`,
 		`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{}"}}]}}]}`,
 	}
+	var text strings.Builder
+	var toolCount int
 	for _, chunk := range chunks {
-		collectStreamFunctionCallNames(chunk, seen, &names)
+		require.NoError(t, collectStreamStatistics(relayconstant.RelayModeChatCompletions, chunk, &text, &toolCount, seen, &names))
 	}
 
 	require.Len(t, names, 2)

@@ -147,14 +147,21 @@ func ProcessStreamResponse(streamResponse dto.ChatCompletionsStreamResponse, res
 	return nil
 }
 
-func processTokenData(relayMode int, data string, responseTextBuilder *strings.Builder, toolCount *int) error {
-	switch relayMode {
-	case relayconstant.RelayModeChatCompletions:
-		var streamResponse dto.ChatCompletionsStreamResponse
-		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
+// collectStreamStatistics reuses the Chat event for both tool billing and local
+// token fallback. Legacy completions keep their own DTO and error behavior.
+func collectStreamStatistics(relayMode int, data string, responseTextBuilder *strings.Builder, toolCount *int, seen map[string]struct{}, names *[]string) error {
+	var chatResponse dto.ChatCompletionsStreamResponse
+	if err := common.UnmarshalJsonStr(data, &chatResponse); err != nil {
+		if relayMode == relayconstant.RelayModeChatCompletions {
 			return err
 		}
-		return ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount)
+	} else {
+		collectStreamFunctionCallNames(chatResponse, seen, names)
+	}
+
+	switch relayMode {
+	case relayconstant.RelayModeChatCompletions:
+		return ProcessStreamResponse(chatResponse, responseTextBuilder, toolCount)
 	case relayconstant.RelayModeCompletions:
 		var streamResponse dto.CompletionsStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {

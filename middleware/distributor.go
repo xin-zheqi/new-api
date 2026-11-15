@@ -271,17 +271,17 @@ func noAvailableChannelMessage(c *gin.Context, group, modelName string) string {
 	return i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": group, "Model": modelName})
 }
 
-func channelMatchesExpectedTaskPlugin(c *gin.Context, channel *model.Channel, expected string) bool {
+func channelMatchesExpectedTaskPlugin(c *gin.Context, channel *model.Channel, expected string, readSetting func() dto.ChannelSettings) bool {
 	if channel == nil {
 		return false
 	}
 	if c != nil {
-		if _, matched := pinnedEndpointCandidateForChannel(c, channel, expected); matched {
+		if _, matched := pinnedEndpointCandidateForChannel(c, channel, expected, readSetting); matched {
 			return true
 		}
 	}
 	if channel.Type == constant.ChannelTypeTaskPlugin {
-		return expected != "" && channel.GetSetting().TaskPluginKey == expected
+		return expected != "" && readSetting().TaskPluginKey == expected
 	}
 	if expected == "" {
 		return true
@@ -299,7 +299,7 @@ func channelMatchesExpectedTaskPlugin(c *gin.Context, channel *model.Channel, ex
 	return ok && plugin == pinned.Plugin
 }
 
-func pinnedEndpointCandidateForChannel(c *gin.Context, channel *model.Channel, expected string) (jsplugin.ProtocolBinding, bool) {
+func pinnedEndpointCandidateForChannel(c *gin.Context, channel *model.Channel, expected string, readSetting func() dto.ChannelSettings) (jsplugin.ProtocolBinding, bool) {
 	if c == nil || channel == nil || expected == "" {
 		return jsplugin.ProtocolBinding{}, false
 	}
@@ -322,7 +322,7 @@ func pinnedEndpointCandidateForChannel(c *gin.Context, channel *model.Channel, e
 			expectedOwned = true
 		}
 		if channel.Type == constant.ChannelTypeTaskPlugin {
-			if channel.GetSetting().TaskPluginKey == candidate.Plugin.Meta.Key {
+			if readSetting().TaskPluginKey == candidate.Plugin.Meta.Key {
 				selected = candidate
 			}
 			continue
@@ -670,7 +670,20 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 		logTaskPluginChannelDecision(c, nil, modelName, "channel_rejected", "nil_channel")
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
-	if expectedPlugin != "" && !channelMatchesExpectedTaskPlugin(c, channel, expectedPlugin) {
+	var channelSetting dto.ChannelSettings
+	settingRead := false
+	// Share one valid snapshot during this selection only. A retry creates a new
+	// reader; malformed settings keep GetSetting's existing repair/read behavior.
+	readSetting := func() dto.ChannelSettings {
+		if settingRead {
+			return channelSetting
+		}
+		rawSetting := channel.Setting
+		channelSetting = channel.GetSetting()
+		settingRead = channel.Setting == rawSetting
+		return channelSetting
+	}
+	if expectedPlugin != "" && !channelMatchesExpectedTaskPlugin(c, channel, expectedPlugin, readSetting) {
 		logTaskPluginChannelDecision(c, channel, modelName, "channel_rejected", "identity_mismatch")
 		return types.NewError(
 			errors.New("selected channel does not match the pinned task plugin"),
@@ -678,7 +691,7 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 			types.ErrOptionWithSkipRetry(),
 		)
 	}
-	if candidate, matched := pinnedEndpointCandidateForChannel(c, channel, expectedPlugin); matched {
+	if candidate, matched := pinnedEndpointCandidateForChannel(c, channel, expectedPlugin, readSetting); matched {
 		if value, exists := c.Get(jsplugin.ContextKeyPinnedEndpoint); exists {
 			if pinned, ok := value.(jsplugin.PinnedEndpoint); ok && candidate.Plugin != nil && candidate.Plugin != pinned.Plugin {
 				previousPlugin := pinned.Plugin.Meta.Key
@@ -707,10 +720,10 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelName, channel.Name)
 	common.SetContextKey(c, constant.ContextKeyChannelType, channel.Type)
 	common.SetContextKey(c, constant.ContextKeyChannelCreateTime, channel.CreatedTime)
-	common.SetContextKey(c, constant.ContextKeyChannelSetting, channel.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyChannelSetting, readSetting())
 	common.SetContextKey(c, constant.ContextKeyChannelOtherSetting, channel.GetOtherSettings())
 	if channel.Type == constant.ChannelTypeTaskPlugin {
-		c.Set("task_plugin_key", channel.GetSetting().TaskPluginKey)
+		c.Set("task_plugin_key", readSetting().TaskPluginKey)
 	}
 	logTaskPluginChannelDecision(c, channel, modelName, "channel_selected", "")
 	paramOverride := channel.GetParamOverride()

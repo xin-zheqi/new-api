@@ -12,12 +12,18 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	kitreasoning "github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/samber/hot"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
 var negativeIndexRegexp = regexp.MustCompile(`\.(-\d+)`)
+
+// Compiled regexps are immutable and safe to share across requests. Use the full
+// pattern as the key so configuration edits take effect immediately; bound both
+// entry count and pattern size without rejecting larger valid expressions.
+var paramOverrideRegexps = hot.NewHotCache[string, *regexp.Regexp](hot.LRU, 128).Build()
 
 const (
 	paramOverrideContextRequestHeaders = "request_headers"
@@ -1917,9 +1923,21 @@ func regexReplaceStringValue(data []byte, path, pattern, replacement string) ([]
 	if pattern == "" {
 		return data, fmt.Errorf("regex pattern is required")
 	}
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return data, err
+	cacheable := len(pattern) <= 8*1024
+	var re *regexp.Regexp
+	var found bool
+	if cacheable {
+		re, found, _ = paramOverrideRegexps.Get(pattern)
+	}
+	if !found {
+		var err error
+		re, err = regexp.Compile(pattern)
+		if err != nil {
+			return data, err
+		}
+		if cacheable {
+			paramOverrideRegexps.Set(pattern, re)
+		}
 	}
 	return sjson.SetBytes(data, path, re.ReplaceAllString(current.String(), replacement))
 }

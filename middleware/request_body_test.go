@@ -38,6 +38,7 @@ func TestRequestBodyFailuresReportTheirCause(t *testing.T) {
 	router.POST("/v1/responses", PinTaskPluginEndpoint(), PrepareTaskPluginEndpoint(), Distribute(), reached)
 	router.POST("/v1/video/generations", PinTaskPluginEndpoint(), PrepareTaskPluginEndpoint(), Distribute(), reached)
 	router.POST("/v1/chat/completions", Distribute(), reached)
+	router.POST("/pg/chat/completions", Distribute(), reached)
 	router.POST("/mj/submit/imagine", Distribute(), reached)
 	router.POST("/v1/tasks/:key", PrepareTaskPluginSubmit(), reached)
 	router.POST("/vendor/jobs", func(c *gin.Context) {
@@ -45,7 +46,7 @@ func TestRequestBodyFailuresReportTheirCause(t *testing.T) {
 	}, PrepareTaskPluginRoute(), reached)
 	oversized := `{"model":"fixture","prompt":"` + strings.Repeat("a", 1<<20) + `"}`
 	for _, path := range []string{
-		"/v1/responses", "/v1/video/generations", "/v1/chat/completions",
+		"/v1/responses", "/v1/video/generations", "/v1/chat/completions", "/pg/chat/completions",
 		"/mj/submit/imagine", "/v1/tasks/generic-entry-test", "/vendor/jobs",
 	} {
 		t.Run("oversized "+path, func(t *testing.T) {
@@ -68,6 +69,8 @@ func TestRequestBodyFailuresReportTheirCause(t *testing.T) {
 		{name: "interrupted shared protocol upload", path: "/v1/responses", body: iotest.ErrReader(io.ErrUnexpectedEOF), message: "unexpected EOF"},
 		{name: "invalid shared protocol JSON", path: "/v1/responses", body: strings.NewReader(`{"model":`), message: "invalid JSON request body"},
 		{name: "invalid relay JSON", path: "/v1/chat/completions", body: strings.NewReader(`{"model":`), message: "invalid JSON request body"},
+		{name: "interrupted playground upload", path: "/pg/chat/completions", body: iotest.ErrReader(io.ErrUnexpectedEOF), message: "unexpected EOF"},
+		{name: "invalid playground JSON", path: "/pg/chat/completions", body: strings.NewReader(`{"model":`), message: "invalid JSON request body"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, tc.path, tc.body)

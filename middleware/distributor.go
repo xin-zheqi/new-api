@@ -563,7 +563,9 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			modelRequest.Model = modelName
 		}
 		c.Set("relay_mode", relayMode)
-	} else if !strings.HasPrefix(c.Request.URL.Path, "/v1/audio/transcriptions") && !strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
+	} else if !strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") &&
+		!strings.HasPrefix(c.Request.URL.Path, "/v1/audio/transcriptions") &&
+		!strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
 		req, err := getModelFromRequest(c)
 		if err != nil {
 			return nil, false, err
@@ -626,7 +628,8 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		c.Set("relay_mode", relayMode)
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
-		// playground chat completions
+		// Read playground model and group together here, rather than scanning
+		// the same history once in the generic branch and again for its group.
 		req, err := getModelFromRequest(c)
 		if err != nil {
 			return nil, false, err

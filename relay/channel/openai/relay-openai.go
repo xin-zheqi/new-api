@@ -326,7 +326,11 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			}
 			bodyMap["usage"] = simpleResponse.Usage
-			responseBody, _ = common.Marshal(bodyMap)
+			// Keep the existing map validation above. ForceFormat serializes the
+			// typed response below, so encoding this intermediate body is wasted.
+			if !forceFormat {
+				responseBody, _ = common.Marshal(bodyMap)
+			}
 		}
 		if forceFormat {
 			responseBody, err = common.Marshal(simpleResponse)

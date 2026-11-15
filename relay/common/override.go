@@ -1653,24 +1653,19 @@ func normalizeHeaderContextKey(key string) string {
 }
 
 func buildRequestHeadersContext(headers map[string]string) map[string]interface{} {
-	if len(headers) == 0 {
-		return map[string]interface{}{}
-	}
-	entries := lo.Entries(headers)
-	normalizedEntries := lo.FilterMap(entries, func(item lo.Entry[string, string], _ int) (lo.Entry[string, string], bool) {
-		normalized := normalizeHeaderContextKey(item.Key)
-		value := strings.TrimSpace(item.Value)
+	target := make(map[string]interface{}, len(headers))
+	for key, rawValue := range headers {
+		normalized := normalizeHeaderContextKey(key)
+		value := strings.TrimSpace(rawValue)
 		if normalized == "" || value == "" {
-			return lo.Entry[string, string]{}, false
+			continue
 		}
 		if common.IsInternalRequestHeader(normalized) {
-			return lo.Entry[string, string]{}, false
+			continue
 		}
-		return lo.Entry[string, string]{Key: normalized, Value: value}, true
-	})
-	return lo.SliceToMap(normalizedEntries, func(item lo.Entry[string, string]) (string, interface{}) {
-		return item.Key, item.Value
-	})
+		target[normalized] = value
+	}
+	return target
 }
 
 func syncRuntimeHeaderOverrideFromContext(info *RelayInfo, context map[string]interface{}) {
@@ -2238,8 +2233,9 @@ func BuildParamOverrideContext(info *RelayInfo) map[string]interface{} {
 
 	ctx[paramOverrideContextRequestHeaders] = buildRequestHeadersContext(info.RequestHeaders)
 
-	headerOverrideSource := GetEffectiveHeaderOverride(info)
-	ctx[paramOverrideContextHeaderOverride] = sanitizeHeaderOverrideMap(headerOverrideSource)
+	// GetEffectiveHeaderOverride already returns a sanitized, independent map.
+	// Runtime synchronization still sanitizes again after operations mutate it.
+	ctx[paramOverrideContextHeaderOverride] = GetEffectiveHeaderOverride(info)
 
 	ctx["retry_index"] = info.RetryIndex
 	ctx["is_retry"] = info.RetryIndex > 0

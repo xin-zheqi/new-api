@@ -175,7 +175,37 @@ func SaveContentAuditPolicy(ctx context.Context, userID int, policy contentaudit
 		return err
 	}
 	row := ContentAuditPolicy{UserID: userID, Enabled: policy.Enabled, EncryptedRules: sealed}
-	return DB.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}}, DoUpdates: clause.AssignmentColumns([]string{"enabled", "encrypted_rules"})}).Create(&row).Error
+	rdb := common.RDB
+	if !common.RedisEnabled {
+		rdb = nil
+	}
+	key := contentAuditPolicyCacheKey(userID)
+	if rdb != nil {
+		cacheCtx, cancel := context.WithTimeout(ctx, contentAuditCacheTimeout)
+		// Do not expire this barrier while SQL may still be running. A writer
+		// crash only disables this user's optimization until their next save.
+		err = rdb.Set(cacheCtx, key, "updating", 0).Err()
+		cancel()
+		if err != nil {
+			return errors.New("audit rules were not saved: cache invalidation is unavailable; please retry")
+		}
+	}
+	err = DB.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}}, DoUpdates: clause.AssignmentColumns([]string{"enabled", "encrypted_rules"})}).Create(&row).Error
+	if rdb != nil {
+		// Always delete, even after failed SQL or an overlapping save. A CAS
+		// delete could leave a stale reader's new marker behind. Cleanup must
+		// also run when the caller cancels its request.
+		cacheCtx, cancel := context.WithTimeout(context.Background(), contentAuditCacheTimeout)
+		cacheErr := rdb.Del(cacheCtx, key).Err()
+		cancel()
+		if cacheErr != nil {
+			common.SysError(fmt.Sprintf("content audit policy cache invalidation failed: user_id=%d", userID))
+			if err == nil {
+				return errors.New("audit rules were saved, but cache invalidation could not be confirmed; please retry saving the rules")
+			}
+		}
+	}
+	return err
 }
 
 func InsertContentAuditRecord(ctx context.Context, row ContentAuditRecord, details contentaudit.Result) error {

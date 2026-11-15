@@ -28,7 +28,7 @@ var auditRuleCache = struct {
 }{items: make(map[[32]byte][]contentaudit.CompiledRule)}
 
 func contentAuditRules(ctx context.Context, userID int) ([]contentaudit.CompiledRule, error) {
-	row, err := model.GetContentAuditPolicy(ctx, userID)
+	row, err := model.GetContentAuditPolicyForRelay(ctx, userID)
 	if err != nil || !row.Enabled {
 		return nil, err
 	}

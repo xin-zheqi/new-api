@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 
 	"gorm.io/gorm"
 )
@@ -389,13 +390,37 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	if !common.LogConsumeEnabled {
 		return
 	}
-	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
+	// Encode the shared payload once. The local diagnostic keeps the original
+	// metadata; request IP/user-agent are added only to the persisted log below.
+	otherJSON, otherErr := common.Marshal(params.Other)
+	var paramsJSON []byte
+	if otherErr == nil {
+		paramsJSON, _ = common.Marshal(struct {
+			RecordConsumeLogParams
+			Other common.RawMessage `json:"other"`
+		}{RecordConsumeLogParams: params, Other: otherJSON})
+	}
+	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, paramsJSON))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
 	params.Other = addLogRequestAdminInfo(c, params.Other)
-	otherStr := common.MapToJsonStr(params.Other)
+	if otherErr == nil && c.Request != nil {
+		// Only admin_info changed. Reuse all other encoded fields, including
+		// opaque JSON and exact numeric values, without walking them again.
+		var adminJSON []byte
+		adminJSON, otherErr = common.Marshal(params.Other["admin_info"])
+		if otherErr == nil {
+			otherJSON, otherErr = sjson.SetRawBytes(otherJSON, "admin_info", adminJSON)
+		}
+	}
+	otherStr := string(otherJSON)
+	if otherErr != nil {
+		// Preserve the previous failure behavior, including metadata repaired
+		// by addLogRequestAdminInfo after the diagnostic could not be encoded.
+		otherStr = common.MapToJsonStr(params.Other)
+	}
 	log := &Log{
 		UserId:            userId,
 		Username:          username,

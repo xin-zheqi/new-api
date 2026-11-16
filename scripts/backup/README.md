@@ -44,7 +44,7 @@ scripts/backup/
 
 新容器不调用原宿主机脚本，不需要安装宿主机 Docker CLI。业务镜像与备份镜像分别构建，修改备份代码不需要重新编译 New API。
 
-默认从 Docker Hub 拉取独立镜像 `thefoolishfox1/new-api-backup:20261116`，不需要在服务器编译。部署目录需保留 Compose、实际业务配置、要备份的目录和密码文件，不需要复制 `scripts/backup/`。镜像版本直接修改 `backup.image`；`latest` 用于跟随更新。当前发布镜像仅支持 `linux/amd64`。
+默认从 Docker Hub 拉取独立镜像 `thefoolishfox1/new-api-backup:20261116-autoinit`，不需要在服务器编译。部署目录需保留 Compose、实际业务配置、要备份的目录和密码文件，不需要复制 `scripts/backup/`。镜像版本直接修改 `backup.image`；`latest` 用于跟随更新。当前发布镜像仅支持 `linux/amd64`。
 
 镜像中的 Restic、rclone 固定源码版本，并用 Go 1.26.10 编译；编译器不进入运行镜像。如需修改或自行构建，在仓库根目录执行：
 
@@ -75,13 +75,14 @@ environment:
   BACKUP_OSS_ACCESS_KEY_ID: "REPLACE_WITH_OSS_ACCESS_KEY_ID"
   BACKUP_OSS_ACCESS_KEY_SECRET: "REPLACE_WITH_OSS_ACCESS_KEY_SECRET"
   BACKUP_PASSWORD_FILE: /run/secrets/restic-password
+  BACKUP_AUTO_INIT: "true"
   BACKUP_HOST: newapi
   BACKUP_TAG: new-api
   BACKUP_SCHEDULE_MODE: daily
   BACKUP_TIMES: "03:30"
 ```
 
-Endpoint 必须与 Bucket 所在地域相同。仓库地址直接填写完整的 `rclone:oss:<bucket>/<prefix>`，不会引用同一 `environment` 中的其他字段。直接配置的密码包含 `$` 时，在 Compose 中写成 `$$`。同一仓库初始化后，不要随意修改其地址、加密密码或备份身份标识。
+Endpoint 必须与 Bucket 所在地域相同。仓库地址直接填写完整的 `rclone:oss:<bucket>/<prefix>`，不会引用同一 `environment` 中的其他字段。直接配置的密码包含 `$` 时，在 Compose 中写成 `$$`。同一仓库初始化后，更新容器或迁移到新机器时应继续使用原仓库地址、加密密码和备份身份标识。
 
 这些名称是传入备份容器的环境变量；值直接写在 Compose 的 `environment` 中，根目录模板不会从宿主机 `.env` 获取它们。资源限制直接修改 `backup.cpus`、`backup.mem_limit` 等服务字段。
 
@@ -95,27 +96,51 @@ OSS 建议使用专用私有 Bucket 或专用前缀及 RAM 用户，并按前缀
 
 **不要给 Restic 仓库配置“按对象年龄直接删除文件”的 OSS 生命周期规则。** 新快照可能仍引用很早写入的数据块，直接删除会损坏仍在保留期内的备份。OSS 版本控制、WORM/保留锁可作为额外保护，但会影响 prune 和实际空间释放，需要单独规划。
 
-## 拉取、初始化与启动
+## 拉取与启动
 
 先确认现有数据库已运行、配置文件与目录存在，再执行以下命令。`--no-deps` 保证这些一次性命令不会顺带启动其他服务：
 
 ```bash
 docker compose --profile backup pull backup
 
-# 仅首次创建一个明确选定的空仓库时执行。
-docker compose --profile backup run --rm --no-deps backup init
-
-# 先完成一次备份，并记录成功输出中的 snapshot ID。
-docker compose --profile backup run --rm --no-deps backup backup
-
-docker compose --profile backup run --rm --no-deps backup snapshots
-docker compose --profile backup run --rm --no-deps backup check
-
-# 启动长期调度服务；不重启业务服务。
+# 只启动或更新备份容器；仓库检查及必要的初始化由首轮任务处理。
 docker compose --profile backup up -d --no-deps backup
+
+docker compose --profile backup logs --tail=100 backup
 ```
 
-`init` 是显式操作。仓库连不上、密码错误或地址配置错误时，服务会失败，不会自行初始化另一个空仓库来掩盖问题。已有仓库无需再次初始化。
+先确认日志中的首次备份已经成功，再查看快照和做完整检查、恢复演练。这些操作与正在进行的备份共用任务锁；任务仍在运行时应等待它完成。
+
+```bash
+docker compose --profile backup run --rm --no-deps backup snapshots
+docker compose --profile backup run --rm --no-deps backup check
+```
+
+## 自动检查与初始化仓库
+
+`BACKUP_AUTO_INIT` 默认是 `true`。每次 `backup` 或调度任务开始时，先检查仓库，再导出数据库：
+
+- 已有可解密的有效仓库：校验仓库 ID 后直接复用，更新或重建容器不需要重复初始化。
+- 明确返回“仓库不存在”，并确认所选前缀为空：自动创建仓库，再验证其配置和 ID，成功后才继续备份。
+- 网络、权限、密码错误，或者前缀非空却没有可识别的仓库：任务失败，不会重新初始化或覆盖已有内容。
+
+OSS Bucket 必须提前创建，地域 Endpoint、AccessKey 和独立保存的备份加密密码仍需人工配置。程序不会创建 Bucket、生成密码或修改代理。新机器没有旧的本地状态时，也能直接接入已有有效仓库；如果填写的是另一个合法但空的前缀，则会被当作新仓库，因此首次使用或迁移时必须核对完整仓库地址。
+
+状态卷会记录已使用仓库的 ID。已有记录时，仓库消失或 ID 改变会触发保护，避免将原备份丢失误当成首次安装。从旧版升级时，已存在的使用记录同样会阻止把缺失仓库自动当成全新安装。更换 Endpoint 或复制仓库后，只要仓库 ID 保持一致即可通过校验。保留状态卷有助于发现异常；清空状态会丢失这份本地身份记录，不能用来绕过错误。遇到保护错误时，先核对存储位置、权限和仓库迁移情况，再人工处理。
+
+首次使用**同一个空仓库**的多个节点，应只让一个节点完成初始化并确认备份成功，再启动其他节点。首次创建仓库不是跨主机原子操作，本地任务锁不能替代这一步协调。仓库建立后，各节点更新、重建或在新机器接入时会复用该仓库。
+
+将 `BACKUP_AUTO_INIT` 设为 `false` 可以关闭备份任务的自动创建行为；已有有效仓库仍会复用，显式 `init` 仍可使用。`init` 重复执行会检查并复用有效仓库，不会重新创建它；人工确认切换到另一个有效仓库后，该命令也会更新本地仓库身份记录，因此不能将它当作忽略保护错误的通用重试。非空但损坏的仓库和损坏的本地身份记录仍会拒绝处理，需先查明原因。手动执行一次备份同样会走仓库检查：
+
+```bash
+# 可选：显式准备仓库；正常启动不再要求先运行此命令。
+docker compose --profile backup run --rm --no-deps backup init
+
+# 可选：手动立即备份一次。
+docker compose --profile backup run --rm --no-deps backup backup
+```
+
+`snapshots`、`check` 和 `restore-files` 不会自动创建仓库。恢复或检查时遇到不存在、密码错误等问题，应先查明原因，不要将空仓库当作旧备份。
 
 调度服务每次启动或重启后先备份一次，再按配置的计划运行。默认仍为每天北京时间 `03:30`。任务失败只影响备份服务，New API 不依赖它的启动或健康状态。
 
@@ -267,6 +292,6 @@ python scripts/backup/test_integration.py --image newapi-backup:test
 
 依赖下载缓慢时，可在构建时指定可信的 Go module proxy，例如 `--build-arg GOPROXY=https://goproxy.cn`；仍保留 Go 校验和数据库验证。集成测试需要本机 Docker，临时启动 PostgreSQL 15 与 MinIO，不开放宿主机端口，结束后只清理本次创建的 Docker 资源；测试报告留在已忽略的 `.local-tests/` 中。
 
-2026-11-16 本地 Linux/amd64 验证：38 项单元测试、75 项集成检查通过。数据库及客户端为 PostgreSQL 15.20，对象存储为 MinIO 2024.6.13；Restic 0.18.1、rclone 1.71.2 均使用 Go 1.26.10。实际完成三轮双库恢复（含中文、数值、二进制数据和索引）、文件校验及清理后的再次恢复；错误凭据、空间不足和超时均未删除已有恢复点。两种计划均验证了真实容器启动备份、下一次执行时间、健康检查和等待期间正常停止；时间选择、跨日、夏令时及防积压使用确定性单元测试验证。
+2026-11-16 本地 Linux/amd64 验证：54 项单元测试、118 项集成检查通过。数据库及客户端为 PostgreSQL 15.20，对象存储为 MinIO 2024.6.13；Restic 0.18.1、rclone 1.71.2 均使用 Go 1.26.10。实际完成三轮双库恢复（含中文、数值、二进制数据和索引）、文件校验及清理后的再次恢复；错误凭据、空间不足和超时均未删除已有恢复点。两种计划均验证了真实容器启动备份、下一次执行时间、健康检查和等待期间正常停止。自动初始化还覆盖首次空前缀启动、重复初始化、节点更新重建、全新本地状态复用旧仓库，以及已使用仓库丢失、前缀非空、Bucket 缺失、关闭自动创建和恢复命令禁止初始化等保护；同一空仓库跨主机并发首次初始化不在支持范围内。
 
 本地隔离的 PostgreSQL 与 S3 兼容对象存储可用于验证完整的备份、加密、恢复和失败处理流程。它不能代替阿里云 OSS 的真实验证。正式使用前，还应以独立测试 Bucket 验证实际地域 Endpoint、RAM 权限、上传/下载、锁释放、保留清理和恢复，不需要连接生产数据来完成这一步。

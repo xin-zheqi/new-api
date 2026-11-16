@@ -1,6 +1,6 @@
 # 不使用 .env 的完整 Compose 模板
 
-`compose.yml` 包含 New API、PostgreSQL 15、Redis、备份容器四个服务，参数直接填写在 YAML 中；没有 `.env` 挂载，也没有依赖 `.env` 的变量表达式。备份镜像使用已发布的 `thefoolishfox1/new-api-backup:20261116`。
+`compose.yml` 包含 New API、PostgreSQL 15、Redis、备份容器四个服务，参数直接填写在 YAML 中；没有 `.env` 挂载，也没有依赖 `.env` 的变量表达式。备份镜像使用 `thefoolishfox1/new-api-backup:20261116-autoinit`，默认启用 `BACKUP_AUTO_INIT: "true"`。
 
 根目录 `docker-compose.yml` 同样已采用直接填写方式，默认服务名为 `new-api`、`postgres`、`redis`；本示例使用 lab 服务名并显式复用已有卷和网络，方便对照之前的服务器部署。在已经运行的服务器上，主要合并 `backup` 服务和 `backup_state`、`backup_cache` 两个卷；其他配置值以服务器原文件为准。若使用共享密码别名，也需合并顶部 `x-credentials`，或将别名改成直接填写的原值。Redis 使用直接传参的命令列表，不需要 shell 变量展开。
 
@@ -23,17 +23,24 @@ docker compose -f compose.yml --profile backup config -q
 # 只拉取备份镜像。
 docker compose -f compose.yml --profile backup pull backup
 
-# 首次才初始化选定的仓库；已有仓库跳过。
-docker compose -f compose.yml --profile backup run --rm --no-deps backup init
-
-# 先执行一次备份，成功后按主说明做恢复演练。
-docker compose -f compose.yml --profile backup run --rm --no-deps backup backup
-
-# 最后只启动备份容器，不重启现有业务服务。
+# 只启动备份容器；首轮自动检查仓库，必要时在明确的空前缀中初始化。
 docker compose -f compose.yml --profile backup up -d --no-deps backup
+
+# 查看首轮备份结果；成功后按主说明做恢复演练。
+docker compose -f compose.yml --profile backup logs --tail=100 backup
 ```
 
 备份加密密码仍通过 `./secrets/backup/restic-password` 独立文件提供。只写密码正文，限制访问权限，并在其他安全位置保存一份；它与 OSS AccessKey 无关。
+
+OSS Bucket、AccessKey 和密码文件需提前准备。已有有效仓库会直接复用；更新或重建容器不需要再次执行 `init`。新机器接入旧仓库时，完整仓库地址、密码和原 `BACKUP_HOST`/`BACKUP_TAG` 必须正确；初次空状态无法判断“填错了但合法的空前缀”，所以不能省略地址核对。状态卷应尽量保留，以发现已经使用过的仓库被删除或替换。
+
+多个节点共用首次创建的空仓库时，先只启动一个节点，确认初始化和备份成功，再启动其他节点；不要让多个主机并发执行首次初始化。网络、权限、密码错误或非空损坏目录不会触发自动创建。`BACKUP_AUTO_INIT: "false"` 可关闭自动创建，已有仓库仍可用；`init` 是可选的人工操作，设置为 `false` 后也能显式执行。仓库身份保护错误需先人工核对，不能靠删除状态卷或反复 `init` 掩盖。
+
+手动立即备份仍可执行；它与调度任务共用锁，正在备份时应先等待结束：
+
+```bash
+docker compose -f compose.yml --profile backup run --rm --no-deps backup backup
+```
 
 已有容器的卷和网络可只读查看，下面不会修改容器：
 
@@ -45,6 +52,6 @@ docker inspect postgres-lab --format '{{json .NetworkSettings.Networks}}'
 
 备份范围、在线一致性、恢复和保留策略见上一级 `README.md`。
 
-需要按某个快照恢复时，使用独立的 `recovery.compose.yml`，步骤见 `RECOVERY.md`。恢复工具不依赖原数据库或 `data`/`logs` 仍然存在。
+需要按某个快照恢复时，使用独立的 `recovery.compose.yml`，步骤见 `RECOVERY.md`。恢复工具不依赖原数据库或 `data`/`logs` 仍然存在；列出、检查及恢复操作不会自动初始化仓库。
 
-本地验证已覆盖完整模板的 profile 开关、直接配置不受 `.env` 干扰、共享密码的 `$` 实际容器传递，以及独立恢复模板从两份加密快照中取回指定旧快照和拒绝覆盖已有恢复目录。验证未连接生产或真实 OSS。
+本地验证已覆盖完整模板的 profile 开关、直接配置不受 `.env` 干扰、共享密码的 `$` 实际容器传递，以及独立恢复模板从两份加密快照中取回指定旧快照和拒绝覆盖已有恢复目录。自动初始化版本另通过 54 项单元测试、118 项集成检查，验证首次部署、节点重建、全新状态接入旧仓库，以及错误密码、残留数据、仓库丢失等保护。验证未连接生产或真实 OSS；同一空仓库首次须由一个节点初始化。

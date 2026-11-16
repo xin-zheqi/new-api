@@ -22,9 +22,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 class BackupError(Exception):
     """Messages are deliberately safe to persist: never include subprocess stderr."""
 
-    def __init__(self, message, retryable=False):
+    def __init__(self, message, retryable=False, exit_code=None):
         super().__init__(message)
         self.retryable = retryable
+        self.exit_code = exit_code
 
 
 STOPPING = False
@@ -125,6 +126,10 @@ class Config:
             self.health_age = integer(self.env, "BACKUP_HEALTH_MAX_AGE_HOURS", 30, maximum=8760) * 3600
         else:
             self.health_age = max(30 * 3600, self.interval + self.timeout + 3600)
+        auto_init = self.env.get("BACKUP_AUTO_INIT", "true").strip().lower()
+        if auto_init not in ("true", "false"):
+            raise BackupError("BACKUP_AUTO_INIT must be true or false")
+        self.auto_init = auto_init == "true"
 
     def prepare(self):
         for path in (self.state, self.cache):
@@ -253,10 +258,11 @@ def directory_bytes(directory):
 
 
 class Job:
-    def __init__(self, config):
+    def __init__(self, config, previous_status=None):
         self.config = config
         self.deadline = time.monotonic() + config.timeout
         self.work = None
+        self.previous_status = read_status(config) if previous_status is None else previous_status
 
     def space_guard(self):
         for directory in (self.config.state, self.config.cache):
@@ -309,7 +315,8 @@ class Job:
                         b"status code: 504", b"429 too many requests"))
                     network_exit = process.returncode == 1 or (args[0] == "psql" and process.returncode == 2)
                     retryable = not permanent and (process.returncode == 11 or (network_exit and transient))
-                    raise BackupError(f"{stage}: command failed (exit {process.returncode}); check connectivity, credentials and permissions", retryable)
+                    raise BackupError(f"{stage}: command failed (exit {process.returncode}); check connectivity, credentials and permissions",
+                                      retryable, exit_code=process.returncode)
                 output.seek(0)
                 result = output.read(16 * MB + 1)
                 if len(result) > 16 * MB:
@@ -346,6 +353,86 @@ class Job:
     def restic(self, stage, args):
         return self.retry_command(stage, ["restic", "--retry-lock", "30s", *args], self.config.repository_env())
 
+    def ensure_repository(self, explicit_init=False):
+        """Open existing repositories; bootstrap only a positively empty destination.
+
+        The caller holds the local job lock. A brand-new shared repository must have
+        one bootstrap node: upstream Restic init is not atomic across separate hosts.
+        """
+        config = self.config
+        env = config.repository_env()
+        repository = env["RESTIC_REPOSITORY"]
+        location = hashlib.sha256(json.dumps([
+            repository, config.env.get("BACKUP_OSS_ENDPOINT", "").lower()
+        ]).encode()).hexdigest()
+        pin_file = config.state / "repository.json"
+        try:
+            pin = json.loads(pin_file.read_text())
+            if (not isinstance(pin, dict) or not re.fullmatch(r"[0-9a-f]{64}", pin.get("id", ""))
+                    or not re.fullmatch(r"[0-9a-f]{64}", pin.get("location", ""))):
+                raise ValueError
+        except FileNotFoundError:
+            pin = None
+        except (OSError, ValueError, TypeError):
+            raise BackupError("Saved repository identity is unreadable; inspect the backup state directory") from None
+        initialized = False
+        try:
+            output = self.restic("Repository access check", ["cat", "config"])
+        except BackupError as error:
+            # Only Restic's explicit missing-repository code permits an emptiness
+            # check. Password, permission and network errors never trigger init.
+            if error.exit_code != 10:
+                raise
+            if not explicit_init:
+                if not config.auto_init:
+                    raise BackupError("Repository is not initialized; run init or enable BACKUP_AUTO_INIT") from None
+                if pin or self.previous_status.get("repository_used") or self.previous_status.get("success_at"):
+                    raise BackupError("A previously used repository is missing; refusing automatic recreation") from None
+            if repository.startswith("rclone:oss:"):
+                listing = self.retry_command("Repository destination check", [
+                    "rclone", "lsjson", repository.removeprefix("rclone:"),
+                    "--max-depth", "1", "--no-mimetype", "--no-modtime"
+                ], env)
+                try:
+                    entries = json.loads(listing)
+                except ValueError:
+                    raise BackupError("Cannot verify whether the repository destination is empty") from None
+                if not isinstance(entries, list) or entries:
+                    raise BackupError("Repository destination contains data; refusing initialization")
+            else:
+                path = Path(repository)
+                try:
+                    if path.exists() and (not path.is_dir() or next(path.iterdir(), None) is not None):
+                        raise BackupError("Repository destination contains data; refusing initialization")
+                except OSError:
+                    raise BackupError("Cannot verify whether the repository destination is empty") from None
+            self.restic("Repository initialization", ["init"])
+            # Verify both the password and the created repository before recording it.
+            output = self.restic("Repository access check", ["cat", "config"])
+            initialized = True
+
+        try:
+            metadata = json.loads(output)
+            repository_id = metadata["id"]
+            if not re.fullmatch(r"[0-9a-f]{64}", repository_id):
+                raise ValueError
+        except (ValueError, KeyError, TypeError):
+            raise BackupError("Repository identity could not be verified") from None
+        # Endpoint aliases or a copied repository can legitimately change location;
+        # accepting the same verified ID supports redeployment without losing history.
+        if pin and pin["id"] != repository_id and not explicit_init:
+            raise BackupError("Repository identity changed; verify the destination and run init explicitly")
+        receipt = {"location": location, "id": repository_id}
+        part = pin_file.with_suffix(".json.part")
+        with part.open("w") as stream:
+            json.dump(receipt, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        part.replace(pin_file)
+        print(json.dumps({"state": "repository_ready", "repository_id": repository_id,
+                          "initialized": initialized}), flush=True)
+        return repository_id
+
     def clear_cache(self):
         # The dedicated cache is disposable. Never touch application files or repository data.
         if directory_bytes(self.config.cache) > self.config.max_cache:
@@ -377,6 +464,7 @@ class Job:
                any(ord(char) < 32 or ord(char) == 127 for char in name) for name in databases):
             raise BackupError("BACKUP_DATABASES must contain database names, not connection strings")
         database_env = config.database_env()
+        self.ensure_repository()
         versions = {}
         for tool in ("pg_dump", "restic", "rclone"):
             versions[tool] = self.command(f"{tool} version", [tool, "version" if tool != "pg_dump" else "--version"]).splitlines()[0]
@@ -438,18 +526,22 @@ def perform_backup(config):
         previous = read_status(config)
         started = utcnow()
         status = {"state": "running", "started_at": started, "first_started_at": started, "identity": config.identity()}
+        # Preserve this across configuration changes, including upgrades from versions
+        # without repository.json. A failed attempt must not erase the bootstrap guard.
+        status["repository_used"] = bool(previous.get("repository_used") or previous.get("success_at"))
         if previous.get("identity") == config.identity():
             status["first_started_at"] = previous.get("first_started_at", previous.get("started_at", started))
             for field in ("success_at", "snapshot_id"):
                 if field in previous:
                     status[field] = previous[field]
         write_status(config, status)
-        job = Job(config)
+        job = Job(config, previous_status=previous)
         try:
             # Network/lock retries are local to each Restic operation. Never re-export the
             # database merely because an upload or its final receipt temporarily failed.
             snapshot = job.backup()
-            status.update(state="success", finished_at=utcnow(), success_at=utcnow(), snapshot_id=snapshot)
+            status.update(state="success", finished_at=utcnow(), success_at=utcnow(), snapshot_id=snapshot,
+                          repository_used=True)
             write_status(config, status)
             print(json.dumps({"state": "success", "snapshot_id": snapshot, "finished_at": status["finished_at"]}), flush=True)
         except Exception as error:
@@ -537,7 +629,7 @@ def main(argv=None):
         job = Job(config)
         job.clear_cache()
         if args.command == "init":
-            print(job.restic("Repository initialization", ["init"]))
+            job.ensure_repository(explicit_init=True)
         elif args.command == "snapshots":
             print(job.restic("Snapshot listing", ["snapshots", "--host", config.host, "--tag", config.tag]))
         elif args.command == "check":

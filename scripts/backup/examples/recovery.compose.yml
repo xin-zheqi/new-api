@@ -2,7 +2,7 @@
 # 复制到干净机器的恢复目录，填写 OSS 配置，并准备密码文件和 restore-output 目录。
 services:
   restore:
-    image: thefoolishfox1/new-api-backup:20261116
+    image: thefoolishfox1/new-api-backup:20261116-autoinit
     command: ["snapshots"]
     # 这是一次性恢复工具，退出码代表结果，不使用“最近备份成功时间”健康检查。
     healthcheck:
@@ -24,6 +24,8 @@ services:
       BACKUP_OSS_ACCESS_KEY_ID: "REPLACE_WITH_OSS_ACCESS_KEY_ID"
       BACKUP_OSS_ACCESS_KEY_SECRET: "REPLACE_WITH_OSS_ACCESS_KEY_SECRET"
       BACKUP_PASSWORD_FILE: /run/secrets/restic-password
+      # 恢复只允许打开已有仓库，不负责创建新仓库。
+      BACKUP_AUTO_INIT: "false"
       # 必须与原备份配置一致，才会列出/接受相应快照。
       BACKUP_HOST: newapi
       BACKUP_TAG: new-api

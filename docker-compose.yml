@@ -100,10 +100,10 @@ services:
 #      - "5432:5432"  # Uncomment if you need to access PostgreSQL from outside Docker
 
   # Explicitly enable with --profile backup. Fill settings directly below.
-  # Initialize the selected repository once before starting the scheduler.
+  # Startup reuses a valid repository or initializes a confirmed empty destination.
   backup:
     profiles: ["backup"]
-    image: thefoolishfox1/new-api-backup:20261116
+    image: thefoolishfox1/new-api-backup:20261116-autoinit
     restart: unless-stopped
     init: true
     read_only: true
@@ -130,6 +130,9 @@ services:
       # Endpoint must match the bucket region. Fill the complete repository path.
       BACKUP_REPOSITORY: "rclone:oss:REPLACE_WITH_OSS_BUCKET/newapi/production"
       BACKUP_PASSWORD_FILE: /run/secrets/restic-password
+      # First initialization of an empty shared repository uses one bootstrap node.
+      # Existing repositories are verified/reused on redeployment; false disables auto-init.
+      BACKUP_AUTO_INIT: "true"
       BACKUP_OSS_ENDPOINT: "oss-cn-hangzhou.aliyuncs.com"
       BACKUP_OSS_ACCESS_KEY_ID: "REPLACE_WITH_OSS_ACCESS_KEY_ID"
       BACKUP_OSS_ACCESS_KEY_SECRET: "REPLACE_WITH_OSS_ACCESS_KEY_SECRET"

@@ -15,6 +15,7 @@ import runner
 
 
 SNAPSHOT = "a" * 64
+REPOSITORY = "b" * 64
 
 
 class RunnerTests(unittest.TestCase):
@@ -48,6 +49,8 @@ class RunnerTests(unittest.TestCase):
             return "restic 0.18.1 compiled with go\n"
         if args[:2] == ["rclone", "version"]:
             return "rclone v1.71.2\n"
+        if args[0] == "restic" and args[-2:] == ["cat", "config"]:
+            return json.dumps({"version": 2, "id": REPOSITORY})
         if args[0] == "psql":
             return "150020\n"
         if args[0] == "pg_dump":
@@ -59,6 +62,8 @@ class RunnerTests(unittest.TestCase):
         self.fail(f"Unexpected fixture command: {stage}")
 
     def fake_restic(self, stage, args):
+        if args == ["cat", "config"]:
+            return json.dumps({"version": 2, "id": REPOSITORY})
         if args[0] == "backup":
             return json.dumps({"message_type": "summary", "snapshot_id": SNAPSHOT[:8]})
         if args[0] == "snapshots":
@@ -186,10 +191,10 @@ class RunnerTests(unittest.TestCase):
             return self.fake_command(stage, args, env, monitor)
 
         with mock.patch.object(runner.Job, "command", side_effect=command), \
-                mock.patch.object(runner.Job, "restic") as repository, \
+                mock.patch.object(runner.Job, "restic", side_effect=self.fake_restic) as repository, \
                 self.assertRaises(runner.BackupError):
             runner.perform_backup(self.config)
-        repository.assert_not_called()
+        self.assertFalse(any(call.args[1][0] in ("init", "backup") for call in repository.call_args_list))
         self.assertEqual(runner.read_status(self.config)["state"], "failed")
         self.assertEqual(list(self.config.state.glob("job-*")), [])
 
@@ -500,6 +505,179 @@ class RunnerTests(unittest.TestCase):
                 self.assertRaisesRegex(runner.BackupError, r"Export: command failed \(exit 1\)") as caught:
             runner.Job(self.config).command("Export", ["pg_dump"], monitor=False)
         self.assertNotIn("database-test-password", str(caught.exception))
+        self.assertEqual(caught.exception.exit_code, 1)
+
+    def remote_config(self):
+        return runner.Config(self.env | {
+            "BACKUP_REPOSITORY": "rclone:oss:backup-bucket/new-api",
+            "BACKUP_OSS_ENDPOINT": "oss-cn-hangzhou.aliyuncs.com",
+            "BACKUP_OSS_ACCESS_KEY_ID": "test-access",
+            "BACKUP_OSS_ACCESS_KEY_SECRET": "test-secret",
+        })
+
+    def test_auto_init_defaults_on_and_accepts_explicit_opt_out(self):
+        self.assertTrue(self.config.auto_init)
+        self.assertFalse(runner.Config(self.env | {"BACKUP_AUTO_INIT": "false"}).auto_init)
+        self.assertTrue(runner.Config(self.env | {"BACKUP_AUTO_INIT": " TRUE "}).auto_init)
+        with self.assertRaises(runner.BackupError):
+            runner.Config(self.env | {"BACKUP_AUTO_INIT": "maybe"})
+
+    def test_empty_local_repository_is_initialized_and_verified_once(self):
+        self.root.joinpath("repository").mkdir()
+        metadata = json.dumps({"version": 2, "id": REPOSITORY})
+        with mock.patch.object(runner.Job, "restic", side_effect=[
+            runner.BackupError("Repository missing", exit_code=10), "initialized", metadata,
+        ]) as repository, contextlib.redirect_stdout(io.StringIO()):
+            result = runner.Job(self.config).ensure_repository()
+        self.assertEqual(result, REPOSITORY)
+        self.assertEqual([call.args[1] for call in repository.call_args_list],
+                         [["cat", "config"], ["init"], ["cat", "config"]])
+        self.assertEqual(json.loads((self.config.state / "repository.json").read_text())["id"], REPOSITORY)
+
+    def test_existing_repository_redeploy_preserves_id_without_initializing(self):
+        with mock.patch.object(runner.Job, "restic", side_effect=self.fake_restic) as repository, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.Job(self.config).ensure_repository(), REPOSITORY)
+            self.assertEqual(runner.Job(self.config).ensure_repository(), REPOSITORY)
+            with mock.patch.dict(os.environ, self.env, clear=True):
+                self.assertEqual(runner.main(["init"]), 0)
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]] * 3)
+
+    def test_fresh_node_accepts_existing_repository_without_local_history(self):
+        config = runner.Config(self.env | {"BACKUP_STATE_DIR": str(self.root / "fresh-state"),
+                                           "BACKUP_CACHE_DIR": str(self.root / "fresh-cache")})
+        config.prepare()
+        with mock.patch.object(runner.Job, "restic", side_effect=self.fake_restic) as repository, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.Job(config).ensure_repository(), REPOSITORY)
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+
+    def test_password_permissions_and_network_errors_never_initialize(self):
+        for code in (1, 11, 12):
+            with self.subTest(exit_code=code), \
+                    mock.patch.object(runner.Job, "restic", side_effect=runner.BackupError("Probe failed", exit_code=code)) as repository, \
+                    mock.patch.object(runner.Job, "retry_command") as listing, self.assertRaises(runner.BackupError):
+                runner.Job(self.config).ensure_repository()
+            self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+            listing.assert_not_called()
+        self.assertFalse((self.config.state / "repository.json").exists())
+
+    def test_auto_init_disabled_requires_explicit_init_for_an_empty_destination(self):
+        config = runner.Config(self.env | {"BACKUP_AUTO_INIT": "false"})
+        missing = runner.BackupError("Repository missing", exit_code=10)
+        with mock.patch.object(runner.Job, "restic", side_effect=missing) as repository, self.assertRaises(runner.BackupError):
+            runner.Job(config).ensure_repository()
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+        with mock.patch.object(runner.Job, "restic", side_effect=[missing, "initialized", json.dumps({"id": REPOSITORY})]) as repository, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.Job(config).ensure_repository(explicit_init=True), REPOSITORY)
+        self.assertIn(["init"], [call.args[1] for call in repository.call_args_list])
+
+    def test_missing_config_in_nonempty_local_repository_is_not_recreated(self):
+        destination = self.root / "repository"
+        destination.mkdir()
+        (destination / "retained-pack").write_bytes(b"existing encrypted bytes")
+        with mock.patch.object(runner.Job, "restic", side_effect=runner.BackupError("Repository missing", exit_code=10)) as repository, \
+                self.assertRaises(runner.BackupError):
+            runner.Job(self.config).ensure_repository()
+        self.assertEqual((destination / "retained-pack").read_bytes(), b"existing encrypted bytes")
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+
+    def test_empty_remote_prefix_is_checked_before_initialization(self):
+        config = self.remote_config()
+        with mock.patch.object(runner.Job, "restic", side_effect=[
+            runner.BackupError("Repository missing", exit_code=10), "initialized", json.dumps({"id": REPOSITORY}),
+        ]) as repository, mock.patch.object(runner.Job, "retry_command", return_value="[]") as listing, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.Job(config).ensure_repository(), REPOSITORY)
+        self.assertEqual(listing.call_args.args[1][:3], ["rclone", "lsjson", "oss:backup-bucket/new-api"])
+        self.assertIn(["init"], [call.args[1] for call in repository.call_args_list])
+
+    def test_remote_destination_listing_must_positively_prove_emptiness(self):
+        config = self.remote_config()
+        for listing in ('[{"Path":"data","IsDir":true}]', '{"error":"access denied"}', 'not JSON'):
+            with self.subTest(listing=listing), \
+                    mock.patch.object(runner.Job, "restic", side_effect=runner.BackupError("Repository missing", exit_code=10)) as repository, \
+                    mock.patch.object(runner.Job, "retry_command", return_value=listing), self.assertRaises(runner.BackupError):
+                runner.Job(config).ensure_repository()
+            self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+        with mock.patch.object(runner.Job, "restic", side_effect=runner.BackupError("Repository missing", exit_code=10)) as repository, \
+                mock.patch.object(runner.Job, "retry_command", side_effect=runner.BackupError("Bucket missing", exit_code=3)), \
+                self.assertRaises(runner.BackupError):
+            runner.Job(config).ensure_repository()
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+
+    def test_previously_successful_node_does_not_recreate_a_missing_repository(self):
+        previous = {"success_at": runner.utcnow(), "snapshot_id": SNAPSHOT}
+        with mock.patch.object(runner.Job, "restic", side_effect=runner.BackupError("Repository missing", exit_code=10)) as repository, \
+                self.assertRaises(runner.BackupError):
+            runner.Job(self.config, previous_status=previous).ensure_repository()
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+
+    def test_legacy_success_history_survives_repeated_failed_destination_changes(self):
+        # Old releases have status.json but no repository pin. A changed endpoint
+        # must not erase that history after the first guarded failure.
+        runner.write_status(self.config, {"state": "success", "identity": self.config.identity(),
+                                         "started_at": runner.utcnow(), "success_at": runner.utcnow(),
+                                         "snapshot_id": SNAPSHOT})
+        changed = runner.Config(self.env | {"BACKUP_REPOSITORY": str(self.root / "changed-empty-repository")})
+        with mock.patch.object(runner.Job, "restic", side_effect=runner.BackupError("Repository missing", exit_code=10)) as repository, \
+                contextlib.redirect_stdout(io.StringIO()):
+            for _ in range(2):
+                with self.assertRaises(runner.BackupError):
+                    runner.perform_backup(changed)
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"], ["cat", "config"]])
+
+    def test_pinned_repository_is_not_recreated_after_its_config_disappears(self):
+        with mock.patch.object(runner.Job, "restic", side_effect=self.fake_restic), contextlib.redirect_stdout(io.StringIO()):
+            runner.Job(self.config).ensure_repository()
+        with mock.patch.object(runner.Job, "restic", side_effect=runner.BackupError("Repository missing", exit_code=10)) as repository, \
+                self.assertRaises(runner.BackupError):
+            runner.Job(self.config).ensure_repository()
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+
+    def test_repository_location_alias_accepts_same_verified_id_but_not_a_missing_repo(self):
+        with mock.patch.object(runner.Job, "restic", side_effect=self.fake_restic), contextlib.redirect_stdout(io.StringIO()):
+            runner.Job(self.config).ensure_repository()
+        moved = runner.Config(self.env | {"BACKUP_REPOSITORY": str(self.root / "different-repository")})
+        with mock.patch.object(runner.Job, "restic", side_effect=runner.BackupError("Repository missing", exit_code=10)) as repository, \
+                self.assertRaises(runner.BackupError):
+            runner.Job(moved).ensure_repository()
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+        with mock.patch.object(runner.Job, "restic", side_effect=self.fake_restic) as repository, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.Job(moved).ensure_repository(), REPOSITORY)
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+
+    def test_repository_id_replacement_and_corrupt_pin_fail_closed(self):
+        with mock.patch.object(runner.Job, "restic", side_effect=self.fake_restic), contextlib.redirect_stdout(io.StringIO()):
+            runner.Job(self.config).ensure_repository()
+        with mock.patch.object(runner.Job, "restic", return_value=json.dumps({"id": "c" * 64})) as repository, \
+                self.assertRaises(runner.BackupError):
+            runner.Job(self.config).ensure_repository()
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"]])
+        (self.config.state / "repository.json").write_text('not JSON')
+        with mock.patch.object(runner.Job, "restic") as repository, self.assertRaises(runner.BackupError):
+            runner.Job(self.config).ensure_repository(explicit_init=True)
+        repository.assert_not_called()
+
+    def test_initialization_requires_a_valid_post_creation_repository(self):
+        missing = runner.BackupError("Repository missing", exit_code=10)
+        for metadata in ('not JSON', '{"id":"short"}', '[]', '{}'):
+            with self.subTest(metadata=metadata), \
+                    mock.patch.object(runner.Job, "restic", side_effect=[missing, "initialized", metadata]), \
+                    self.assertRaises(runner.BackupError):
+                runner.Job(self.config).ensure_repository()
+            self.assertFalse((self.config.state / "repository.json").exists())
+
+    def test_failed_initialization_does_not_persist_success_or_retry_init(self):
+        with mock.patch.object(runner.Job, "restic", side_effect=[
+            runner.BackupError("Repository missing", exit_code=10),
+            runner.BackupError("Initialization uncertain", exit_code=1),
+        ]) as repository, self.assertRaises(runner.BackupError):
+            runner.Job(self.config).ensure_repository()
+        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"], ["init"]])
+        self.assertFalse((self.config.state / "repository.json").exists())
 
     def test_timeout_kills_only_owned_process_group_even_if_leader_does_not_exit(self):
         job = runner.Job(self.config)

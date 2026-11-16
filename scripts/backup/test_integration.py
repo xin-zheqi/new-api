@@ -99,7 +99,8 @@ def main():
         "RESTIC_CACHE_DIR": "/cache",
     }
 
-    def command(*cli, overrides=None, entrypoint=None, ok=True, detached=False):
+    def command(*cli, overrides=None, entrypoint=None, ok=True, detached=False,
+                state_volume=None, cache_volume=None):
         effective = rclone_env if entrypoint == "restic" or entrypoint == "rclone" else env
         effective = {**effective, **(overrides or {})}
         name = prefix + "-job-" + secrets.token_hex(3)
@@ -115,57 +116,75 @@ def main():
             f"type=bind,src={source},dst=/source,readonly",
             f"type=bind,src={restore},dst=/restore",
             f"type=bind,src={password_file},dst=/run/secrets/restic-password,readonly",
-            f"type=volume,src={state},dst=/state", f"type=volume,src={cache},dst=/cache",
+            f"type=volume,src={state_volume or state},dst=/state",
+            f"type=volume,src={cache_volume or cache},dst=/cache",
         ):
             options += ["--mount", mount]
         if entrypoint:
             options += ["--entrypoint", entrypoint]
         return docker(*options, args.image, *cli, ok=ok)
 
-    def daemon_smoke(mode):
+    def daemon_smoke(mode, *, overrides=None, repository=None, scenario=None,
+                     state_volume=None, cache_volume=None):
+        scope = scenario or mode
         now = dt.datetime.now(dt.timezone.utc)
         daily_times = [(now + dt.timedelta(hours=hours)).strftime("%H:%M") for hours in (2, 4)]
         settings = {"TZ": "UTC", "BACKUP_SCHEDULE_MODE": mode,
                     "BACKUP_TIMES": ",".join(daily_times), "BACKUP_INTERVAL": "1m"}
-        command("run", overrides=settings, detached=True)
+        settings.update(overrides or {})
+        command("run", overrides=settings, detached=True, state_volume=state_volume, cache_volume=cache_volume)
         name = containers[-1]
-        wait_for(lambda: '"state": "waiting"' in docker("logs", name).stdout, mode + " daemon initial backup")
+        wait_for(lambda: '"state": "waiting"' in docker("logs", name).stdout, scope + " daemon initial backup")
         logs = docker("logs", name).stdout
+        report.setdefault("scheduler", {})[scope] = {"logs": logs}
         records = [json.loads(line) for line in logs.splitlines() if line.startswith("{")]
         receipts = [item for item in records if item.get("state") == "success"]
         waiting = [item for item in records if item.get("state") == "waiting"]
-        checked(mode + ": startup creates exactly one successful backup", len(receipts) == 1)
-        checked(mode + ": daemon enters configured schedule mode", len(waiting) == 1 and waiting[0]["mode"] == mode)
+        checked(scope + ": startup creates exactly one successful backup", len(receipts) == 1)
+        checked(scope + ": daemon enters configured schedule mode", len(waiting) == 1 and waiting[0]["mode"] == mode)
         next_at = dt.datetime.fromisoformat(waiting[0]["next_run_at"])
-        checked(mode + ": next backup is scheduled in the future", next_at > dt.datetime.now(dt.timezone.utc))
+        checked(scope + ": next backup is scheduled in the future", next_at > dt.datetime.now(dt.timezone.utc))
         if mode == "daily":
-            checked("daily: selects next point from multiple configured times", next_at.strftime("%H:%M") == daily_times[0])
+            checked(scope + ": selects next point from multiple configured times", next_at.strftime("%H:%M") == daily_times[0])
         else:
             finished_at = dt.datetime.fromisoformat(receipts[0]["finished_at"])
-            checked("interval: schedule follows completed backup", 60 <= (next_at - finished_at).total_seconds() < 65)
+            checked(scope + ": schedule follows completed backup", 60 <= (next_at - finished_at).total_seconds() < 65)
         docker("exec", name, "python3", "/opt/backup/runner.py", "health")
-        checked(mode + ": daemon health succeeds while waiting")
-        checked(mode + ": scheduled backup exists in repository",
-                receipts[0]["snapshot_id"] in {item["id"] for item in snapshots()})
+        checked(scope + ": daemon health succeeds while waiting")
+        checked(scope + ": scheduled backup exists in repository",
+                receipts[0]["snapshot_id"] in {item["id"] for item in snapshots(repository)})
         docker("stop", "--time", "10", name)
-        checked(mode + ": SIGTERM during waiting exits successfully",
+        checked(scope + ": SIGTERM during waiting exits successfully",
                 docker("inspect", "--format", "{{.State.ExitCode}}", name).stdout.strip() == "0")
         docker("rm", name)
-        checked(mode + ": stopped daemon leaves no container", docker("inspect", name, ok=False).returncode != 0)
-        report.setdefault("scheduler", {})[mode] = {"receipt": receipts[0], "waiting": waiting[0]}
+        checked(scope + ": stopped daemon leaves no container", docker("inspect", name, ok=False).returncode != 0)
+        report["scheduler"][scope] = {"receipt": receipts[0], "waiting": waiting[0]}
+        return receipts[0]["snapshot_id"]
 
     def sql(database, text):
         return docker("exec", "-i", pg, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "backup", "-d", database,
                       "--no-align", "--tuples-only", input_text=text).stdout.strip()
 
-    def snapshots():
-        return json.loads(command("snapshots", "--json", entrypoint="restic").stdout)
+    def snapshots(repository=None):
+        overrides = {"RESTIC_REPOSITORY": repository} if repository else None
+        return json.loads(command("snapshots", "--json", entrypoint="restic", overrides=overrides).stdout)
 
-    def backup():
-        output = command("backup").stdout
+    def backup(**settings):
+        output = command("backup", **settings).stdout
         records = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
         receipt = next(item for item in records if item.get("state") == "success")
         return receipt["snapshot_id"]
+
+    def repository_id(repository=None):
+        overrides = {"RESTIC_REPOSITORY": repository} if repository else None
+        return json.loads(command("cat", "config", entrypoint="restic", overrides=overrides).stdout)["id"]
+
+    def new_state(suffix):
+        pair = (prefix + "-" + suffix + "-state", prefix + "-" + suffix + "-cache")
+        for volume in pair:
+            docker("volume", "create", "--label", "newapi.backup.test=" + prefix, volume)
+            volumes.append(volume)
+        return {"state_volume": pair[0], "cache_volume": pair[1]}
 
     def raw_snapshot(host, tag, timestamp=None):
         options = ["backup", "--json", "--host", host, "--tag", tag]
@@ -217,7 +236,8 @@ def main():
         # rclone's Alibaba provider uses virtual-host bucket addressing. Give the
         # isolated MinIO server that DNS alias/domain to exercise the same form.
         docker("run", "-d", "--name", minio, "--label", "newapi.backup.test=" + prefix, "--network", network,
-               "--network-alias", "backups." + minio, "--user", "0", "-e", "MINIO_ROOT_USER=backup-test",
+               "--network-alias", "backups." + minio, "--network-alias", "absent." + minio,
+               "--user", "0", "-e", "MINIO_ROOT_USER=backup-test",
                "-e", "MINIO_ROOT_PASSWORD=" + oss_secret, "-e", "MINIO_DOMAIN=" + minio,
                "--mount", f"type=volume,src={objects},dst=/bitnami/minio/data",
                args.minio_image)
@@ -236,12 +256,12 @@ def main():
             "restic": command("version", entrypoint="restic").stdout.strip(),
             "rclone": command("version", entrypoint="rclone").stdout.splitlines()[0],
         }
-        initialization = command("init", ok=False)
-        if initialization.returncode:
-            diagnostic = command("init", entrypoint="restic", overrides={"RCLONE_CONFIG_OSS_PROVIDER": "Alibaba"}, ok=False)
-            raise RuntimeError("Runner initialization failed: " + initialization.stderr + "\nRaw isolated backend diagnostic: "
-                               + diagnostic.stdout + diagnostic.stderr)
         first = backup()
+        original_repository_id = repository_id()
+        checked("first backup automatically initializes an empty repository", bool(original_repository_id))
+        command("init")
+        command("init")
+        checked("repeated initialization preserves the existing repository identity", repository_id() == original_repository_id)
         checked("successful backup has exactly one snapshot", len(snapshots()) == 1)
         command("health")
         checked("health succeeds after backup")
@@ -321,6 +341,105 @@ def main():
         daemon_smoke("daily")
         daemon_smoke("interval")
         checked("scheduled backups did not modify source files", files_digest(source) == second_files)
+
+        # Updating a node, or recreating its local state/cache, must keep the
+        # authenticated existing repository and all of its recovery points.
+        before_redeploy = {item["id"] for item in snapshots()}
+        fresh = new_state("fresh-existing")
+        fresh_snapshot = backup(**fresh)
+        checked("new node without local state opens the existing repository",
+                repository_id() == original_repository_id)
+        checked("new node preserves all preexisting snapshots",
+                {item["id"] for item in snapshots()} == before_redeploy | {fresh_snapshot})
+
+        auto_repository = "rclone:oss:backups/auto-created"
+        auto_settings = {"BACKUP_REPOSITORY": auto_repository}
+        auto_state = new_state("auto-created")
+        auto_first = daemon_smoke("daily", overrides=auto_settings, repository=auto_repository,
+                                  scenario="auto-init first deployment", **auto_state)
+        auto_repository_id = repository_id(auto_repository)
+        checked("first deployment creates its own repository identity",
+                auto_repository_id != original_repository_id)
+        auto_second = daemon_smoke("daily", overrides=auto_settings, repository=auto_repository,
+                                   scenario="auto-init redeployment", **auto_state)
+        checked("redeployment keeps the repository identity", repository_id(auto_repository) == auto_repository_id)
+        checked("redeployment preserves the previous recovery point",
+                {item["id"] for item in snapshots(auto_repository)} == {auto_first, auto_second})
+
+        # No previous repository pin exists in this state directory. This proves
+        # the remote nonempty guard works independently of local history.
+        guard_state = new_state("empty-guard")
+        manual_repository = "rclone:oss:backups/manual-only"
+        result = command("backup", overrides={"BACKUP_REPOSITORY": manual_repository,
+                                               "BACKUP_AUTO_INIT": "false"}, ok=False, **guard_state)
+        checked("automatic initialization can be explicitly disabled", result.returncode != 0)
+        checked("disabled initialization leaves the empty prefix untouched",
+                json.loads(command("lsjson", "oss:backups/manual-only", "--recursive", entrypoint="rclone").stdout) == [])
+        inspect_settings = {"BACKUP_REPOSITORY": "rclone:oss:backups/inspect-only"}
+        for operation in ("snapshots", "check"):
+            checked(operation + " never initializes a missing repository",
+                    command(operation, overrides=inspect_settings, ok=False, **guard_state).returncode != 0)
+        checked("restore never initializes a missing repository",
+                command("restore-files", first, "/restore/inspect-only", overrides=inspect_settings,
+                        ok=False, **guard_state).returncode != 0)
+        checked("read operations leave the missing repository and restore destination untouched",
+                json.loads(command("lsjson", "oss:backups/inspect-only", "--recursive", entrypoint="rclone").stdout) == []
+                and not (restore / "inspect-only").exists())
+        command("copyto", "/opt/backup/Dockerfile", "oss:backups/damaged/keep.txt", entrypoint="rclone")
+        evidence = command("cat", "oss:backups/damaged/keep.txt", entrypoint="rclone").stdout
+        result = command("backup", overrides={"BACKUP_REPOSITORY": "rclone:oss:backups/damaged"},
+                         ok=False, **guard_state)
+        checked("a nonempty prefix without repository config is not initialized", result.returncode != 0)
+        damaged_files = json.loads(command("lsjson", "oss:backups/damaged", "--recursive", entrypoint="rclone").stdout)
+        checked("nonempty guard preserves the original object without adding repository files",
+                {item["Path"] for item in damaged_files} == {"keep.txt"}
+                and command("cat", "oss:backups/damaged/keep.txt", entrypoint="rclone").stdout == evidence)
+
+        result = command("backup", overrides={"BACKUP_REPOSITORY": "rclone:oss:backups/typo-empty"},
+                         ok=False, **auto_state)
+        checked("a deployed node refuses to silently initialize a changed empty repository", result.returncode != 0)
+        checked("repository location guard leaves the new prefix untouched",
+                json.loads(command("lsjson", "oss:backups/typo-empty", "--recursive", entrypoint="rclone").stdout) == [])
+
+        # Corrupt only the dedicated auto-init fixture, then restore its original
+        # config object. Neither the main repository nor any source files change.
+        command("copyto", "oss:backups/auto-created/config", "/restore/auto-config.backup", entrypoint="rclone")
+        before_config_loss = json.loads(command("lsjson", "oss:backups/auto-created", "--recursive", entrypoint="rclone").stdout)
+        expected_paths = {item["Path"] for item in before_config_loss} - {"config"}
+        command("deletefile", "oss:backups/auto-created/config", entrypoint="rclone")
+        result = command("backup", overrides=auto_settings, ok=False, **auto_state)
+        checked("known repository config loss is reported instead of initialized", result.returncode != 0)
+        result = command("backup", overrides=auto_settings, ok=False, **guard_state)
+        checked("fresh local state also refuses the damaged nonempty repository", result.returncode != 0)
+        after_config_loss = json.loads(command("lsjson", "oss:backups/auto-created", "--recursive", entrypoint="rclone").stdout)
+        checked("missing-config failures preserve repository objects",
+                {item["Path"] for item in after_config_loss} == expected_paths)
+        command("copyto", "/restore/auto-config.backup", "oss:backups/auto-created/config", entrypoint="rclone")
+        checked("restoring the original config recovers the original repository identity",
+                repository_id(auto_repository) == auto_repository_id)
+        auto_recovered = backup(overrides=auto_settings, **auto_state)
+        checked("recovered repository remains writable without losing earlier snapshots",
+                {item["id"] for item in snapshots(auto_repository)} == {auto_first, auto_second, auto_recovered})
+        command("check", "--read-data", entrypoint="restic", overrides={"RESTIC_REPOSITORY": auto_repository})
+        checked("repository data remains intact after initialization guard failures")
+
+        buckets_before = json.loads(command("lsjson", "oss:", "--dirs-only", entrypoint="rclone").stdout)
+        result = command("backup", overrides={"BACKUP_REPOSITORY": "rclone:oss:absent/newapi",
+                                               "BACKUP_TIMEOUT_SECONDS": "20"}, ok=False, **guard_state)
+        checked("missing bucket fails instead of being automatically created", result.returncode != 0)
+        buckets_after = json.loads(command("lsjson", "oss:", "--dirs-only", entrypoint="rclone").stdout)
+        checked("automatic initialization does not create a bucket",
+                {item["Name"] for item in buckets_after} == {item["Name"] for item in buckets_before})
+        command("init", overrides={"BACKUP_REPOSITORY": manual_repository, "BACKUP_AUTO_INIT": "false"}, **guard_state)
+        manual_id = repository_id(manual_repository)
+        command("init", overrides={"BACKUP_REPOSITORY": manual_repository, "BACKUP_AUTO_INIT": "false"}, **guard_state)
+        checked("manual initialization remains available and idempotent when automatic init is disabled",
+                repository_id(manual_repository) == manual_id and snapshots(manual_repository) == [])
+        checked("initialization and redeployment tests leave application files unchanged",
+                files_digest(source) == second_files)
+        report["auto_initialization"] = {"original_repository_id": original_repository_id,
+                                          "new_repository_id": auto_repository_id,
+                                          "snapshot_ids": [auto_first, auto_second, auto_recovered]}
         report["snapshot_ids"] = [historical, second, third, foreign]
         report["result"] = "passed"
     except Exception as error:

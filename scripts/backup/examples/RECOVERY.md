@@ -8,6 +8,8 @@
 
 在有 Docker Compose 的 Linux 机器上新建专用目录，把本目录的 `recovery.compose.yml` 复制进去。它只启动恢复工具，不要求原来的应用、数据库、`data` 或 `logs` 目录存在。
 
+恢复模板使用 `thefoolishfox1/new-api-backup:20261116-autoinit`。自动初始化仅适用于备份任务；这里的 `snapshots`、`check`、`restore-files` 不会创建仓库。新机器只需正确连接已有仓库，不需要先执行 `init`。找不到仓库、密码错误或本地身份记录不匹配时，应核对原地址、权限、密码及仓库迁移情况，不要通过创建空仓库来继续恢复。
+
 ```bash
 mkdir -p newapi-recovery
 cd newapi-recovery

@@ -15,10 +15,10 @@
 
 额外的 Compose override、外部密钥文件、Nginx 配置、独立审计目录，应在 `backup.volumes` 中添加只读挂载到 `/source/config` 或 `/source` 的其他子目录。备份只包含实际挂载的文件，不会自动发现宿主机其他目录。
 
-备份服务的配置直接填写在 Compose 中。原 New API、PostgreSQL、Redis 服务的配置方式保持原样；如果它们仍从 `.env` 读取密码或 `SESSION_SECRET`、`CRYPTO_SECRET`，必须将现有 `.env` 也只读挂入备份，才能完整保存恢复所需配置。该挂载仅用于备份文件，不用来设置备份容器参数；全部业务配置已写在 Compose 中的部署无需挂载 `.env`。
+根目录 Compose 中的 New API、PostgreSQL、Redis 和备份参数均直接填写，不需要 `.env` 或 shell 变量展开。Redis 使用直接传参的命令列表。若你自己的部署还使用额外的 `.env`、override 或密钥文件，也要将实际文件只读挂入备份，才能保存完整恢复配置；这只用于采集外部文件，不是根目录模板的配置依赖。
 
 ```yaml
-# 仅在业务仍使用这个现有文件时，添加到 backup.volumes。
+# 仅在自定义部署另外使用这个现有文件时，添加到 backup.volumes。
 - type: bind
   source: ./.env
   target: /source/config/deploy.env
@@ -56,7 +56,7 @@ docker build -t thefoolishfox1/new-api-backup:local scripts/backup
 
 ## 首次配置
 
-根目录 `docker-compose.yml` 的 `backup` 服务直接填写备份参数。另有 [全部服务均无需 .env 的完整模板](examples/compose.yml) 和 [逐项修改说明](examples/README.md)，供核对服务器配置；合并备份功能时，已有业务服务应沿用服务器原配置。
+根目录 `docker-compose.yml` 已使用全部直接填写的配置。另有采用 lab 服务名的 [完整模板](examples/compose.yml) 和 [逐项修改说明](examples/README.md)，供核对服务器配置。请将数据库及 Redis 的原始密码、连接 URL 中对应的编码密码、原 `SESSION_SECRET` 和 Cookie 设置填入相应位置；原部署如果设置了 `CRYPTO_SECRET`，也须沿用原值。服务名、端口、数据卷和网络按服务器现有部署填写。
 
 灾后需要按某个快照恢复时，另有 [独立恢复模板](examples/recovery.compose.yml) 和 [恢复操作说明](examples/RECOVERY.md)，不依赖原应用、数据库或业务目录仍然存在。
 
@@ -83,7 +83,7 @@ environment:
 
 Endpoint 必须与 Bucket 所在地域相同。仓库地址直接填写完整的 `rclone:oss:<bucket>/<prefix>`，不会引用同一 `environment` 中的其他字段。直接配置的密码包含 `$` 时，在 Compose 中写成 `$$`。同一仓库初始化后，不要随意修改其地址、加密密码或备份身份标识。
 
-这些名称是传入备份容器的环境变量；根目录模板使用直接填写的值，仅修改宿主机 `.env` 不会覆盖它们。资源限制则直接修改 `backup.cpus`、`backup.mem_limit` 等服务字段。
+这些名称是传入备份容器的环境变量；值直接写在 Compose 的 `environment` 中，根目录模板不会从宿主机 `.env` 获取它们。资源限制直接修改 `backup.cpus`、`backup.mem_limit` 等服务字段。
 
 用密码管理器生成足够长的随机备份加密密码，保存为部署目录下的 `./secrets/backup/restic-password`，不带其他配置内容。该文件及其父目录应仅允许部署管理员访问，例如 Linux 上目录权限 `700`、文件权限 `600`；含凭据的 Compose 和其他业务配置也应限制访问。不要把真实密码提交到 Git、写进 Dockerfile 或终端命令参数。
 

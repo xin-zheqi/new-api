@@ -69,10 +69,8 @@ services:
     # 如果服务器当前固定了 Redis 版本，应继续沿用该版本和原持久化设置。
     image: redis:latest
     restart: unless-stopped
-    environment:
-      REDIS_PASSWORD: *redis-password
-    # $$ 交给容器中的 shell 展开，不读取宿主机 .env。
-    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    # 直接传递顶部填写的原始密码，不通过 shell 或环境变量展开。
+    command: ["redis-server", "--requirepass", *redis-password]
     networks:
       - new-api-network
 

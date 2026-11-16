@@ -2,12 +2,12 @@
 
 `compose.yml` 包含 New API、PostgreSQL 15、Redis、备份容器四个服务，参数直接填写在 YAML 中；没有 `.env` 挂载，也没有依赖 `.env` 的变量表达式。备份镜像使用已发布的 `thefoolishfox1/new-api-backup:20261116`。
 
-模板放在示例目录，避免改变仓库原来默认使用的 `docker-compose.yml`。在已经运行的服务器上，主要合并 `backup` 服务和 `backup_state`、`backup_cache` 两个卷；已有三个业务服务的配置以服务器原文件为准。若使用共享密码别名，也需合并顶部 `x-credentials`，或将别名改成直接填写的原值。
+根目录 `docker-compose.yml` 同样已采用直接填写方式，默认服务名为 `new-api`、`postgres`、`redis`；本示例使用 lab 服务名并显式复用已有卷和网络，方便对照之前的服务器部署。在已经运行的服务器上，主要合并 `backup` 服务和 `backup_state`、`backup_cache` 两个卷；其他配置值以服务器原文件为准。若使用共享密码别名，也需合并顶部 `x-credentials`，或将别名改成直接填写的原值。Redis 使用直接传参的命令列表，不需要 shell 变量展开。
 
 需要填写、核对的内容：
 
 1. 顶部数据库和 Redis **原始密码**，以及应用连接 URL 中对应的 **URL 编码密码**。已有 PostgreSQL 数据卷不会因修改初始化环境变量而更换密码。
-2. 原 `SESSION_SECRET`、`CRYPTO_SECRET`、Cookie 设置、端口、镜像和其他业务环境变量，均按当前部署填写。
+2. 原 `SESSION_SECRET`、Cookie 设置、端口、镜像和其他业务参数，均按当前部署填写；原部署已设置 `CRYPTO_SECRET` 时沿用原值，不要随意新增或更换。
 3. 实际 PostgreSQL 数据卷和 Docker 网络名称。模板将两者声明为 `external`，填错时会失败，不会自动创建一个空数据库。
 4. OSS Bucket、地域 Endpoint、AccessKey，以及备份计划。密钥和密码中包含 `$` 时，在 YAML 中写成 `$$`；URL 密码还需另做百分号编码。
 5. 应用的实际 `data`、`logs` 路径，以及配置文件本身的文件名。复制到 `docker-compose.yml` 时，把备份挂载的 `source: ./compose.yml` 相应改为 `./docker-compose.yml`。额外的 Compose override 和外部密钥文件也需只读挂入 `/source/config/`。

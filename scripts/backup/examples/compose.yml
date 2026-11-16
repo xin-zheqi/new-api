@@ -1,0 +1,176 @@
+# New API + PostgreSQL 15 + Redis + OSS 备份：全部配置直接填写，无需 .env。
+#
+# 本文件是供核对的完整模板，不会自动修改服务器配置。
+# 已运行的服务器：保留原来的三个业务服务，主要合并 backup 服务及两个 backup_* 卷。
+# 若要整体参考：沿用原项目名、服务名、镜像、端口、目录、数据库卷和网络。
+# 将本文件复制到实际部署目录后使用；相对路径都以该部署目录为基准。
+# 请先替换 REPLACE_WITH_* 占位符。填写真实凭据后的文件不要提交到 Git。
+# 在 YAML 中，密码里的一个 $ 写成 $$；URL 中的特殊字符另需百分号编码。
+
+# 共享原始密码，避免数据库与备份服务填写不一致；连接 URL 仍需单独填写。
+x-credentials:
+  postgres-user: &postgres-user "root"
+  postgres-password: &postgres-password "REPLACE_WITH_EXISTING_POSTGRES_PASSWORD"
+  redis-password: &redis-password "REPLACE_WITH_EXISTING_REDIS_PASSWORD"
+
+services:
+  # 以下服务名参考你之前的 lab 部署；应与服务器原文件一致。
+  new-api-lab:
+    # 恢复时优先使用与备份对应的已验证版本/digest；这里的 latest 仅作格式示例。
+    image: thefoolishfox1/new-api:latest
+    restart: unless-stopped
+    command: --log-dir /app/logs
+    ports:
+      # 复制服务器原端口映射；此处仅为模板，通常由本机 Nginx 对外提供 HTTPS。
+      - "127.0.0.1:3000:3000"
+    environment:
+      # 用户名/库名也要与实际数据库一致；URL 内的密码需要进行 URL 编码。
+      SQL_DSN: "postgresql://root:REPLACE_WITH_URLENCODED_POSTGRES_PASSWORD@postgres-lab:5432/new-api"
+      REDIS_CONN_STRING: "redis://:REPLACE_WITH_URLENCODED_REDIS_PASSWORD@redis-lab:6379/0"
+      # 必须沿用服务器原值，已有业务不能通过更换密钥来迁移。
+      SESSION_SECRET: "REPLACE_WITH_EXISTING_SESSION_SECRET"
+      CRYPTO_SECRET: "REPLACE_WITH_EXISTING_CRYPTO_SECRET"
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_COOKIE_TRUSTED_URL: "REPLACE_WITH_EXISTING_HTTPS_ORIGIN_LIST"
+      TZ: Asia/Shanghai
+      ERROR_LOG_ENABLED: "true"
+      BATCH_UPDATE_ENABLED: "true"
+      NODE_NAME: new-api-node-1
+      # 原有 TRUSTED_PROXIES、独立日志库及其他环境变量也应从服务器原文件保留。
+    volumes:
+      - ./data:/data
+      - ./logs:/app/logs
+    depends_on:
+      - postgres-lab
+      - redis-lab
+    networks:
+      - new-api-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/status | grep -Eq '\"success\"[[:space:]]*:[[:space:]]*true'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres-lab:
+    # 已有数据库必须继续使用原主版本及原数据卷。
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: *postgres-user
+      POSTGRES_PASSWORD: *postgres-password
+      POSTGRES_DB: new-api
+      # 已有数据库不会因修改这几个初始化变量就更换实际账号密码。
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - new-api-network
+
+  redis-lab:
+    # 如果服务器当前固定了 Redis 版本，应继续沿用该版本和原持久化设置。
+    image: redis:latest
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: *redis-password
+    # $$ 交给容器中的 shell 展开，不读取宿主机 .env。
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    networks:
+      - new-api-network
+
+  backup:
+    # 常规启动不启用备份；显式使用 --profile backup。
+    profiles: ["backup"]
+    image: thefoolishfox1/new-api-backup:20261116
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 64
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    environment:
+      TZ: Asia/Shanghai
+      BACKUP_DB_HOST: postgres-lab
+      BACKUP_DB_PORT: "5432"
+      BACKUP_DB_USER: *postgres-user
+      BACKUP_DB_PASSWORD: *postgres-password
+      BACKUP_DB_SSLMODE: prefer
+      BACKUP_DATABASES: new-api
+      # 同一 PostgreSQL 上另有日志库时，改成 "new-api,new-api-log"。
+
+      # 填完整的 Bucket/前缀，不引用同一 environment 中的其他字段。
+      BACKUP_REPOSITORY: "rclone:oss:REPLACE_WITH_OSS_BUCKET/newapi/production"
+      BACKUP_OSS_ENDPOINT: "oss-cn-hangzhou.aliyuncs.com"
+      BACKUP_OSS_ACCESS_KEY_ID: "REPLACE_WITH_OSS_ACCESS_KEY_ID"
+      BACKUP_OSS_ACCESS_KEY_SECRET: "REPLACE_WITH_OSS_ACCESS_KEY_SECRET"
+      BACKUP_PASSWORD_FILE: /run/secrets/restic-password
+
+      # 如果已经做过备份，应沿用原标识；保留策略按这两个字段筛选。
+      BACKUP_HOST: newapi
+      BACKUP_TAG: new-api
+
+      # 方式一：每天多个时间点，按照 TZ 运行。
+      BACKUP_SCHEDULE_MODE: daily
+      BACKUP_TIMES: "03:30,15:30,23:00"
+      # 方式二：把 MODE 改为 interval；每天的时间点会被忽略。
+      # 每次调度任务结束后等待 6 小时；可写 30m、6h、1d（1 分钟至 30 天）。
+      BACKUP_INTERVAL: "6h"
+
+      BACKUP_TIMEOUT_SECONDS: "7200"
+      BACKUP_RETRIES: "2"
+      BACKUP_RETRY_DELAY_SECONDS: "10"
+      BACKUP_MIN_FREE_MB: "1024"
+      BACKUP_MAX_DUMP_MB: "4096"
+      BACKUP_MAX_CACHE_MB: "512"
+      BACKUP_BW_LIMIT: "8M"
+      # 保留参数仅在显式执行 retention 时生效，不会自动删除历史快照。
+      BACKUP_KEEP_DAILY: "7"
+      BACKUP_KEEP_WEEKLY: "4"
+      BACKUP_KEEP_MONTHLY: "6"
+      BACKUP_HEALTH_MAX_AGE_HOURS: ""
+    volumes:
+      # 确认这两个 source 与应用当前实际使用的宿主机目录相同。
+      - type: bind
+        source: ./data
+        target: /source/data
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./logs
+        target: /source/logs
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        # 如果服务器文件名为 docker-compose.yml，这里相应改为 ./docker-compose.yml。
+        source: ./compose.yml
+        target: /source/config/compose.yml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        # 单独保存备份加密密码，仅填写密码正文；另留一份安全副本。
+        source: ./secrets/backup/restic-password
+        target: /run/secrets/restic-password
+        read_only: true
+        bind: {create_host_path: false}
+      - backup_state:/state
+      - backup_cache:/cache
+    # 仅合并 backup 段时，把这里改为现有 PostgreSQL 使用的网络键。
+    networks:
+      - new-api-network
+
+volumes:
+  pg_data:
+    # 这里故意要求已有卷，不自动创建空数据库；请现场核对实际名称再填写。
+    external: true
+    name: REPLACE_WITH_EXISTING_POSTGRES_VOLUME_NAME
+  backup_state:
+  backup_cache:
+
+networks:
+  new-api-network:
+    # 同样复用现有网络，确保 backup 能找到实际的 postgres-lab 服务。
+    external: true
+    name: REPLACE_WITH_EXISTING_DOCKER_NETWORK_NAME

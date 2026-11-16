@@ -91,6 +91,87 @@ services:
 #    ports:
 #      - "5432:5432"  # Uncomment if you need to access PostgreSQL from outside Docker
 
+  # Opt in with --profile backup (or COMPOSE_PROFILES=backup in .env).
+  # New API does not depend on this service. Initialize its repository explicitly
+  # before starting the scheduler; see scripts/backup/README.md.
+  backup:
+    profiles: ["backup"]
+    image: ${BACKUP_IMAGE:-thefoolishfox1/new-api-backup:latest}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    cpus: ${BACKUP_CPUS:-0.5}
+    mem_limit: ${BACKUP_MEMORY_LIMIT:-512m}
+    pids_limit: 64
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    environment:
+      TZ: ${BACKUP_TZ:-Asia/Shanghai}
+      BACKUP_DB_HOST: ${BACKUP_DB_HOST:-postgres}
+      BACKUP_DB_PORT: ${BACKUP_DB_PORT:-5432}
+      BACKUP_DB_USER: ${BACKUP_DB_USER:-${POSTGRES_USER:-root}}
+      BACKUP_DB_PASSWORD: ${BACKUP_DB_PASSWORD:-${POSTGRES_PASSWORD:-}}
+      BACKUP_DB_PASSWORD_FILE: ${BACKUP_DB_PASSWORD_FILE:-}
+      BACKUP_DB_SSLMODE: ${BACKUP_DB_SSLMODE:-prefer}
+      BACKUP_DATABASES: ${BACKUP_DATABASES:-new-api}
+      BACKUP_REPOSITORY: rclone:oss:${BACKUP_OSS_BUCKET:-}/${BACKUP_OSS_PREFIX:-newapi}
+      BACKUP_PASSWORD_FILE: /run/secrets/restic-password
+      BACKUP_OSS_ENDPOINT: ${BACKUP_OSS_ENDPOINT:-}
+      BACKUP_OSS_ACCESS_KEY_ID: ${BACKUP_OSS_ACCESS_KEY_ID:-}
+      BACKUP_OSS_ACCESS_KEY_SECRET: ${BACKUP_OSS_ACCESS_KEY_SECRET:-}
+      BACKUP_OSS_ACCESS_KEY_ID_FILE: ${BACKUP_OSS_ACCESS_KEY_ID_FILE:-}
+      BACKUP_OSS_ACCESS_KEY_SECRET_FILE: ${BACKUP_OSS_ACCESS_KEY_SECRET_FILE:-}
+      BACKUP_HOST: ${BACKUP_HOST:-newapi}
+      BACKUP_TAG: ${BACKUP_TAG:-new-api}
+      BACKUP_SCHEDULE_MODE: ${BACKUP_SCHEDULE_MODE:-daily}
+      BACKUP_TIMES: ${BACKUP_TIMES:-}
+      BACKUP_TIME: ${BACKUP_TIME:-03:30}
+      BACKUP_INTERVAL: ${BACKUP_INTERVAL:-6h}
+      BACKUP_TIMEOUT_SECONDS: ${BACKUP_TIMEOUT_SECONDS:-7200}
+      BACKUP_RETRIES: ${BACKUP_RETRIES:-2}
+      BACKUP_RETRY_DELAY_SECONDS: ${BACKUP_RETRY_DELAY_SECONDS:-10}
+      BACKUP_MIN_FREE_MB: ${BACKUP_MIN_FREE_MB:-1024}
+      BACKUP_MAX_DUMP_MB: ${BACKUP_MAX_DUMP_MB:-4096}
+      BACKUP_MAX_CACHE_MB: ${BACKUP_MAX_CACHE_MB:-512}
+      BACKUP_BW_LIMIT: ${BACKUP_BW_LIMIT:-8M}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-7}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-4}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-6}
+      BACKUP_HEALTH_MAX_AGE_HOURS: ${BACKUP_HEALTH_MAX_AGE_HOURS:-}
+    volumes:
+      - type: bind
+        source: ./data
+        target: /source/data
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./logs
+        target: /source/logs
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./docker-compose.yml
+        target: /source/config/docker-compose.yml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./.env
+        target: /source/config/deploy.env
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${BACKUP_PASSWORD_HOST_FILE:-./secrets/backup/restic-password}
+        target: /run/secrets/restic-password
+        read_only: true
+        bind: {create_host_path: false}
+      - backup_state:/state
+      - backup_cache:/cache
+    networks:
+      - new-api-network
+
 #  mysql:
 #    image: mysql:8.2
 #    container_name: mysql
@@ -124,6 +205,8 @@ services:
 
 volumes:
   pg_data:
+  backup_state:
+  backup_cache:
 #  mysql_data:
 #  clickhouse_data:
 

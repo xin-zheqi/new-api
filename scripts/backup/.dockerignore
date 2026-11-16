@@ -1,0 +1,7 @@
+# A narrow build context keeps deployment credentials and dumps out of layers.
+**
+!Dockerfile
+!runner.py
+!.dockerignore
+!LICENSE
+!README.md

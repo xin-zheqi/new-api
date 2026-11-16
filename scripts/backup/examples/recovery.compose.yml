@@ -1,0 +1,49 @@
+# New API：独立恢复入口，无需 .env，也不依赖原 New API、数据库或 data/logs 目录。
+# 复制到干净机器的恢复目录，填写 OSS 配置，并准备密码文件和 restore-output 目录。
+services:
+  restore:
+    image: thefoolishfox1/new-api-backup:20261116
+    command: ["snapshots"]
+    # 这是一次性恢复工具，退出码代表结果，不使用“最近备份成功时间”健康检查。
+    healthcheck:
+      disable: true
+    init: true
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 64
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    environment:
+      TZ: Asia/Shanghai
+      BACKUP_REPOSITORY: "rclone:oss:REPLACE_WITH_OSS_BUCKET/newapi/production"
+      BACKUP_OSS_ENDPOINT: "oss-cn-hangzhou.aliyuncs.com"
+      BACKUP_OSS_ACCESS_KEY_ID: "REPLACE_WITH_OSS_ACCESS_KEY_ID"
+      BACKUP_OSS_ACCESS_KEY_SECRET: "REPLACE_WITH_OSS_ACCESS_KEY_SECRET"
+      BACKUP_PASSWORD_FILE: /run/secrets/restic-password
+      # 必须与原备份配置一致，才会列出/接受相应快照。
+      BACKUP_HOST: newapi
+      BACKUP_TAG: new-api
+      BACKUP_TIMEOUT_SECONDS: "7200"
+      BACKUP_MIN_FREE_MB: "1024"
+      BACKUP_MAX_CACHE_MB: "512"
+      BACKUP_BW_LIMIT: "8M"
+    volumes:
+      - type: bind
+        source: ./secrets/backup/restic-password
+        target: /run/secrets/restic-password
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ./restore-output
+        target: /restore
+        bind: {create_host_path: false}
+      - recovery_state:/state
+      - recovery_cache:/cache
+
+volumes:
+  recovery_state:
+  recovery_cache:

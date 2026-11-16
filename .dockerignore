@@ -29,4 +29,5 @@ data
 .docker-test-data
 _tmpdb
 .local-tests
+secrets
 !THIRD-PARTY-LICENSES.md

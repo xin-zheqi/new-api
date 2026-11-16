@@ -99,6 +99,7 @@ class RunnerTests(unittest.TestCase):
             "BACKUP_OSS_ENDPOINT": "oss-cn-hangzhou.aliyuncs.com",
             "BACKUP_OSS_ACCESS_KEY_ID_FILE": str(access_file),
             "BACKUP_OSS_ACCESS_KEY_SECRET_FILE": str(key_file),
+            "RCLONE_CONFIG_OSS_NO_CHECK_BUCKET": "false",
             "RESTIC_PASSWORD": "must-not-override-file",
         }
         config = runner.Config(env)
@@ -106,6 +107,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["RCLONE_CONFIG_OSS_PROVIDER"], "Alibaba")
         self.assertEqual(result["RCLONE_CONFIG_OSS_ACCESS_KEY_ID"], "test-access")
         self.assertEqual(result["RCLONE_CONFIG_OSS_SECRET_ACCESS_KEY"], "test-secret")
+        self.assertEqual(result["RCLONE_CONFIG_OSS_NO_CHECK_BUCKET"], "true")
         self.assertNotIn("RESTIC_PASSWORD", result)
         self.assertNotIn("test-secret", config.identity())
 
@@ -507,6 +509,30 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("database-test-password", str(caught.exception))
         self.assertEqual(caught.exception.exit_code, 1)
 
+    def test_provider_diagnostics_use_fixed_codes_without_echoing_sensitive_details(self):
+        for code in ("BucketAlreadyExists", "BucketAlreadyOwnedByYou", "NoSuchBucket",
+                     "InvalidAccessKeyId", "SignatureDoesNotMatch", "AccessDenied", "UnknownProviderError"):
+            process = mock.Mock(pid=123456, returncode=1)
+            process.poll.return_value = 1
+            process.wait.return_value = 1
+
+            def launch(*_args, **kwargs):
+                kwargs["stderr"].write((code + " https://private.invalid?secret=test-secret timeout").encode())
+                return process
+
+            with self.subTest(code=code), mock.patch.object(runner.subprocess, "Popen", side_effect=launch), \
+                    mock.patch.object(runner.os, "killpg"), self.assertRaises(runner.BackupError) as caught:
+                runner.Job(self.config).command("Repository initialization", ["restic"], monitor=False)
+            message = str(caught.exception)
+            self.assertNotIn("test-secret", message)
+            self.assertNotIn("private.invalid", message)
+            if code == "UnknownProviderError":
+                self.assertNotIn(code, message)
+                self.assertIn("check connectivity, credentials and permissions", message)
+            else:
+                self.assertIn(code, message)
+                self.assertFalse(caught.exception.retryable)
+
     def remote_config(self):
         return runner.Config(self.env | {
             "BACKUP_REPOSITORY": "rclone:oss:backup-bucket/new-api",
@@ -671,13 +697,58 @@ class RunnerTests(unittest.TestCase):
             self.assertFalse((self.config.state / "repository.json").exists())
 
     def test_failed_initialization_does_not_persist_success_or_retry_init(self):
+        init_error = runner.BackupError("Initialization uncertain", exit_code=1)
         with mock.patch.object(runner.Job, "restic", side_effect=[
             runner.BackupError("Repository missing", exit_code=10),
-            runner.BackupError("Initialization uncertain", exit_code=1),
-        ]) as repository, self.assertRaises(runner.BackupError):
+            init_error,
+            runner.BackupError("Repository still missing", exit_code=10),
+        ]) as repository, self.assertRaises(runner.BackupError) as caught:
             runner.Job(self.config).ensure_repository()
-        self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"], ["init"]])
+        self.assertIs(caught.exception, init_error)
+        self.assertEqual([call.args[1] for call in repository.call_args_list],
+                         [["cat", "config"], ["init"], ["cat", "config"]])
         self.assertFalse((self.config.state / "repository.json").exists())
+
+    def test_uncertain_initialization_is_accepted_only_after_repository_verification(self):
+        for message in ("Config file already exists", "BucketAlreadyExists", "Connection timed out"):
+            with self.subTest(message=message), mock.patch.object(runner.Job, "restic", side_effect=[
+                runner.BackupError("Repository missing", exit_code=10),
+                runner.BackupError(message, exit_code=1), json.dumps({"id": REPOSITORY}),
+            ]) as repository, contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(runner.Job(self.config).ensure_repository(explicit_init=True), REPOSITORY)
+            self.assertEqual([call.args[1] for call in repository.call_args_list],
+                             [["cat", "config"], ["init"], ["cat", "config"]])
+            self.assertFalse(json.loads(output.getvalue())["initialized"])
+            self.assertEqual(json.loads((self.config.state / "repository.json").read_text())["id"], REPOSITORY)
+
+    def test_failed_initialization_readback_rejects_wrong_password_and_invalid_metadata(self):
+        for result in (runner.BackupError("Wrong password", exit_code=1),
+                       runner.BackupError("AccessDenied", exit_code=1), 'not JSON', '{"id":"short"}'):
+            with self.subTest(result=result), mock.patch.object(runner.Job, "restic", side_effect=[
+                runner.BackupError("Repository missing", exit_code=10),
+                runner.BackupError("Config file already exists", exit_code=1), result,
+            ]), self.assertRaises(runner.BackupError):
+                runner.Job(self.config).ensure_repository()
+            self.assertFalse((self.config.state / "repository.json").exists())
+
+    def test_failed_initialization_does_not_probe_after_stop_or_deadline(self):
+        for stopping in (False, True):
+            job = runner.Job(self.config)
+            with self.subTest(stopping=stopping), mock.patch.object(runner, "STOPPING", stopping), \
+                    mock.patch.object(runner.time, "monotonic", return_value=job.deadline - 1 if stopping else job.deadline), \
+                    mock.patch.object(job, "restic", side_effect=[
+                        runner.BackupError("Repository missing", exit_code=10),
+                        runner.BackupError("Initialization interrupted", exit_code=1),
+                    ]) as repository, self.assertRaises(runner.BackupError):
+                job.ensure_repository()
+            self.assertEqual([call.args[1] for call in repository.call_args_list], [["cat", "config"], ["init"]])
+
+    def test_initialization_write_is_not_retried_on_uncertain_network_failure(self):
+        config = runner.Config(self.env | {"BACKUP_RETRIES": "2"})
+        with mock.patch.object(runner.Job, "command", side_effect=runner.BackupError("Timeout", True)) as command, \
+                self.assertRaises(runner.BackupError):
+            runner.Job(config).restic("Repository initialization", ["init"])
+        self.assertEqual(command.call_count, 1)
 
     def test_timeout_kills_only_owned_process_group_even_if_leader_does_not_exit(self):
         job = runner.Job(self.config)

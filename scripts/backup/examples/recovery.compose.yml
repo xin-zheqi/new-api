@@ -2,7 +2,7 @@
 # 复制到干净机器的恢复目录，填写 OSS 配置，并准备密码文件和 restore-output 目录。
 services:
   restore:
-    image: thefoolishfox1/new-api-backup:20261116-autoinit
+    image: thefoolishfox1/new-api-backup:20261116-oss-bucket-fix
     command: ["snapshots"]
     # 这是一次性恢复工具，退出码代表结果，不使用“最近备份成功时间”健康检查。
     healthcheck:

@@ -156,6 +156,9 @@ class Config:
                 "RCLONE_CONFIG_OSS_ENDPOINT": endpoint,
                 "RCLONE_CONFIG_OSS_ACCESS_KEY_ID": secret(env, "BACKUP_OSS_ACCESS_KEY_ID"),
                 "RCLONE_CONFIG_OSS_SECRET_ACCESS_KEY": secret(env, "BACKUP_OSS_ACCESS_KEY_SECRET"),
+                # Buckets are provisioned by the operator. Alibaba may reject
+                # CreateBucket even for an existing accessible bucket.
+                "RCLONE_CONFIG_OSS_NO_CHECK_BUCKET": "true",
                 "RCLONE_CONFIG_OSS_UPLOAD_CONCURRENCY": "2",
                 "RCLONE_CONFIG": "/dev/null",
                 "RCLONE_BWLIMIT": env.get("BACKUP_BW_LIMIT", "8M"),
@@ -305,7 +308,8 @@ class Job:
                     permanent = any(marker in detail for marker in (
                         b"accessdenied", b"access denied", b"invalidaccesskeyid", b"signaturedoesnotmatch",
                         b"wrong password", b"permission denied", b"password authentication failed",
-                        b"repository does not exist", b"no such file", b"status code: 403", b"status code: 401"))
+                        b"repository does not exist", b"no such file", b"status code: 403", b"status code: 401",
+                        b"bucketalreadyexists", b"bucketalreadyownedbyyou", b"nosuchbucket"))
                     transient = any(marker in detail for marker in (
                         b"timeout", b"timed out", b"connection reset", b"connection refused", b"unexpected eof",
                         b"temporary failure", b"broken pipe", b"no such host", b"503 service unavailable",
@@ -315,7 +319,21 @@ class Job:
                         b"status code: 504", b"429 too many requests"))
                     network_exit = process.returncode == 1 or (args[0] == "psql" and process.returncode == 2)
                     retryable = not permanent and (process.returncode == 11 or (network_exit and transient))
-                    raise BackupError(f"{stage}: command failed (exit {process.returncode}); check connectivity, credentials and permissions",
+                    # Only fixed diagnostic text can leave this boundary; raw
+                    # provider output may contain credentials or signed URLs.
+                    hint = "check connectivity, credentials and permissions"
+                    for marker, explanation in (
+                        (b"bucketalreadyexists", "BucketAlreadyExists: use the existing OSS bucket; do not create it again"),
+                        (b"bucketalreadyownedbyyou", "BucketAlreadyOwnedByYou: use the existing OSS bucket; do not create it again"),
+                        (b"nosuchbucket", "NoSuchBucket: create the OSS bucket and verify the endpoint"),
+                        (b"invalidaccesskeyid", "InvalidAccessKeyId: verify OSS credentials"),
+                        (b"signaturedoesnotmatch", "SignatureDoesNotMatch: verify OSS credentials and endpoint"),
+                        (b"accessdenied", "AccessDenied: verify OSS bucket and object permissions"),
+                    ):
+                        if marker in detail:
+                            hint = explanation
+                            break
+                    raise BackupError(f"{stage}: command failed (exit {process.returncode}); {hint}",
                                       retryable, exit_code=process.returncode)
                 output.seek(0)
                 result = output.read(16 * MB + 1)
@@ -351,6 +369,10 @@ class Job:
                     time.sleep(min(0.5, max(0, delay_end - time.monotonic())))
 
     def restic(self, stage, args):
+        # Initialization can have committed remotely even when its reply is lost.
+        # Read back the repository instead of automatically repeating this write.
+        if args == ["init"]:
+            return self.command(stage, ["restic", "--retry-lock", "30s", *args], self.config.repository_env())
         return self.retry_command(stage, ["restic", "--retry-lock", "30s", *args], self.config.repository_env())
 
     def ensure_repository(self, explicit_init=False):
@@ -406,10 +428,21 @@ class Job:
                         raise BackupError("Repository destination contains data; refusing initialization")
                 except OSError:
                     raise BackupError("Cannot verify whether the repository destination is empty") from None
-            self.restic("Repository initialization", ["init"])
-            # Verify both the password and the created repository before recording it.
-            output = self.restic("Repository access check", ["cat", "config"])
-            initialized = True
+            try:
+                self.restic("Repository initialization", ["init"])
+            except BackupError as init_error:
+                if STOPPING or time.monotonic() >= self.deadline:
+                    raise
+                # An existing config or a lost initialization reply is safe to
+                # accept only after opening and verifying the actual repository.
+                try:
+                    output = self.restic("Repository access check", ["cat", "config"])
+                except BackupError:
+                    raise init_error from None
+            else:
+                # Verify both the password and the created repository before recording it.
+                output = self.restic("Repository access check", ["cat", "config"])
+                initialized = True
 
         try:
             metadata = json.loads(output)

@@ -77,7 +77,7 @@ services:
   backup:
     # 常规启动不启用备份；显式使用 --profile backup。
     profiles: ["backup"]
-    image: thefoolishfox1/new-api-backup:20261116-autoinit
+    image: thefoolishfox1/new-api-backup:20261116-oss-bucket-fix
     restart: unless-stopped
     init: true
     read_only: true

@@ -63,6 +63,7 @@ def main():
     password_file.write_text(secrets.token_urlsafe(32), encoding="ascii")
     pg_password = secrets.token_urlsafe(24)
     oss_secret = secrets.token_urlsafe(24)
+    oss_admin_secret = secrets.token_urlsafe(24)
     network = prefix + "-network"
     pg = prefix + "-postgres"
     minio = prefix + "-minio"
@@ -95,9 +96,12 @@ def main():
         "RCLONE_CONFIG": "/dev/null", "RCLONE_CONFIG_OSS_TYPE": "s3", "RCLONE_CONFIG_OSS_PROVIDER": "Other",
         "RCLONE_CONFIG_OSS_ENDPOINT": f"http://{minio}:9000", "RCLONE_CONFIG_OSS_ACCESS_KEY_ID": "backup-test",
         "RCLONE_CONFIG_OSS_SECRET_ACCESS_KEY": oss_secret, "RCLONE_CONFIG_OSS_FORCE_PATH_STYLE": "true",
+        "RCLONE_CONFIG_OSS_NO_CHECK_BUCKET": "true",
         "RESTIC_REPOSITORY": "rclone:oss:backups/newapi", "RESTIC_PASSWORD_FILE": "/run/secrets/restic-password",
         "RESTIC_CACHE_DIR": "/cache",
     }
+    admin_env = {"RCLONE_CONFIG_OSS_ACCESS_KEY_ID": "backup-admin",
+                 "RCLONE_CONFIG_OSS_SECRET_ACCESS_KEY": oss_admin_secret}
 
     def command(*cli, overrides=None, entrypoint=None, ok=True, detached=False,
                 state_volume=None, cache_volume=None):
@@ -237,12 +241,40 @@ def main():
         # isolated MinIO server that DNS alias/domain to exercise the same form.
         docker("run", "-d", "--name", minio, "--label", "newapi.backup.test=" + prefix, "--network", network,
                "--network-alias", "backups." + minio, "--network-alias", "absent." + minio,
-               "--user", "0", "-e", "MINIO_ROOT_USER=backup-test",
-               "-e", "MINIO_ROOT_PASSWORD=" + oss_secret, "-e", "MINIO_DOMAIN=" + minio,
+               "--user", "0", "-e", "MINIO_ROOT_USER=backup-admin",
+               "-e", "MINIO_ROOT_PASSWORD=" + oss_admin_secret, "-e", "MINIO_DOMAIN=" + minio,
                "--mount", f"type=volume,src={objects},dst=/bitnami/minio/data",
                args.minio_image)
         wait_for(lambda: docker("exec", pg, "pg_isready", "-h", "127.0.0.1", "-U", "backup", ok=False).returncode == 0, "PostgreSQL")
-        wait_for(lambda: command("mkdir", "oss:backups", entrypoint="rclone", ok=False).returncode == 0, "MinIO bucket")
+        wait_for(lambda: command("mkdir", "oss:backups", entrypoint="rclone", ok=False,
+                                 overrides={**admin_env, "RCLONE_CONFIG_OSS_NO_CHECK_BUCKET": "false"}).returncode == 0,
+                 "MinIO bucket")
+        # Match a pre-created OSS bucket with an object-scoped RAM user. The
+        # backup account must never need permission to create a bucket.
+        policy = {"Version": "2012-10-17", "Statement": [
+            {"Effect": "Allow", "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketMultipartUploads"],
+             "Resource": ["arn:aws:s3:::backups"]},
+            {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+                                             "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
+             "Resource": ["arn:aws:s3:::backups/*"]},
+            {"Effect": "Deny", "Action": ["s3:CreateBucket"], "Resource": ["arn:aws:s3:::*"]},
+        ]}
+        docker("exec", "-i", minio, "/bin/sh", "-c", "cat > /tmp/backup-policy.json",
+               input_text=json.dumps(policy))
+        # Bitnami configures its own mc as the minio user during startup. Our
+        # root-owned test client must not replace that client's config file.
+        mc = ["exec", "--env", "MC_HOST_local=http://backup-admin:" + oss_admin_secret + "@127.0.0.1:9000",
+              minio, "/opt/bitnami/minio-client/bin/mc", "--config-dir", "/tmp/backup-test-mc"]
+        docker(*mc, "admin", "user", "add", "local", "backup-test", oss_secret)
+        docker(*mc, "admin", "policy", "create", "local", "backup-objects", "/tmp/backup-policy.json")
+        docker(*mc, "admin", "policy", "attach", "local", "backup-objects", "--user", "backup-test")
+        result = command("init", entrypoint="restic", ok=False,
+                         overrides={"RESTIC_REPOSITORY": "rclone:oss:backups/bucket-check-regression",
+                                    "RCLONE_CONFIG_OSS_NO_CHECK_BUCKET": "false"})
+        checked("backup account cannot initialize when rclone attempts to create the existing bucket",
+                result.returncode != 0 and "accessdenied" in (result.stdout + result.stderr).lower())
+        checked("denied bucket creation leaves the repository prefix empty",
+                json.loads(command("lsjson", "oss:backups/bucket-check-regression", "--recursive", entrypoint="rclone").stdout) == [])
         sql("postgres", "CREATE DATABASE app; CREATE DATABASE logdb;")
         sql("app", "CREATE TABLE ledger(id integer PRIMARY KEY, note text NOT NULL, balance numeric(18,4) CHECK(balance>=0), payload bytea); "
             "INSERT INTO ledger VALUES(1,'中文附件',123.4567,decode('0001ff','hex')); CREATE INDEX ledger_note ON ledger(note);")
@@ -256,6 +288,43 @@ def main():
             "restic": command("version", entrypoint="restic").stdout.strip(),
             "rclone": command("version", entrypoint="rclone").stdout.splitlines()[0],
         }
+        # Commit a real encrypted repository, then simulate losing only init's
+        # reply. Read-back must authenticate it without another init attempt.
+        lost_reply_repository = "rclone:oss:backups/init-response-lost"
+        lost_reply_state = new_state("init-response-lost")
+        lost_reply_code = """
+import json
+import runner
+
+config = runner.Config()
+config.prepare()
+job = runner.Job(config)
+original_command = job.command
+init_calls = 0
+
+def lose_init_reply(stage, args, env=None, monitor=True):
+    global init_calls
+    if args[0] == "restic" and args[-1] == "init":
+        init_calls += 1
+        original_command(stage, args, env, monitor)
+        raise runner.BackupError("simulated lost initialization reply", retryable=True, exit_code=1)
+    return original_command(stage, args, env, monitor)
+
+job.command = lose_init_reply
+with runner.job_lock(config):
+    repository_id = job.ensure_repository()
+assert init_calls == 1, "initialization was repeated after a lost reply"
+print(json.dumps({"verified_repository_id": repository_id, "init_calls": init_calls}))
+"""
+        result = command("-c", lost_reply_code, entrypoint="python3",
+                         overrides={"BACKUP_REPOSITORY": lost_reply_repository, "BACKUP_RETRIES": "2",
+                                    "BACKUP_RETRY_DELAY_SECONDS": "1"}, **lost_reply_state)
+        verified = json.loads(result.stdout.splitlines()[-1])
+        checked("lost initialization reply is accepted only after reading the real repository",
+                verified["init_calls"] == 1 and verified["verified_repository_id"] == repository_id(lost_reply_repository))
+        recovered_snapshot = backup(overrides={"BACKUP_REPOSITORY": lost_reply_repository}, **lost_reply_state)
+        checked("repository recovered after a lost init reply accepts a real backup",
+                {item["id"] for item in snapshots(lost_reply_repository)} == {recovered_snapshot})
         first = backup()
         original_repository_id = repository_id()
         checked("first backup automatically initializes an empty repository", bool(original_repository_id))
@@ -423,11 +492,11 @@ def main():
         command("check", "--read-data", entrypoint="restic", overrides={"RESTIC_REPOSITORY": auto_repository})
         checked("repository data remains intact after initialization guard failures")
 
-        buckets_before = json.loads(command("lsjson", "oss:", "--dirs-only", entrypoint="rclone").stdout)
+        buckets_before = json.loads(command("lsjson", "oss:", "--dirs-only", entrypoint="rclone", overrides=admin_env).stdout)
         result = command("backup", overrides={"BACKUP_REPOSITORY": "rclone:oss:absent/newapi",
                                                "BACKUP_TIMEOUT_SECONDS": "20"}, ok=False, **guard_state)
         checked("missing bucket fails instead of being automatically created", result.returncode != 0)
-        buckets_after = json.loads(command("lsjson", "oss:", "--dirs-only", entrypoint="rclone").stdout)
+        buckets_after = json.loads(command("lsjson", "oss:", "--dirs-only", entrypoint="rclone", overrides=admin_env).stdout)
         checked("automatic initialization does not create a bucket",
                 {item["Name"] for item in buckets_after} == {item["Name"] for item in buckets_before})
         command("init", overrides={"BACKUP_REPOSITORY": manual_repository, "BACKUP_AUTO_INIT": "false"}, **guard_state)

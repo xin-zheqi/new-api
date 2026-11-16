@@ -11,9 +11,20 @@
 | PostgreSQL 数据库 | `postgres:5432/new-api` | 用户、令牌、渠道、额度、配置、数据库内的使用日志等 |
 | 应用文件 | `./data` → `/source/data` | 审计详情、附件、发票等实际存在的持久文件 |
 | 程序日志 | `./logs` → `/source/logs` | 文件形式的运行日志，与数据库中的使用日志不同 |
-| 部署配置 | `.env`、`docker-compose.yml` → `/source/config` | 恢复数据库账号、原应用密钥及部署方式 |
+| 部署配置 | `docker-compose.yml` → `/source/config` | 恢复数据库账号、原应用密钥及部署方式；外部配置需另加只读挂载 |
 
 额外的 Compose override、外部密钥文件、Nginx 配置、独立审计目录，应在 `backup.volumes` 中添加只读挂载到 `/source/config` 或 `/source` 的其他子目录。备份只包含实际挂载的文件，不会自动发现宿主机其他目录。
+
+备份服务的配置直接填写在 Compose 中。原 New API、PostgreSQL、Redis 服务的配置方式保持原样；如果它们仍从 `.env` 读取密码或 `SESSION_SECRET`、`CRYPTO_SECRET`，必须将现有 `.env` 也只读挂入备份，才能完整保存恢复所需配置。该挂载仅用于备份文件，不用来设置备份容器参数；全部业务配置已写在 Compose 中的部署无需挂载 `.env`。
+
+```yaml
+# 仅在业务仍使用这个现有文件时，添加到 backup.volumes。
+- type: bind
+  source: ./.env
+  target: /source/config/deploy.env
+  read_only: true
+  bind: {create_host_path: false}
+```
 
 默认不备份 Redis。作为可重建缓存时通常无需恢复；如果你另外在 Redis 中保存了不可重建的数据，需要单独设计并验证 Redis 原生备份。不要把运行中的 PostgreSQL 数据卷直接打包作为在线数据库备份。
 
@@ -33,7 +44,7 @@ scripts/backup/
 
 新容器不调用原宿主机脚本，不需要安装宿主机 Docker CLI。业务镜像与备份镜像分别构建，修改备份代码不需要重新编译 New API。
 
-默认从 Docker Hub 拉取独立镜像 `thefoolishfox1/new-api-backup:latest`，不需要在服务器编译。部署目录只需保留 Compose、`.env`、要备份的目录和密码文件，不需要复制 `scripts/backup/`。生产环境建议通过 `BACKUP_IMAGE=thefoolishfox1/new-api-backup:20261116` 固定版本；`latest` 用于跟随更新。当前发布镜像仅支持 `linux/amd64`。
+默认从 Docker Hub 拉取独立镜像 `thefoolishfox1/new-api-backup:20261116`，不需要在服务器编译。部署目录需保留 Compose、实际业务配置、要备份的目录和密码文件，不需要复制 `scripts/backup/`。镜像版本直接修改 `backup.image`；`latest` 用于跟随更新。当前发布镜像仅支持 `linux/amd64`。
 
 镜像中的 Restic、rclone 固定源码版本，并用 Go 1.26.10 编译；编译器不进入运行镜像。如需修改或自行构建，在仓库根目录执行：
 
@@ -41,41 +52,40 @@ scripts/backup/
 docker build -t thefoolishfox1/new-api-backup:local scripts/backup
 ```
 
-然后在 `.env` 设置 `BACKUP_IMAGE=thefoolishfox1/new-api-backup:local`，使用本地构建的镜像。仅这种方式需要备份源码目录；默认 Compose 不包含构建配置。
+然后将 `backup.image` 改为 `thefoolishfox1/new-api-backup:local`，使用本地构建的镜像。仅这种方式需要备份源码目录；默认 Compose 不包含构建配置。
 
 ## 首次配置
 
-如果希望全部参数直接写在 Compose 中，使用 [无需 .env 的完整模板](examples/compose.yml) 并参照 [逐项修改说明](examples/README.md)。这是独立示例，不会替换仓库原来的默认 Compose 文件。
+根目录 `docker-compose.yml` 的 `backup` 服务直接填写备份参数。另有 [全部服务均无需 .env 的完整模板](examples/compose.yml) 和 [逐项修改说明](examples/README.md)，供核对服务器配置；合并备份功能时，已有业务服务应沿用服务器原配置。
 
 灾后需要按某个快照恢复时，另有 [独立恢复模板](examples/recovery.compose.yml) 和 [恢复操作说明](examples/RECOVERY.md)，不依赖原应用、数据库或业务目录仍然存在。
 
-在部署目录的 `.env` 中填写新增的 `BACKUP_*` 配置。下面仅示意必要项，其余默认值和说明见仓库的 `.env.example`：
+修改部署文件中的 `backup.environment`，将占位符替换成实际值。例如：
 
-```dotenv
-# 启用后，正常 docker compose up -d 会同时管理备份服务。
-COMPOSE_PROFILES=backup
-
-# 生产环境建议固定版本；不设置时默认使用 latest。
-BACKUP_IMAGE=thefoolishfox1/new-api-backup:20261116
-
-# Endpoint 必须与 Bucket 所在地域相同；不填写协议、Bucket 或路径。
-BACKUP_OSS_ENDPOINT=oss-cn-hangzhou.aliyuncs.com
-BACKUP_OSS_BUCKET=your-private-backup-bucket
-BACKUP_OSS_PREFIX=newapi/production
-BACKUP_OSS_ACCESS_KEY_ID=replace-with-dedicated-ram-access-key-id
-BACKUP_OSS_ACCESS_KEY_SECRET=replace-with-dedicated-ram-access-key-secret
-
-# 不同部署必须使用不同的稳定标识，避免保留策略混在一起。
-BACKUP_HOST=newapi-production
-BACKUP_TAG=new-api-production
-BACKUP_SCHEDULE_MODE=daily
-BACKUP_TZ=Asia/Shanghai
-BACKUP_TIMES=03:30
+```yaml
+environment:
+  TZ: Asia/Shanghai
+  BACKUP_DB_HOST: postgres
+  BACKUP_DB_PORT: "5432"
+  BACKUP_DB_USER: "root"
+  BACKUP_DB_PASSWORD: "REPLACE_WITH_EXISTING_POSTGRES_PASSWORD"
+  BACKUP_DATABASES: new-api
+  BACKUP_REPOSITORY: "rclone:oss:your-private-backup-bucket/newapi/production"
+  BACKUP_OSS_ENDPOINT: "oss-cn-hangzhou.aliyuncs.com"
+  BACKUP_OSS_ACCESS_KEY_ID: "REPLACE_WITH_OSS_ACCESS_KEY_ID"
+  BACKUP_OSS_ACCESS_KEY_SECRET: "REPLACE_WITH_OSS_ACCESS_KEY_SECRET"
+  BACKUP_PASSWORD_FILE: /run/secrets/restic-password
+  BACKUP_HOST: newapi
+  BACKUP_TAG: new-api
+  BACKUP_SCHEDULE_MODE: daily
+  BACKUP_TIMES: "03:30"
 ```
 
-默认仓库地址由 Bucket 和前缀组成：`rclone:oss:<bucket>/<prefix>`。同一仓库初始化后，不要随意修改其地址、加密密码或备份身份标识。
+Endpoint 必须与 Bucket 所在地域相同。仓库地址直接填写完整的 `rclone:oss:<bucket>/<prefix>`，不会引用同一 `environment` 中的其他字段。直接配置的密码包含 `$` 时，在 Compose 中写成 `$$`。同一仓库初始化后，不要随意修改其地址、加密密码或备份身份标识。
 
-用密码管理器生成足够长的随机备份加密密码，保存为部署目录下的 `./secrets/backup/restic-password`，不带其他配置内容。该文件及其父目录应仅允许部署管理员访问，例如 Linux 上目录权限 `700`、文件权限 `600`；`.env` 也应限制为 `600`。不要把真实密码提交到 Git、写进 Dockerfile 或终端命令参数。
+这些名称是传入备份容器的环境变量；根目录模板使用直接填写的值，仅修改宿主机 `.env` 不会覆盖它们。资源限制则直接修改 `backup.cpus`、`backup.mem_limit` 等服务字段。
+
+用密码管理器生成足够长的随机备份加密密码，保存为部署目录下的 `./secrets/backup/restic-password`，不带其他配置内容。该文件及其父目录应仅允许部署管理员访问，例如 Linux 上目录权限 `700`、文件权限 `600`；含凭据的 Compose 和其他业务配置也应限制访问。不要把真实密码提交到 Git、写进 Dockerfile 或终端命令参数。
 
 **把 Restic 密码再保存一份到独立的安全位置。** 只有 OSS 数据但丢失密码时无法解密；如果恢复所需的唯一密码副本也在这个加密仓库里，就无法开始恢复。原 `SESSION_SECRET`、`CRYPTO_SECRET` 也应保留，不能在恢复时重新生成以替代原值。完整备份内包含部署配置，因此可以包含其他服务密钥，应按敏感数据管理访问权限。
 
@@ -113,45 +123,45 @@ docker compose --profile backup up -d --no-deps backup
 
 ## 配置备份计划
 
-在部署目录 `.env` 中选择一种模式；`daily` 和 `interval` 不会同时执行。
+在 `backup.environment` 中选择一种模式；`daily` 和 `interval` 不会同时执行。
 
 每天在指定时区的多个时间点备份，例如北京时间 `03:30`、`15:30`、`23:00`：
 
-```dotenv
-BACKUP_SCHEDULE_MODE=daily
-BACKUP_TZ=Asia/Shanghai
-BACKUP_TIMES=03:30,15:30,23:00
+```yaml
+TZ: Asia/Shanghai
+BACKUP_SCHEDULE_MODE: daily
+BACKUP_TIMES: "03:30,15:30,23:00"
 ```
 
-时间点以英文逗号分隔，重复时间会合并，并按时间排序。`BACKUP_TIMES` 非空时优先使用；未设置或留空时，继续读取原来的 `BACKUP_TIME`，默认 `03:30`，所以已有单时间点配置仍可使用。Compose 将 `BACKUP_TZ` 传入容器的 `TZ`；直接运行镜像时应设置 `TZ`。
+时间点以英文逗号分隔，重复时间会合并，并按时间排序。`BACKUP_TIMES` 非空时优先使用；未设置或留空时，继续读取原来的 `BACKUP_TIME`，默认 `03:30`，所以已有单时间点配置仍可使用。时区直接填写容器的 `TZ`。
 
 每天的时间点按当地日历计算。上一轮仍在运行时经过的时间点会跳过，不会积压或并发补跑。使用夏令时地区时，不存在的当地时间向后归一化；归一化后重合的时间只执行一次，秋季重复出现的当地时间只使用第一次。
 
 按固定间隔备份，例如每轮结束后等待 6 小时：
 
-```dotenv
-BACKUP_SCHEDULE_MODE=interval
-BACKUP_INTERVAL=6h
+```yaml
+BACKUP_SCHEDULE_MODE: interval
+BACKUP_INTERVAL: "6h"
 ```
 
 间隔支持正整数加单位：`30m` 表示 30 分钟，`6h` 表示 6 小时，`1d` 表示 24 小时；范围是 1 分钟至 30 天。间隔从上一轮任务**结束时**开始计算，成功和失败都遵循这一规则，因此备份耗时不包含在等待间隔中，也不会重叠执行。等待使用单调时钟，不受系统校时或时区变化影响；容器重启仍先立即备份一次，然后重新计算间隔。此模式忽略 `BACKUP_TIMES`/`BACKUP_TIME`，每天定点模式则忽略 `BACKUP_INTERVAL`。
 
 这里的“上一轮”指该调度容器执行的任务。另外运行一次手动备份不会重置正在等待的计时器；所有备份仍共用任务锁，避免同时导出。
 
-已有部署升级时，先在 `.env` 选择需要的镜像版本，再拉取并重新创建备份容器：
+已有部署升级时，先修改 `backup.image` 选择需要的镜像版本，再拉取并重新创建备份容器：
 
 ```bash
 docker compose --profile backup pull backup
 docker compose --profile backup up -d --no-deps backup
 ```
 
-之后只修改 `.env` 中的计划时，执行第二条命令即可使新配置生效，不需要重启 New API。使用 `:local` 自建镜像时，应先重新执行前面的 `docker build`，不需要执行 `pull`。
+之后只修改 `backup.environment` 中的计划时，执行第二条命令即可使新配置生效，不需要重启 New API。使用 `:local` 自建镜像时，应先重新执行前面的 `docker build`，不需要执行 `pull`。
 
 ## 数据库与资源设置
 
 默认 PostgreSQL 客户端主版本为 15，与当前 Compose 的 PostgreSQL 15 匹配。客户端不能导出比自身更新的服务端；升级数据库主版本时应先同步备份镜像并重新演练。数据库连接默认使用 Compose 内网，不需要新增公网端口。
 
-默认从现有 `POSTGRES_PASSWORD` 取得数据库密码。不同部署可配置 `BACKUP_DB_HOST`、`BACKUP_DB_PORT`、`BACKUP_DB_USER`、`BACKUP_DB_PASSWORD_FILE`、`BACKUP_DATABASES`。例如数据库服务实际名为 `postgres-lab`，就把 `BACKUP_DB_HOST` 改成 `postgres-lab`，无需改业务容器名称。多个数据库用英文逗号分隔；如果 `LOG_SQL_DSN` 指向同一实例的另一个库，也应列入。日志库位于其他服务器或使用其他数据库引擎时，需要独立任务，不能用本任务假装已覆盖。
+在 `BACKUP_DB_PASSWORD` 填写数据库现有密码；它不会自动引用其他服务或宿主机的变量。不同部署可配置 `BACKUP_DB_HOST`、`BACKUP_DB_PORT`、`BACKUP_DB_USER`、`BACKUP_DB_PASSWORD_FILE`、`BACKUP_DATABASES`。例如数据库服务实际名为 `postgres-lab`，就把 `BACKUP_DB_HOST` 改成 `postgres-lab`，无需改业务容器名称。多个数据库用英文逗号分隔；如果 `LOG_SQL_DSN` 指向同一实例的另一个库，也应列入。日志库位于其他服务器或使用其他数据库引擎时，需要独立任务，不能用本任务假装已覆盖。
 
 可使用专用导出账号，但它必须有完整导出所需的库、schema、表、序列等权限。新表、扩展、大对象和 RLS 都可能影响权限；PostgreSQL 的 `pg_read_all_data` 不会自动绕过 RLS。应以实际恢复验证证明导出完整，不能通过启用行过滤来消除权限错误。此服务不自动修改数据库权限、不导出集群级角色/表空间；恢复前应按部署配置重建账号，自定义角色及其他集群级配置需另行保存。
 
@@ -239,7 +249,7 @@ pg_restore --no-password --no-owner --no-acl \
 
 ## 备份容器放在另一台服务器
 
-可以远程连接 PostgreSQL，但 `/source` 的只读挂载只能读取备份容器所在主机的文件。仅在 `.env` 填写应用服务器地址，无法读取另一台机器的 `data`/`logs`。跨服务器部署还需要可靠的共享存储或单独的 SSH/SFTP 文件采集流程；当前默认方案更适合放在应用宿主机，将最终加密数据存入异地 OSS。
+可以远程连接 PostgreSQL，但 `/source` 的只读挂载只能读取备份容器所在主机的文件。仅在 `backup.environment` 填写应用服务器地址，无法读取另一台机器的 `data`/`logs`。跨服务器部署还需要可靠的共享存储或单独的 SSH/SFTP 文件采集流程；当前默认方案更适合放在应用宿主机，将最终加密数据存入异地 OSS。
 
 数据库跨公网连接应使用可信 CA 和服务端身份校验，优先走私网/VPN，并限制来源地址；不要为方便备份直接向公网开放数据库。OSS 仓库加密保护的是上传备份，不替代数据库传输链路保护。
 

@@ -2,7 +2,7 @@
 # 复制到干净机器的恢复目录，填写 OSS 配置，并准备密码文件和 restore-output 目录。
 services:
   restore:
-    image: thefoolishfox1/new-api-backup:20261117-temp-storage-fix
+    image: thefoolishfox1/new-api-backup:20261117-s3-backup
     command: ["snapshots"]
     # 这是一次性恢复工具，退出码代表结果，不使用“最近备份成功时间”健康检查。
     healthcheck:
@@ -19,10 +19,19 @@ services:
       - /tmp:size=64m,mode=1777
     environment:
       TZ: Asia/Shanghai
-      BACKUP_REPOSITORY: "rclone:oss:REPLACE_WITH_OSS_BUCKET/newapi/production"
-      BACKUP_OSS_ENDPOINT: "oss-cn-hangzhou.aliyuncs.com"
-      BACKUP_OSS_ACCESS_KEY_ID: "REPLACE_WITH_OSS_ACCESS_KEY_ID"
-      BACKUP_OSS_ACCESS_KEY_SECRET: "REPLACE_WITH_OSS_ACCESS_KEY_SECRET"
+      BACKUP_REPOSITORY: "rclone:s3:REPLACE_WITH_S3_BUCKET/newapi/production"
+      # MinIO S3 API endpoint; use the API port (usually 9000), not console 9001.
+      BACKUP_S3_PROVIDER: "Minio"
+      BACKUP_S3_ENDPOINT: "https://minio.example.com"
+      BACKUP_S3_REGION: "us-east-1"
+      BACKUP_S3_FORCE_PATH_STYLE: "true"
+      BACKUP_S3_ACCESS_KEY_ID: "REPLACE_WITH_S3_ACCESS_KEY_ID"
+      BACKUP_S3_ACCESS_KEY_SECRET: "REPLACE_WITH_S3_ACCESS_KEY_SECRET"
+      # Set true only for an explicitly chosen HTTP endpoint on a trusted network.
+      BACKUP_ALLOW_INSECURE_S3: "false"
+      # Alibaba OSS: provider Alibaba, endpoint oss-cn-shenzhen.aliyuncs.com,
+      # region cn-shenzhen, force_path_style false, plus the OSS credentials.
+      # Existing rclone:oss: repositories with BACKUP_OSS_* remain supported.
       BACKUP_PASSWORD_FILE: /run/secrets/restic-password
       # 恢复只允许打开已有仓库，不负责创建新仓库。
       BACKUP_AUTO_INIT: "false"

@@ -79,6 +79,11 @@ class RunnerTests(unittest.TestCase):
             {"BACKUP_TIME": "25:00"},
             {"TZ": "Unknown/Zone"},
             {"BACKUP_TAG": "one,two"},
+            {"BACKUP_TEMP_DIR": "relative-temp"},
+            {"BACKUP_TEMP_DIR": str(self.config.source / "temp")},
+            {"BACKUP_TEMP_DIR": str(self.config.state / "temp")},
+            {"BACKUP_TEMP_DIR": str(self.config.cache / "temp")},
+            {"BACKUP_TEMP_DIR": str(self.root)},
         ]
         for override in cases:
             with self.subTest(override=override), self.assertRaises(runner.BackupError):
@@ -120,11 +125,83 @@ class RunnerTests(unittest.TestCase):
             pass
 
     def test_restic_temporary_packs_use_guarded_cache_instead_of_small_tmpfs(self):
-        config = runner.Config(self.env | {"TMPDIR": "/tmp"})
+        config = runner.Config(self.env | {"TMPDIR": "/tmp", "RESTIC_PROGRESS_FPS": "60"})
         env = config.repository_env()
         self.assertEqual(env["TMPDIR"], str(config.cache))
         self.assertEqual(env["RESTIC_CACHE_DIR"], str(config.cache))
         self.assertNotEqual(env["TMPDIR"], str(config.source))
+        self.assertEqual(env["RESTIC_PROGRESS_FPS"], "0")
+
+    def test_optional_temporary_directory_is_prepared_without_changing_cache_or_dumps(self):
+        target = self.root / "restic-tmp"
+        config = runner.Config(self.env | {"BACKUP_TEMP_DIR": str(target)})
+        config.prepare()
+        self.assertTrue(target.is_dir())
+        self.assertEqual(config.repository_env()["TMPDIR"], str(target))
+        self.assertEqual(config.repository_env()["RESTIC_CACHE_DIR"], str(self.config.cache))
+        self.assertEqual(config.state, self.config.state)
+        with self.assertRaises(runner.BackupError):
+            runner.Config(self.env | {"BACKUP_TEMP_DIR": str(target), "BACKUP_REPOSITORY": str(target / "repo")}).repository_env()
+
+    def test_s3_minio_configuration_uses_declared_endpoint_credentials_and_path_style(self):
+        env = self.env | {
+            "BACKUP_REPOSITORY": "rclone:s3:backup-bucket/new-api",
+            "BACKUP_S3_ENDPOINT": "https://minio.example.com",
+            "BACKUP_S3_ACCESS_KEY_ID": "test-minio-access",
+            "BACKUP_S3_ACCESS_KEY_SECRET": "test-minio-secret",
+        }
+        config = runner.Config(env)
+        mapped = config.repository_env()
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_TYPE"], "s3")
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_PROVIDER"], "Minio")
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_ENDPOINT"], env["BACKUP_S3_ENDPOINT"])
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_ACCESS_KEY_ID"], "test-minio-access")
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_SECRET_ACCESS_KEY"], "test-minio-secret")
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_REGION"], "us-east-1")
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_FORCE_PATH_STYLE"], "true")
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_NO_CHECK_BUCKET"], "true")
+        runner.write_status(config, {"identity": config.identity(), "success_at": runner.utcnow(), "state": "success"})
+        self.assertTrue(runner.health(config))
+        changed = runner.Config(env | {"BACKUP_S3_ENDPOINT": "https://other-minio.example.com"})
+        self.assertFalse(runner.health(changed))
+
+    def test_s3_provider_switch_and_insecure_endpoint_are_explicit(self):
+        env = self.env | {
+            "BACKUP_REPOSITORY": "rclone:s3:backup-bucket/new-api",
+            "BACKUP_S3_ENDPOINT": "https://oss-cn-shenzhen.aliyuncs.com",
+            "BACKUP_S3_ACCESS_KEY_ID": "test-access",
+            "BACKUP_S3_ACCESS_KEY_SECRET": "test-secret",
+            "BACKUP_S3_PROVIDER": "Alibaba",
+            "BACKUP_S3_FORCE_PATH_STYLE": "false",
+            "BACKUP_S3_REGION": "cn-shenzhen",
+        }
+        mapped = runner.Config(env).repository_env()
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_PROVIDER"], "Alibaba")
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_FORCE_PATH_STYLE"], "false")
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_REGION"], "cn-shenzhen")
+        for override in ({"BACKUP_S3_PROVIDER": "Typo"}, {"BACKUP_S3_FORCE_PATH_STYLE": "maybe"},
+                         {"BACKUP_S3_ENDPOINT": "http://minio:9000"},
+                         {"BACKUP_S3_ENDPOINT": "https://minio.example.com/path"},
+                         {"BACKUP_REPOSITORY": "rclone:s3:backup-bucket"}):
+            with self.subTest(override=override), self.assertRaises(runner.BackupError):
+                runner.Config(env | override).repository_env()
+        mapped = runner.Config(env | {"BACKUP_S3_ENDPOINT": "http://minio:9000", "BACKUP_ALLOW_INSECURE_S3": "true"}).repository_env()
+        self.assertEqual(mapped["RCLONE_CONFIG_S3_ENDPOINT"], "http://minio:9000")
+
+    def test_s3_initialization_requires_positive_empty_destination_check(self):
+        config = runner.Config(self.env | {
+            "BACKUP_REPOSITORY": "rclone:s3:backup-bucket/new-api",
+            "BACKUP_S3_ENDPOINT": "https://minio.example.com",
+            "BACKUP_S3_ACCESS_KEY_ID": "test-access",
+            "BACKUP_S3_ACCESS_KEY_SECRET": "test-secret",
+        })
+        with mock.patch.object(runner.Job, "restic", side_effect=[
+            runner.BackupError("Repository missing", exit_code=10), "initialized", json.dumps({"id": REPOSITORY}),
+        ]) as repository, mock.patch.object(runner.Job, "retry_command", return_value="[]") as listing, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.Job(config).ensure_repository(), REPOSITORY)
+        self.assertEqual(listing.call_args.args[1][:3], ["rclone", "lsjson", "s3:backup-bucket/new-api"])
+        self.assertIn(["init"], [call.args[1] for call in repository.call_args_list])
 
     def test_backup_requires_recovery_configuration(self):
         for path in (self.config.source / "config").iterdir():
@@ -165,6 +242,8 @@ class RunnerTests(unittest.TestCase):
 
         def restic(stage, args):
             if args[0] == "backup":
+                self.assertIn("--quiet", args)
+                self.assertEqual(args[args.index("--group-by") + 1], "host,tags")
                 work = Path(args[-2])
                 captured.update(json.loads((work / "manifest.json").read_text()))
             return self.fake_restic(stage, args)

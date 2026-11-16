@@ -103,7 +103,7 @@ services:
   # Startup reuses a valid repository or initializes a confirmed empty destination.
   backup:
     profiles: ["backup"]
-    image: thefoolishfox1/new-api-backup:20261117-temp-storage-fix
+    image: thefoolishfox1/new-api-backup:20261117-s3-backup
     restart: unless-stopped
     init: true
     read_only: true
@@ -129,14 +129,23 @@ services:
       # BACKUP_DATABASES: "new-api,new-api-log"
 
       # Endpoint must match the bucket region. Fill the complete repository path.
-      BACKUP_REPOSITORY: "rclone:oss:REPLACE_WITH_OSS_BUCKET/newapi/production"
+      BACKUP_REPOSITORY: "rclone:s3:REPLACE_WITH_S3_BUCKET/newapi/production"
       BACKUP_PASSWORD_FILE: /run/secrets/restic-password
       # First initialization of an empty shared repository uses one bootstrap node.
       # Existing repositories are verified/reused on redeployment; false disables auto-init.
       BACKUP_AUTO_INIT: "true"
-      BACKUP_OSS_ENDPOINT: "oss-cn-hangzhou.aliyuncs.com"
-      BACKUP_OSS_ACCESS_KEY_ID: "REPLACE_WITH_OSS_ACCESS_KEY_ID"
-      BACKUP_OSS_ACCESS_KEY_SECRET: "REPLACE_WITH_OSS_ACCESS_KEY_SECRET"
+      # MinIO S3 API endpoint; use the API port (usually 9000), not console 9001.
+      BACKUP_S3_PROVIDER: "Minio"
+      BACKUP_S3_ENDPOINT: "https://minio.example.com"
+      BACKUP_S3_REGION: "us-east-1"
+      BACKUP_S3_FORCE_PATH_STYLE: "true"
+      BACKUP_S3_ACCESS_KEY_ID: "REPLACE_WITH_S3_ACCESS_KEY_ID"
+      BACKUP_S3_ACCESS_KEY_SECRET: "REPLACE_WITH_S3_ACCESS_KEY_SECRET"
+      # Set true only for an explicitly chosen HTTP endpoint on a trusted network.
+      BACKUP_ALLOW_INSECURE_S3: "false"
+      # Alibaba OSS: provider Alibaba, endpoint oss-cn-shenzhen.aliyuncs.com,
+      # region cn-shenzhen, force_path_style false, plus the OSS credentials.
+      # Existing rclone:oss: repositories with BACKUP_OSS_* remain supported.
       # Keep these identifiers stable after the first successful backup.
       BACKUP_HOST: newapi
       BACKUP_TAG: new-api

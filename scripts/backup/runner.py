@@ -76,6 +76,14 @@ class Config:
                 raise BackupError("Backup writable directories must be outside sources")
         if self.state == self.cache or self.state in self.cache.parents or self.cache in self.state.parents:
             raise BackupError("State and cache directories must be separate")
+        temp_path = self.env.get("BACKUP_TEMP_DIR", str(self.cache))
+        if not Path(temp_path).is_absolute():
+            raise BackupError("BACKUP_TEMP_DIR must be an absolute directory")
+        self.temp = Path(temp_path).resolve()
+        if self.temp != self.cache:
+            for directory in (self.state, self.cache, self.source):
+                if self.temp == directory or self.temp in directory.parents or directory in self.temp.parents:
+                    raise BackupError("BACKUP_TEMP_DIR must be separate from state, cache and sources, or equal the cache directory")
         self.timeout = integer(self.env, "BACKUP_TIMEOUT_SECONDS", 7200, maximum=86400)
         self.retries = integer(self.env, "BACKUP_RETRIES", 2, minimum=0, maximum=5)
         self.retry_delay = integer(self.env, "BACKUP_RETRY_DELAY_SECONDS", 10, maximum=300)
@@ -132,34 +140,56 @@ class Config:
         self.auto_init = auto_init == "true"
 
     def prepare(self):
-        for path in (self.state, self.cache):
+        for path in (self.state, self.cache, self.temp):
             path.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     def repository_env(self):
         env = dict(self.env)
         repository = env.get("BACKUP_REPOSITORY", "")
-        if repository.startswith("rclone:oss:"):
-            if not re.fullmatch(r"rclone:oss:[a-z0-9][a-z0-9.-]+/[^\s:]+", repository):
-                raise BackupError("BACKUP_REPOSITORY requires an OSS bucket and dedicated prefix")
-            endpoint = env.get("BACKUP_OSS_ENDPOINT", "")
+        if repository.startswith(("rclone:oss:", "rclone:s3:")):
+            remote = repository.split(":", 2)[1]
+            config_prefix = "BACKUP_" + remote.upper()
+            rclone_prefix = "RCLONE_CONFIG_" + remote.upper()
+            if not re.fullmatch(r"rclone:" + remote + r":[a-z0-9][a-z0-9.-]+/[^\s:]+", repository):
+                raise BackupError(f"BACKUP_REPOSITORY requires an {remote.upper()} bucket and dedicated prefix")
+            endpoint = env.get(config_prefix + "_ENDPOINT", "")
             if endpoint.startswith("http://"):
-                if env.get("BACKUP_ALLOW_INSECURE_OSS") != "true":
-                    raise BackupError("HTTP OSS endpoint is disabled; use HTTPS")
+                if env.get("BACKUP_ALLOW_INSECURE_" + remote.upper()) != "true":
+                    raise BackupError(f"HTTP {remote.upper()} endpoint is disabled; use HTTPS")
                 endpoint = endpoint.removeprefix("http://")
             if not re.fullmatch(r"(?:https://)?[a-zA-Z0-9.-]+(?::[0-9]+)?", endpoint):
-                raise BackupError("Invalid BACKUP_OSS_ENDPOINT")
-            if env.get("BACKUP_OSS_ENDPOINT", "").startswith("http://"):
+                raise BackupError(f"Invalid {config_prefix}_ENDPOINT")
+            if env.get(config_prefix + "_ENDPOINT", "").startswith("http://"):
                 endpoint = "http://" + endpoint
+            provider = "Alibaba"
+            if remote == "s3":
+                provider = env.get("BACKUP_S3_PROVIDER", "Minio")
+                if provider not in ("Minio", "Alibaba", "AWS", "Other"):
+                    raise BackupError("BACKUP_S3_PROVIDER must be Minio, Alibaba, AWS or Other")
+                region = env.get("BACKUP_S3_REGION", "us-east-1")
+                if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9-]*", region):
+                    raise BackupError("Invalid BACKUP_S3_REGION")
+                path_style = env.get("BACKUP_S3_FORCE_PATH_STYLE", "true").strip().lower()
+                if path_style not in ("true", "false"):
+                    raise BackupError("BACKUP_S3_FORCE_PATH_STYLE must be true or false")
+                env.update({
+                    rclone_prefix + "_REGION": region,
+                    rclone_prefix + "_FORCE_PATH_STYLE": path_style,
+                    # Explicit keys and normal TLS verification are required;
+                    # do not inherit an instance role or disable certificate checks.
+                    rclone_prefix + "_ENV_AUTH": "false",
+                    "RCLONE_NO_CHECK_CERTIFICATE": "false",
+                })
             env.update({
-                "RCLONE_CONFIG_OSS_TYPE": "s3",
-                "RCLONE_CONFIG_OSS_PROVIDER": "Alibaba",
-                "RCLONE_CONFIG_OSS_ENDPOINT": endpoint,
-                "RCLONE_CONFIG_OSS_ACCESS_KEY_ID": secret(env, "BACKUP_OSS_ACCESS_KEY_ID"),
-                "RCLONE_CONFIG_OSS_SECRET_ACCESS_KEY": secret(env, "BACKUP_OSS_ACCESS_KEY_SECRET"),
+                rclone_prefix + "_TYPE": "s3",
+                rclone_prefix + "_PROVIDER": provider,
+                rclone_prefix + "_ENDPOINT": endpoint,
+                rclone_prefix + "_ACCESS_KEY_ID": secret(env, config_prefix + "_ACCESS_KEY_ID"),
+                rclone_prefix + "_SECRET_ACCESS_KEY": secret(env, config_prefix + "_ACCESS_KEY_SECRET"),
                 # Buckets are provisioned by the operator. Alibaba may reject
                 # CreateBucket even for an existing accessible bucket.
-                "RCLONE_CONFIG_OSS_NO_CHECK_BUCKET": "true",
-                "RCLONE_CONFIG_OSS_UPLOAD_CONCURRENCY": "2",
+                rclone_prefix + "_NO_CHECK_BUCKET": "true",
+                rclone_prefix + "_UPLOAD_CONCURRENCY": "2",
                 "RCLONE_CONFIG": "/dev/null",
                 "RCLONE_BWLIMIT": env.get("BACKUP_BW_LIMIT", "8M"),
                 "RCLONE_RETRIES": "1",
@@ -168,10 +198,10 @@ class Config:
                 "RCLONE_TIMEOUT": "60s",
             })
         elif not Path(repository).is_absolute():
-            raise BackupError("BACKUP_REPOSITORY must be rclone:oss:bucket/prefix or an absolute local path")
+            raise BackupError("BACKUP_REPOSITORY must be rclone:oss:bucket/prefix, rclone:s3:bucket/prefix or an absolute local path")
         else:
             repo_path = Path(repository).resolve()
-            for directory in (self.state, self.cache, self.source):
+            for directory in (self.state, self.cache, self.source, self.temp):
                 if repo_path == directory or directory in repo_path.parents or repo_path in directory.parents:
                     raise BackupError("Local repository must be separate from state, cache and sources")
         password_file = env.get("BACKUP_PASSWORD_FILE", "/run/secrets/restic-password")
@@ -184,9 +214,11 @@ class Config:
             "RESTIC_REPOSITORY": repository,
             "RESTIC_PASSWORD_FILE": password_file,
             "RESTIC_CACHE_DIR": str(self.cache),
-            # Concurrent Restic packs can exceed the small /tmp tmpfs. Keep
-            # temporary encrypted packs on the guarded, disk-backed cache volume.
-            "TMPDIR": str(self.cache),
+            # Default to disk; a separately mounted tmpfs can be explicitly selected.
+            "TMPDIR": str(self.temp),
+            # Combined with --quiet, suppress periodic JSON without losing the
+            # final summary. Otherwise long jobs can exhaust captured output.
+            "RESTIC_PROGRESS_FPS": "0",
             "GOMAXPROCS": env.get("GOMAXPROCS", "2"),
         })
         # Prevent inherited Restic options from overriding the declared repository/password.
@@ -196,7 +228,9 @@ class Config:
         return env
 
     def identity(self):
-        value = [self.env.get("BACKUP_REPOSITORY", ""), self.env.get("BACKUP_OSS_ENDPOINT", "").lower(),
+        repository = self.env.get("BACKUP_REPOSITORY", "")
+        endpoint_name = "BACKUP_S3_ENDPOINT" if repository.startswith("rclone:s3:") else "BACKUP_OSS_ENDPOINT"
+        value = [repository, self.env.get(endpoint_name, "").lower(),
                  self.host, self.tag, self.env.get("BACKUP_DB_HOST", "postgres"),
                  self.env.get("BACKUP_DB_PORT", "5432"), self.env.get("BACKUP_DB_USER", "root"),
                  self.env.get("BACKUP_DATABASES", "new-api"), str(self.source)]
@@ -391,8 +425,9 @@ class Job:
         config = self.config
         env = config.repository_env()
         repository = env["RESTIC_REPOSITORY"]
+        endpoint_name = "BACKUP_S3_ENDPOINT" if repository.startswith("rclone:s3:") else "BACKUP_OSS_ENDPOINT"
         location = hashlib.sha256(json.dumps([
-            repository, config.env.get("BACKUP_OSS_ENDPOINT", "").lower()
+            repository, config.env.get(endpoint_name, "").lower()
         ]).encode()).hexdigest()
         pin_file = config.state / "repository.json"
         try:
@@ -417,7 +452,7 @@ class Job:
                     raise BackupError("Repository is not initialized; run init or enable BACKUP_AUTO_INIT") from None
                 if pin or self.previous_status.get("repository_used") or self.previous_status.get("success_at"):
                     raise BackupError("A previously used repository is missing; refusing automatic recreation") from None
-            if repository.startswith("rclone:oss:"):
+            if repository.startswith(("rclone:oss:", "rclone:s3:")):
                 listing = self.retry_command("Repository destination check", [
                     "rclone", "lsjson", repository.removeprefix("rclone:"),
                     "--max-depth", "1", "--no-mimetype", "--no-modtime"
@@ -524,6 +559,7 @@ class Job:
                 part = self.work / f"database-{index:03d}.dump.part"
                 dump = part.with_suffix("")
                 started = utcnow()
+                print(json.dumps({"state": "exporting", "database_index": index, "at": started}), flush=True)
                 self.command("PostgreSQL export", ["pg_dump", "--no-password", "--format=custom", "--compress=1", "--lock-wait-timeout=10s", "--file", str(part), "--dbname", database], database_env)
                 self.command("PostgreSQL dump TOC check", ["pg_restore", "--list", str(part)])
                 part.replace(dump)
@@ -537,9 +573,13 @@ class Job:
                 manifest["databases"].append({"name": database, "file": dump.name, "sha256": digest,
                                               "bytes": dump.stat().st_size, "started_at": started,
                                               "finished_at": utcnow(), "server_version_num": int(server)})
+                print(json.dumps({"state": "exported", "database_index": index,
+                                  "bytes": dump.stat().st_size, "at": utcnow()}), flush=True)
             manifest["dump_finished_at"] = utcnow()
             (self.work / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
-            output = self.restic("Encrypted repository backup", ["backup", "--json", "--host", config.host, "--tag", config.tag,
+            print(json.dumps({"state": "uploading", "at": utcnow()}), flush=True)
+            output = self.restic("Encrypted repository backup", ["backup", "--json", "--quiet", "--group-by", "host,tags",
+                                 "--host", config.host, "--tag", config.tag,
                                  str(self.work), str(config.source)])
             snapshots = []
             for line in output.splitlines():
@@ -551,6 +591,7 @@ class Job:
                     snapshots.append(item["snapshot_id"])
             if len(snapshots) != 1 or not re.fullmatch(r"[0-9a-f]{8,64}", snapshots[0]):
                 raise BackupError("Backup completed without a unique snapshot receipt")
+            print(json.dumps({"state": "verifying", "at": utcnow()}), flush=True)
             receipt = json.loads(self.restic("Snapshot receipt verification", ["snapshots", "--json", snapshots[0]]))
             if len(receipt) != 1 or not receipt[0]["id"].startswith(snapshots[0]) or receipt[0].get("hostname") != config.host or config.tag not in receipt[0].get("tags", []):
                 raise BackupError("Snapshot receipt does not match this backup")
@@ -681,7 +722,7 @@ def main(argv=None):
             if not destination.is_absolute() or destination.exists() or destination.is_symlink():
                 raise BackupError("Restore destination must be an absolute, nonexisting directory")
             destination = destination.resolve()
-            for directory in (config.source, config.state, config.cache):
+            for directory in (config.source, config.state, config.cache, config.temp):
                 if destination == directory or directory in destination.parents or destination in directory.parents:
                     raise BackupError("Restore destination must be separate from live sources/state/cache")
             repository = config.env.get("BACKUP_REPOSITORY", "")

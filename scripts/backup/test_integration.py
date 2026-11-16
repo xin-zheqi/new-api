@@ -48,6 +48,7 @@ def main():
     parser.add_argument("--image", default="newapi-backup:test")
     parser.add_argument("--postgres-image", default="postgres:15")
     parser.add_argument("--minio-image", default="bitnamilegacy/minio:2024.6.13")
+    parser.add_argument("--storage-provider", choices=("alibaba", "minio", "s3-alibaba"), default="alibaba")
     args = parser.parse_args()
     prefix = "newapi-backup-it-" + secrets.token_hex(5)
     root = Path(__file__).resolve().parents[2] / ".local-tests" / prefix
@@ -57,6 +58,8 @@ def main():
         directory.mkdir(parents=True)
     marker = "private-fixture-" + secrets.token_hex(24)
     (source / "data" / "attachment.txt").write_text("附件内容 " + marker, encoding="utf-8")
+    removed_file = source / "data" / "removed-after-first.txt"
+    removed_file.write_text("present only in the first snapshot", encoding="utf-8")
     (source / "logs" / "application.log").write_text("test log\n", encoding="utf-8")
     (source / "config" / "deploy.env").write_text("SESSION_SECRET=" + marker, encoding="utf-8")
     password_file = root / "restic-password"
@@ -74,7 +77,7 @@ def main():
     containers = []
     volumes = []
     network_created = False
-    report = {"image": args.image, "workspace": str(root), "checks": []}
+    report = {"image": args.image, "storage_provider": args.storage_provider, "workspace": str(root), "checks": []}
 
     def checked(name, condition=True):
         if not condition:
@@ -107,6 +110,16 @@ def main():
                 state_volume=None, cache_volume=None):
         effective = rclone_env if entrypoint == "restic" or entrypoint == "rclone" else env
         effective = {**effective, **(overrides or {})}
+        if args.storage_provider != "alibaba" and entrypoint not in ("restic", "rclone"):
+            # Run the same safety contracts through the generic S3 configuration.
+            # Raw inspection keeps its own alias but reads the identical objects.
+            effective["BACKUP_REPOSITORY"] = effective["BACKUP_REPOSITORY"].replace("rclone:oss:", "rclone:s3:", 1)
+            for name in ("ENDPOINT", "ACCESS_KEY_ID", "ACCESS_KEY_SECRET"):
+                effective["BACKUP_S3_" + name] = effective.pop("BACKUP_OSS_" + name)
+            effective.pop("BACKUP_ALLOW_INSECURE_OSS", None)
+            effective.pop("RCLONE_CONFIG_OSS_FORCE_PATH_STYLE", None)
+            effective.update({"BACKUP_S3_PROVIDER": "Minio" if args.storage_provider == "minio" else "Alibaba", "BACKUP_S3_REGION": "us-east-1",
+                              "BACKUP_S3_FORCE_PATH_STYLE": "true", "BACKUP_ALLOW_INSECURE_S3": "true"})
         name = prefix + "-job-" + secrets.token_hex(3)
         containers.append(name)
         options = ["run", *( ["-d", "--init"] if detached else ["--rm"]), "--name", name,
@@ -114,6 +127,8 @@ def main():
                    "--network", network, "--read-only", "--cap-drop", "ALL",
                    "--security-opt", "no-new-privileges:true", "--tmpfs", "/tmp:size=64m,mode=1777",
                    "--memory", "512m", "--cpus", "0.5"]
+        if effective.get("BACKUP_TEMP_DIR") == "/restic-tmp":
+            options += ["--tmpfs", "/restic-tmp:size=256m,mode=0700"]
         for key, value in effective.items():
             options += ["-e", key + "=" + value]
         for mount in (
@@ -339,6 +354,16 @@ print(json.dumps({"verified_repository_id": repository_id, "init_calls": init_ca
             command("restore-files", capacity_snapshot, "/restore/pack-capacity", overrides=capacity_settings, **capacity_state)
             checked("large pack staging preserves restored file bytes",
                     hashlib.sha256((restore / "pack-capacity" / "source" / "data" / capacity_file.name).read_bytes()).hexdigest() == capacity_hash)
+            memory_repository = "rclone:oss:backups/memory-pack-capacity"
+            memory_state = new_state("memory-pack-capacity")
+            memory_settings = {**capacity_settings, "BACKUP_REPOSITORY": memory_repository,
+                               "BACKUP_TEMP_DIR": "/restic-tmp", "RESTIC_PROGRESS_FPS": "60"}
+            memory_snapshot = backup(overrides=memory_settings, **memory_state)
+            checked("160 MiB backup succeeds with a dedicated memory staging mount",
+                    memory_snapshot in {item["id"] for item in snapshots(memory_repository)})
+            command("restore-files", memory_snapshot, "/restore/memory-pack-capacity", overrides=memory_settings, **memory_state)
+            checked("memory pack staging preserves restored file bytes",
+                    hashlib.sha256((restore / "memory-pack-capacity" / "source" / "data" / capacity_file.name).read_bytes()).hexdigest() == capacity_hash)
         finally:
             capacity_file.unlink()
         first = backup()
@@ -364,11 +389,17 @@ print(json.dumps({"verified_repository_id": repository_id, "init_calls": init_ca
                args.image, "-c", inspect_code, marker)
         checked("object storage contains no fixture secret plaintext")
         (source / "data" / "attachment.txt").write_text("second version", encoding="utf-8")
+        # Parent reuse must still scan the current tree and record deletions.
+        removed_file.unlink()
         sql("app", "INSERT INTO ledger VALUES(2,'second',0.0000,decode('abcd','hex'));")
         second_files = files_digest(source)
         second_rows = {**initial_rows, "app": sql("app", query)}
         second = backup()
-        checked("changed backup retains first snapshot", {item["id"] for item in snapshots()} == {first, second})
+        second_snapshots = snapshots()
+        checked("changed backup retains first snapshot", {item["id"] for item in second_snapshots} == {first, second})
+        checked("changed backup reuses the first snapshot despite a different export directory",
+                next(item for item in second_snapshots if item["id"] == second).get("parent") == first)
+        # Exact file-tree comparison also rejects resurrecting removed_file.
         restore_and_compare(second, "second", second_files, second_rows)
         result = command("backup", overrides={"BACKUP_DB_PASSWORD": "wrong-local-password"}, ok=False)
         checked("database authentication failure fails backup", result.returncode != 0)

@@ -2,23 +2,38 @@
 
 可以按快照 ID 恢复某个备份。文件恢复与数据库导入是两步：`restore-files` 先下载并校验选定快照，再把其中的 PostgreSQL 导出导入一个全新数据库。下面的流程不覆盖正在运行的数据库或 `data`，也不自动切换线上流量。
 
-被攻击后应在可信的干净机器上恢复。前提是 OSS 中仍保留所需快照，并且你独立保存了正确的 Restic 加密密码；备份账号如果也被盗且快照已被删除，仅靠恢复工具不能找回它们。应提前演练一次，并保留仓库地址、`BACKUP_HOST`/`BACKUP_TAG` 和密码副本。
+被攻击后应在可信的干净机器上恢复。前提是 MinIO、阿里云 OSS 等对象存储中仍保留所需快照，并且你独立保存了正确的 Restic 加密密码；备份账号如果也被盗且快照已被删除，仅靠恢复工具不能找回它们。应提前演练一次，并保留仓库地址、`BACKUP_HOST`/`BACKUP_TAG` 和密码副本。
 
 ## 1. 准备独立恢复目录
 
 在有 Docker Compose 的 Linux 机器上新建专用目录，把本目录的 `recovery.compose.yml` 复制进去。它只启动恢复工具，不要求原来的应用、数据库、`data` 或 `logs` 目录存在。
 
-恢复模板使用 `thefoolishfox1/new-api-backup:20261117-temp-storage-fix`。自动初始化仅适用于备份任务；这里的 `snapshots`、`check`、`restore-files` 不会创建仓库。新机器只需正确连接已有仓库，不需要先执行 `init`。找不到仓库、密码错误或本地身份记录不匹配时，应核对原地址、权限、密码及仓库迁移情况，不要通过创建空仓库来继续恢复。
+恢复模板使用 `thefoolishfox1/new-api-backup:20261117-s3-backup`，默认以统一 S3 配置连接 MinIO。自动初始化仅适用于备份任务；这里的 `snapshots`、`check`、`restore-files` 不会创建仓库。新机器只需正确连接已有仓库，不需要先执行 `init`。找不到仓库、密码错误或本地身份记录不匹配时，应核对原地址、权限、密码及仓库迁移情况，不要通过创建空仓库来继续恢复。
 
 ```bash
 mkdir -p newapi-recovery
 cd newapi-recovery
-# 将 recovery.compose.yml 复制到这里，然后填写其中的 OSS 参数及原 HOST/TAG。
+# 将 recovery.compose.yml 复制到这里，然后填写其中的对象存储参数及原 HOST/TAG。
 mkdir -p secrets/backup restore-output
 chmod 700 secrets secrets/backup restore-output
 ```
 
 把独立保存的备份加密密码写入 `secrets/backup/restic-password`，文件只含密码正文，权限设为 `600`。不要在命令参数、终端历史里直接填写真实密码。配置中的 AccessKey 可以换成新的恢复账号，但必须有读取仓库及处理仓库锁所需的权限。YAML 中的密码若含 `$`，写成 `$$`。
+
+存储字段直接填写在 `restore.environment`，不需要 `.env`。`BACKUP_REPOSITORY` 必须指向**原有仓库或完整副本**：
+
+| 字段 | MinIO | 阿里云 OSS |
+| --- | --- | --- |
+| `BACKUP_REPOSITORY` | `rclone:s3:原桶/原前缀` | `rclone:s3:原桶/原前缀` |
+| `BACKUP_S3_PROVIDER` | `Minio` | `Alibaba` |
+| `BACKUP_S3_ENDPOINT` | 实际 S3 API 地址，如 `https://minio.example.com` | 桶地域地址，如 `oss-cn-shenzhen.aliyuncs.com` |
+| `BACKUP_S3_REGION` | 按服务配置，默认 `us-east-1` | 示例 `cn-shenzhen` |
+| `BACKUP_S3_FORCE_PATH_STYLE` | `true` | `false` |
+| `BACKUP_S3_ACCESS_KEY_ID` / `BACKUP_S3_ACCESS_KEY_SECRET` | 该仓库恢复账号 | 该仓库恢复账号 |
+
+MinIO 通常使用 API 端口 `9000`，不要填写控制台 `9001`。HTTP 地址需显式设置 `BACKUP_ALLOW_INSECURE_S3: "true"`，仅用于已确认可信的网络；HTTPS 保持证书校验。旧 `rclone:oss:` 仓库仍可搭配原 `BACKUP_OSS_*` 使用，无需更改仓库中的任何对象。
+
+`storage-aliyun.compose.yml` 是针对备份服务 `backup` 的覆盖文件，不能直接套在本恢复模板的 `restore` 服务上；请按上表直接修改 `restore.environment`。从 OSS 切换到空的 MinIO 不会带来旧快照。恢复旧数据必须连接原仓库或已完整复制、保留原密码的仓库，不能靠 `init`、删除状态卷或强制解锁使空仓库拥有历史备份。
 
 ```bash
 chmod 600 secrets/backup/restic-password recovery.compose.yml

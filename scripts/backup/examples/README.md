@@ -1,6 +1,6 @@
 # 不使用 .env 的完整 Compose 模板
 
-`compose.yml` 包含 New API、PostgreSQL 15、Redis、备份容器四个服务，参数直接填写在 YAML 中；没有 `.env` 挂载，也没有依赖 `.env` 的变量表达式。备份镜像使用 `thefoolishfox1/new-api-backup:20261116-oss-bucket-fix`，默认启用 `BACKUP_AUTO_INIT: "true"`。
+`compose.yml` 包含 New API、PostgreSQL 15、Redis、备份容器四个服务，参数直接填写在 YAML 中；没有 `.env` 挂载，也没有依赖 `.env` 的变量表达式。备份镜像使用 `thefoolishfox1/new-api-backup:20261117-temp-storage-fix`，默认启用 `BACKUP_AUTO_INIT: "true"`。
 
 根目录 `docker-compose.yml` 同样已采用直接填写方式，默认服务名为 `new-api`、`postgres`、`redis`；本示例使用 lab 服务名并显式复用已有卷和网络，方便对照之前的服务器部署。在已经运行的服务器上，主要合并 `backup` 服务和 `backup_state`、`backup_cache` 两个卷；其他配置值以服务器原文件为准。若使用共享密码别名，也需合并顶部 `x-credentials`，或将别名改成直接填写的原值。Redis 使用直接传参的命令列表，不需要 shell 变量展开。
 
@@ -54,4 +54,6 @@ docker inspect postgres-lab --format '{{json .NetworkSettings.Networks}}'
 
 需要按某个快照恢复时，使用独立的 `recovery.compose.yml`，步骤见 `RECOVERY.md`。恢复工具不依赖原数据库或 `data`/`logs` 仍然存在；列出、检查及恢复操作不会自动初始化仓库。
 
-本地验证已覆盖完整模板的 profile 开关、直接配置不受 `.env` 干扰、共享密码的 `$` 实际容器传递，以及独立恢复模板从两份加密快照中取回指定旧快照和拒绝覆盖已有恢复目录。当前版本另通过 59 项单元测试、122 项集成检查，验证无建桶权限的账号正常备份、初始化响应丢失后的安全回读、首次部署、节点重建、全新状态接入旧仓库，以及错误密码、残留数据、仓库丢失等保护。验证未连接生产或真实 OSS；同一空仓库首次须由一个节点初始化。
+本地验证已覆盖完整模板的 profile 开关、直接配置不受 `.env` 干扰、共享密码的 `$` 实际容器传递，以及独立恢复模板从两份加密快照中取回指定旧快照和拒绝覆盖已有恢复目录。当前版本另通过 60 项单元测试、124 项集成检查，验证无建桶权限的账号正常备份、初始化响应丢失后的安全回读、首次部署、节点重建、全新状态接入旧仓库，以及错误密码、残留数据、仓库丢失等保护。验证未连接生产或真实 OSS；同一空仓库首次须由一个节点初始化。
+
+临时空间修复新增 160 MiB 文件在 64 MiB `/tmp` 下备份并恢复校验。Restic 临时数据默认写入磁盘上的 `/cache`，无需加大内存盘或容器内存。

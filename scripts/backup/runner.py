@@ -184,6 +184,9 @@ class Config:
             "RESTIC_REPOSITORY": repository,
             "RESTIC_PASSWORD_FILE": password_file,
             "RESTIC_CACHE_DIR": str(self.cache),
+            # Concurrent Restic packs can exceed the small /tmp tmpfs. Keep
+            # temporary encrypted packs on the guarded, disk-backed cache volume.
+            "TMPDIR": str(self.cache),
             "GOMAXPROCS": env.get("GOMAXPROCS", "2"),
         })
         # Prevent inherited Restic options from overriding the declared repository/password.
@@ -309,7 +312,8 @@ class Job:
                         b"accessdenied", b"access denied", b"invalidaccesskeyid", b"signaturedoesnotmatch",
                         b"wrong password", b"permission denied", b"password authentication failed",
                         b"repository does not exist", b"no such file", b"status code: 403", b"status code: 401",
-                        b"bucketalreadyexists", b"bucketalreadyownedbyyou", b"nosuchbucket"))
+                        b"bucketalreadyexists", b"bucketalreadyownedbyyou", b"nosuchbucket",
+                        b"no space left on device", b"read-only file system", b"too many open files"))
                     transient = any(marker in detail for marker in (
                         b"timeout", b"timed out", b"connection reset", b"connection refused", b"unexpected eof",
                         b"temporary failure", b"broken pipe", b"no such host", b"503 service unavailable",
@@ -323,6 +327,9 @@ class Job:
                     # provider output may contain credentials or signed URLs.
                     hint = "check connectivity, credentials and permissions"
                     for marker, explanation in (
+                        (b"no space left on device", "NoSpaceLeft: temporary storage or disk is full; verify cache and temporary storage capacity"),
+                        (b"read-only file system", "ReadOnlyFilesystem: verify writable cache and state volume mounts"),
+                        (b"too many open files", "TooManyOpenFiles: verify process file descriptor limits"),
                         (b"bucketalreadyexists", "BucketAlreadyExists: use the existing OSS bucket; do not create it again"),
                         (b"bucketalreadyownedbyyou", "BucketAlreadyOwnedByYou: use the existing OSS bucket; do not create it again"),
                         (b"nosuchbucket", "NoSuchBucket: create the OSS bucket and verify the endpoint"),

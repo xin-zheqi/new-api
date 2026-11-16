@@ -119,6 +119,13 @@ class RunnerTests(unittest.TestCase):
         with runner.job_lock(self.config):
             pass
 
+    def test_restic_temporary_packs_use_guarded_cache_instead_of_small_tmpfs(self):
+        config = runner.Config(self.env | {"TMPDIR": "/tmp"})
+        env = config.repository_env()
+        self.assertEqual(env["TMPDIR"], str(config.cache))
+        self.assertEqual(env["RESTIC_CACHE_DIR"], str(config.cache))
+        self.assertNotEqual(env["TMPDIR"], str(config.source))
+
     def test_backup_requires_recovery_configuration(self):
         for path in (self.config.source / "config").iterdir():
             path.unlink()
@@ -510,14 +517,18 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(caught.exception.exit_code, 1)
 
     def test_provider_diagnostics_use_fixed_codes_without_echoing_sensitive_details(self):
-        for code in ("BucketAlreadyExists", "BucketAlreadyOwnedByYou", "NoSuchBucket",
-                     "InvalidAccessKeyId", "SignatureDoesNotMatch", "AccessDenied", "UnknownProviderError"):
+        codes = [(code, code) for code in ("BucketAlreadyExists", "BucketAlreadyOwnedByYou", "NoSuchBucket",
+                                          "InvalidAccessKeyId", "SignatureDoesNotMatch", "AccessDenied", "UnknownProviderError")]
+        codes += [("no space left on device", "NoSpaceLeft"),
+                  ("read-only file system", "ReadOnlyFilesystem"),
+                  ("too many open files", "TooManyOpenFiles")]
+        for detail, code in codes:
             process = mock.Mock(pid=123456, returncode=1)
             process.poll.return_value = 1
             process.wait.return_value = 1
 
             def launch(*_args, **kwargs):
-                kwargs["stderr"].write((code + " https://private.invalid?secret=test-secret timeout").encode())
+                kwargs["stderr"].write((detail + " https://private.invalid?secret=test-secret timeout").encode())
                 return process
 
             with self.subTest(code=code), mock.patch.object(runner.subprocess, "Popen", side_effect=launch), \

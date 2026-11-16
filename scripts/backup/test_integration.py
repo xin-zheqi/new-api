@@ -325,6 +325,22 @@ print(json.dumps({"verified_repository_id": repository_id, "init_calls": init_ca
         recovered_snapshot = backup(overrides={"BACKUP_REPOSITORY": lost_reply_repository}, **lost_reply_state)
         checked("repository recovered after a lost init reply accepts a real backup",
                 {item["id"] for item in snapshots(lost_reply_repository)} == {recovered_snapshot})
+        # Incompressible data queues real encrypted packs beyond the 64 MiB
+        # /tmp limit; staging must use the disk-backed cache volume instead.
+        capacity_file = source / "data" / "pack-capacity.bin"
+        capacity_file.write_bytes(hashlib.shake_256(b"backup-pack-capacity-regression").digest(160 * 1024 * 1024))
+        capacity_hash = hashlib.sha256(capacity_file.read_bytes()).hexdigest()
+        capacity_repository = "rclone:oss:backups/pack-capacity"
+        capacity_state = new_state("pack-capacity")
+        capacity_settings = {"BACKUP_REPOSITORY": capacity_repository, "BACKUP_MAX_CACHE_MB": "256", "BACKUP_BW_LIMIT": "8M"}
+        try:
+            capacity_snapshot = backup(overrides=capacity_settings, **capacity_state)
+            checked("160 MiB backup succeeds with 64 MiB tmpfs", capacity_snapshot in {item["id"] for item in snapshots(capacity_repository)})
+            command("restore-files", capacity_snapshot, "/restore/pack-capacity", overrides=capacity_settings, **capacity_state)
+            checked("large pack staging preserves restored file bytes",
+                    hashlib.sha256((restore / "pack-capacity" / "source" / "data" / capacity_file.name).read_bytes()).hexdigest() == capacity_hash)
+        finally:
+            capacity_file.unlink()
         first = backup()
         original_repository_id = repository_id()
         checked("first backup automatically initializes an empty repository", bool(original_repository_id))

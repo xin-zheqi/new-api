@@ -1,4 +1,4 @@
-# New API + PostgreSQL 15 + Redis + OSS 备份：全部配置直接填写，无需 .env。
+# New API + PostgreSQL 15 + Redis + S3/OSS 备份：全部配置直接填写，无需 .env。
 #
 # 本文件是供核对的完整模板，不会自动修改服务器配置。
 # 已运行的服务器：保留原来的三个业务服务，主要合并 backup 服务及两个 backup_* 卷。
@@ -12,6 +12,28 @@ x-credentials:
   postgres-user: &postgres-user "root"
   postgres-password: &postgres-password "REPLACE_WITH_EXISTING_POSTGRES_PASSWORD"
   redis-password: &redis-password "REPLACE_WITH_EXISTING_REDIS_PASSWORD"
+
+# 两套存储配置都保留在本文件；在 backup.environment 的 << 一行选择。
+x-backup-storage-minio: &backup-storage-minio
+  BACKUP_REPOSITORY: "rclone:s3:REPLACE_WITH_S3_BUCKET/newapi/production"
+  BACKUP_S3_PROVIDER: "Minio"
+  # 使用 S3 API 地址（通常 9000），不能使用控制台端口 9001。
+  BACKUP_S3_ENDPOINT: "https://minio.example.com"
+  BACKUP_S3_REGION: "us-east-1"
+  BACKUP_S3_FORCE_PATH_STYLE: "true"
+  BACKUP_S3_ACCESS_KEY_ID: "REPLACE_WITH_S3_ACCESS_KEY_ID"
+  BACKUP_S3_ACCESS_KEY_SECRET: "REPLACE_WITH_S3_ACCESS_KEY_SECRET"
+  BACKUP_ALLOW_INSECURE_S3: "false"
+
+x-backup-storage-aliyun: &backup-storage-aliyun
+  BACKUP_REPOSITORY: "rclone:s3:REPLACE_WITH_OSS_BUCKET/newapi/production"
+  BACKUP_S3_PROVIDER: "Alibaba"
+  BACKUP_S3_ENDPOINT: "oss-cn-shenzhen.aliyuncs.com"
+  BACKUP_S3_REGION: "cn-shenzhen"
+  BACKUP_S3_FORCE_PATH_STYLE: "false"
+  BACKUP_S3_ACCESS_KEY_ID: "REPLACE_WITH_OSS_ACCESS_KEY_ID"
+  BACKUP_S3_ACCESS_KEY_SECRET: "REPLACE_WITH_OSS_ACCESS_KEY_SECRET"
+  BACKUP_ALLOW_INSECURE_S3: "false"
 
 services:
   # 以下服务名参考你之前的 lab 部署；应与服务器原文件一致。
@@ -90,6 +112,8 @@ services:
     tmpfs:
       - /tmp:size=64m,mode=1777
     environment:
+      # 切换阿里云时，仅将下一行改为 <<: *backup-storage-aliyun。
+      <<: *backup-storage-minio
       TZ: Asia/Shanghai
       BACKUP_DB_HOST: postgres-lab
       BACKUP_DB_PORT: "5432"
@@ -99,19 +123,6 @@ services:
       BACKUP_DATABASES: new-api
       # 同一 PostgreSQL 上另有日志库时，改成 "new-api,new-api-log"。
 
-      # 填完整的 Bucket/前缀，不引用同一 environment 中的其他字段。
-      BACKUP_REPOSITORY: "rclone:s3:REPLACE_WITH_S3_BUCKET/newapi/production"
-      # MinIO S3 API endpoint; use the API port (usually 9000), not console 9001.
-      BACKUP_S3_PROVIDER: "Minio"
-      BACKUP_S3_ENDPOINT: "https://minio.example.com"
-      BACKUP_S3_REGION: "us-east-1"
-      BACKUP_S3_FORCE_PATH_STYLE: "true"
-      BACKUP_S3_ACCESS_KEY_ID: "REPLACE_WITH_S3_ACCESS_KEY_ID"
-      BACKUP_S3_ACCESS_KEY_SECRET: "REPLACE_WITH_S3_ACCESS_KEY_SECRET"
-      # Set true only for an explicitly chosen HTTP endpoint on a trusted network.
-      BACKUP_ALLOW_INSECURE_S3: "false"
-      # Alibaba OSS: provider Alibaba, endpoint oss-cn-shenzhen.aliyuncs.com,
-      # region cn-shenzhen, force_path_style false, plus the OSS credentials.
       # Existing rclone:oss: repositories with BACKUP_OSS_* remain supported.
       BACKUP_PASSWORD_FILE: /run/secrets/restic-password
       # 空路径首次初始化只启动一个节点；已有仓库在更新/迁移时自动验证并复用。

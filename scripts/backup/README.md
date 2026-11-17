@@ -60,24 +60,17 @@ docker build -t thefoolishfox1/new-api-backup:local scripts/backup
 
 灾后需要按某个快照恢复时，另有 [独立恢复模板](examples/recovery.compose.yml) 和 [恢复操作说明](examples/RECOVERY.md)，不依赖原应用、数据库或业务目录仍然存在。
 
-修改部署文件中的 `backup.environment`，将占位符替换成实际值。例如：
+同一个 Compose 文件顶部已保留两套存储配置：`x-backup-storage-minio` 和 `x-backup-storage-aliyun`。先在要使用的配置块中填写桶、Endpoint 和凭据，再通过 `backup.environment` 内的 `<<` 一行选择。数据库、计划等参数仍直接填在 `backup.environment`，例如：
 
 ```yaml
 environment:
+  <<: *backup-storage-minio
   TZ: Asia/Shanghai
   BACKUP_DB_HOST: postgres
   BACKUP_DB_PORT: "5432"
   BACKUP_DB_USER: "root"
   BACKUP_DB_PASSWORD: "REPLACE_WITH_EXISTING_POSTGRES_PASSWORD"
   BACKUP_DATABASES: new-api
-  BACKUP_REPOSITORY: "rclone:s3:your-private-backup-bucket/newapi/production"
-  BACKUP_S3_PROVIDER: "Minio"
-  BACKUP_S3_ENDPOINT: "https://minio.example.com"
-  BACKUP_S3_REGION: "us-east-1"
-  BACKUP_S3_FORCE_PATH_STYLE: "true"
-  BACKUP_S3_ACCESS_KEY_ID: "REPLACE_WITH_S3_ACCESS_KEY_ID"
-  BACKUP_S3_ACCESS_KEY_SECRET: "REPLACE_WITH_S3_ACCESS_KEY_SECRET"
-  BACKUP_ALLOW_INSECURE_S3: "false"
   BACKUP_PASSWORD_FILE: /run/secrets/restic-password
   BACKUP_AUTO_INIT: "true"
   BACKUP_HOST: newapi
@@ -88,7 +81,7 @@ environment:
 
 仓库地址直接填写完整的 `rclone:s3:<bucket>/<prefix>`，不会引用同一 `environment` 中的其他字段。MinIO 的 Endpoint 要填 **S3 API 地址**，通常是 `9000` 端口，不能填管理控制台的 `9001`；通过 HTTPS 反向代理访问时填写对应的 API 域名。必须显式填写 Endpoint，不自动发现服务地址。直接配置的密码包含 `$` 时，在 Compose 中写成 `$$`。
 
-切换存储时，直接修改 `backup.environment` 中以下字段，不需要 `.env`：
+两套存储块的字段如下，直接填写在当前 Compose 文件，不需要 `.env`：
 
 | 配置 | MinIO | 阿里云 OSS 示例 |
 | --- | --- | --- |
@@ -102,12 +95,14 @@ environment:
 
 默认使用 HTTPS 并校验证书。仅在明确选择可信网络中的 HTTP API 时，填写如 `http://minio:9000`，并显式设置 `BACKUP_ALLOW_INSECURE_S3: "true"`；该开关不关闭 HTTPS 证书校验。Provider 还接受 `AWS` 和 `Other`，均需显式配置对应 Endpoint、Region 和凭据。
 
-阿里云也可使用 [存储覆盖模板](examples/storage-aliyun.compose.yml)。先将该文件复制到**实际部署目录**，命名为 `storage-aliyun.compose.yml`，填写真实配置，再在该目录运行以下示例。此覆盖文件只修改 `backup` 的存储参数；以后更新备份服务时要继续带上同一组 `-f` 参数，并把覆盖文件只读挂入 `/source/config` 以保存恢复配置。
+使用 MinIO 时保留 `<<: *backup-storage-minio`。切换到阿里云时，只将该行改为 `<<: *backup-storage-aliyun`；不需要新增 YAML 文件或额外 `-f` 参数。两套配置可以同时保留，未选中的配置块不会创建服务或连接存储。
+
+如果将备份服务合并进原有 Compose，请连同顶部两段 `x-backup-storage-*` 定义一起放入同一个文件，并位于引用之前。不要在 `backup.environment` 再重复填写存储字段，否则显式字段会覆盖选中的配置块。以下命令只校验、拉取和更新备份服务：
 
 ```bash
-docker compose -f docker-compose.yml -f storage-aliyun.compose.yml --profile backup config -q
-docker compose -f docker-compose.yml -f storage-aliyun.compose.yml --profile backup pull backup
-docker compose -f docker-compose.yml -f storage-aliyun.compose.yml --profile backup up -d --no-deps backup
+docker compose -f docker-compose.yml --profile backup config -q
+docker compose -f docker-compose.yml --profile backup pull backup
+docker compose -f docker-compose.yml --profile backup up -d --no-deps backup
 ```
 
 旧 `rclone:oss:<bucket>/<prefix>` 与 `BACKUP_OSS_ENDPOINT`、`BACKUP_OSS_ACCESS_KEY_ID`、`BACKUP_OSS_ACCESS_KEY_SECRET`（及其 `_FILE` 形式）继续兼容，HTTP 仍需原来的 `BACKUP_ALLOW_INSECURE_OSS` 开关。已有 OSS 部署不必为了升级改仓库地址；两套变量按仓库前缀选择，不要混填。同一仓库初始化后，更新容器或迁移到新机器时应继续使用原仓库、加密密码和备份身份标识。

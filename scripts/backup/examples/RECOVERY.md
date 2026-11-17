@@ -20,7 +20,7 @@ chmod 700 secrets secrets/backup restore-output
 
 把独立保存的备份加密密码写入 `secrets/backup/restic-password`，文件只含密码正文，权限设为 `600`。不要在命令参数、终端历史里直接填写真实密码。配置中的 AccessKey 可以换成新的恢复账号，但必须有读取仓库及处理仓库锁所需的权限。YAML 中的密码若含 `$`，写成 `$$`。
 
-存储字段直接填写在 `restore.environment`，不需要 `.env`。`BACKUP_REPOSITORY` 必须指向**原有仓库或完整副本**：
+恢复模板在同一个文件顶部保留 MinIO 和阿里云两套 `x-backup-storage-*` 配置，不需要 `.env` 或额外 YAML 文件。先填写对应存储块，再在 `restore.environment` 将 `<<: *backup-storage-minio` 或 `<<: *backup-storage-aliyun` 选为唯一引用。`BACKUP_REPOSITORY` 必须指向**原有仓库或完整副本**：
 
 | 字段 | MinIO | 阿里云 OSS |
 | --- | --- | --- |
@@ -33,7 +33,7 @@ chmod 700 secrets secrets/backup restore-output
 
 MinIO 通常使用 API 端口 `9000`，不要填写控制台 `9001`。HTTP 地址需显式设置 `BACKUP_ALLOW_INSECURE_S3: "true"`，仅用于已确认可信的网络；HTTPS 保持证书校验。旧 `rclone:oss:` 仓库仍可搭配原 `BACKUP_OSS_*` 使用，无需更改仓库中的任何对象。
 
-`storage-aliyun.compose.yml` 是针对备份服务 `backup` 的覆盖文件，不能直接套在本恢复模板的 `restore` 服务上；请按上表直接修改 `restore.environment`。从 OSS 切换到空的 MinIO 不会带来旧快照。恢复旧数据必须连接原仓库或已完整复制、保留原密码的仓库，不能靠 `init`、删除状态卷或强制解锁使空仓库拥有历史备份。
+不要在 `restore.environment` 重复填写存储字段，以免覆盖顶部选中的配置。从 OSS 切换到空的 MinIO 不会带来旧快照。恢复旧数据必须连接原仓库或已完整复制、保留原密码的仓库，不能靠 `init`、删除状态卷或强制解锁使空仓库拥有历史备份。
 
 ```bash
 chmod 600 secrets/backup/restic-password recovery.compose.yml

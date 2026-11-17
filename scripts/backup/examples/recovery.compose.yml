@@ -1,5 +1,27 @@
 # New API：独立恢复入口，无需 .env，也不依赖原 New API、数据库或 data/logs 目录。
-# 复制到干净机器的恢复目录，填写 OSS 配置，并准备密码文件和 restore-output 目录。
+# 复制到干净机器的恢复目录，填写存储配置，并准备密码文件和 restore-output 目录。
+# 两套配置都保留在本文件；在 restore.environment 的 << 一行选择原仓库。
+x-backup-storage-minio: &backup-storage-minio
+  BACKUP_REPOSITORY: "rclone:s3:REPLACE_WITH_S3_BUCKET/newapi/production"
+  BACKUP_S3_PROVIDER: "Minio"
+  # 使用 S3 API 地址（通常 9000），不能使用控制台端口 9001。
+  BACKUP_S3_ENDPOINT: "https://minio.example.com"
+  BACKUP_S3_REGION: "us-east-1"
+  BACKUP_S3_FORCE_PATH_STYLE: "true"
+  BACKUP_S3_ACCESS_KEY_ID: "REPLACE_WITH_S3_ACCESS_KEY_ID"
+  BACKUP_S3_ACCESS_KEY_SECRET: "REPLACE_WITH_S3_ACCESS_KEY_SECRET"
+  BACKUP_ALLOW_INSECURE_S3: "false"
+
+x-backup-storage-aliyun: &backup-storage-aliyun
+  BACKUP_REPOSITORY: "rclone:s3:REPLACE_WITH_OSS_BUCKET/newapi/production"
+  BACKUP_S3_PROVIDER: "Alibaba"
+  BACKUP_S3_ENDPOINT: "oss-cn-shenzhen.aliyuncs.com"
+  BACKUP_S3_REGION: "cn-shenzhen"
+  BACKUP_S3_FORCE_PATH_STYLE: "false"
+  BACKUP_S3_ACCESS_KEY_ID: "REPLACE_WITH_OSS_ACCESS_KEY_ID"
+  BACKUP_S3_ACCESS_KEY_SECRET: "REPLACE_WITH_OSS_ACCESS_KEY_SECRET"
+  BACKUP_ALLOW_INSECURE_S3: "false"
+
 services:
   restore:
     image: thefoolishfox1/new-api-backup:20261117-s3-backup
@@ -18,19 +40,9 @@ services:
     tmpfs:
       - /tmp:size=64m,mode=1777
     environment:
+      # 原仓库在阿里云时，仅将下一行改为 <<: *backup-storage-aliyun。
+      <<: *backup-storage-minio
       TZ: Asia/Shanghai
-      BACKUP_REPOSITORY: "rclone:s3:REPLACE_WITH_S3_BUCKET/newapi/production"
-      # MinIO S3 API endpoint; use the API port (usually 9000), not console 9001.
-      BACKUP_S3_PROVIDER: "Minio"
-      BACKUP_S3_ENDPOINT: "https://minio.example.com"
-      BACKUP_S3_REGION: "us-east-1"
-      BACKUP_S3_FORCE_PATH_STYLE: "true"
-      BACKUP_S3_ACCESS_KEY_ID: "REPLACE_WITH_S3_ACCESS_KEY_ID"
-      BACKUP_S3_ACCESS_KEY_SECRET: "REPLACE_WITH_S3_ACCESS_KEY_SECRET"
-      # Set true only for an explicitly chosen HTTP endpoint on a trusted network.
-      BACKUP_ALLOW_INSECURE_S3: "false"
-      # Alibaba OSS: provider Alibaba, endpoint oss-cn-shenzhen.aliyuncs.com,
-      # region cn-shenzhen, force_path_style false, plus the OSS credentials.
       # Existing rclone:oss: repositories with BACKUP_OSS_* remain supported.
       BACKUP_PASSWORD_FILE: /run/secrets/restic-password
       # 恢复只允许打开已有仓库，不负责创建新仓库。

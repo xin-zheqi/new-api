@@ -2,7 +2,7 @@
 
 `compose.yml` 包含 New API、PostgreSQL 15、Redis、备份容器四个服务，参数直接填写在 YAML 中；没有 `.env` 挂载，也没有依赖 `.env` 的变量表达式。备份镜像使用 `thefoolishfox1/new-api-backup:20261117-s3-backup`，默认启用 `BACKUP_AUTO_INIT: "true"`。对象存储默认采用统一 S3 配置连接 MinIO，也可切换到阿里云 OSS。
 
-根目录 `docker-compose.yml` 同样已采用直接填写方式，默认服务名为 `new-api`、`postgres`、`redis`；本示例使用 lab 服务名并显式复用已有卷和网络，方便对照之前的服务器部署。在已经运行的服务器上，主要合并 `backup` 服务和 `backup_state`、`backup_cache` 两个卷；其他配置值以服务器原文件为准。若使用共享密码别名，也需合并顶部 `x-credentials`，或将别名改成直接填写的原值。Redis 使用直接传参的命令列表，不需要 shell 变量展开。
+根目录 `docker-compose.yml` 同样已采用直接填写方式，默认服务名为 `new-api`、`postgres`、`redis`；本示例使用 lab 服务名并显式复用已有卷和网络，方便对照之前的服务器部署。在已经运行的服务器上，主要合并 `backup` 服务、顶部两段 `x-backup-storage-*` 定义和 `backup_state`、`backup_cache` 两个卷；其他配置值以服务器原文件为准。若使用共享密码别名，也需合并顶部 `x-credentials`，或将别名改成直接填写的原值。Redis 使用直接传参的命令列表，不需要 shell 变量展开。
 
 需要填写、核对的内容：
 
@@ -16,7 +16,7 @@
 
 ## MinIO 与阿里云配置
 
-只改 `backup.environment` 的存储字段，不需要修改业务服务或使用 `.env`：
+本文件顶部同时保留 `x-backup-storage-minio` 和 `x-backup-storage-aliyun` 两套配置。先在需要使用的块中填写以下字段，不需要修改业务服务或使用 `.env`：
 
 | 字段 | MinIO | 阿里云 OSS |
 | --- | --- | --- |
@@ -30,13 +30,14 @@
 
 MinIO 必须填写 S3 API 地址，通常为 `9000` 端口，`9001` 是管理控制台。仅在明确采用可信网络中的 HTTP 服务时，填写如 `http://minio:9000` 并将 `BACKUP_ALLOW_INSECURE_S3` 设为 `"true"`。HTTPS 始终校验证书。凭据也可以用对应 `_FILE` 变量指定容器内只读挂载的文件。
 
-阿里云另有 `storage-aliyun.compose.yml`，只覆盖 `backup` 的存储字段。先把该文件复制到实际部署目录并填好配置，再使用下列组合。相对路径以第一个 Compose 文件所在的部署目录为准；更新时继续带上覆盖文件，并把它只读挂入 `/source/config`，保存完整恢复配置。
+然后只修改 `backup.environment` 中的一行选择存储，两个配置块都留在当前文件中：
 
-```bash
-docker compose -f compose.yml -f storage-aliyun.compose.yml --profile backup config -q
-docker compose -f compose.yml -f storage-aliyun.compose.yml --profile backup pull backup
-docker compose -f compose.yml -f storage-aliyun.compose.yml --profile backup up -d --no-deps backup
+```yaml
+# backup.environment 内选择 MinIO（默认）。
+<<: *backup-storage-minio
 ```
+
+改用阿里云时，将这一行替换为 `<<: *backup-storage-aliyun`，不能同时保留两个 `<<`。不需要新增 YAML 文件或额外 `-f` 参数，未选中的顶部配置块不会启动服务或建立连接。不要在 `backup.environment` 重复填写存储字段，否则重复字段会覆盖选中的配置。
 
 旧 `rclone:oss:桶/前缀` 和 `BACKUP_OSS_*` 仍受支持，无需为了升级改成 S3 变量。只有 `rclone:s3:` 才读取 `BACKUP_S3_*`，不要把两套配置混用。切换服务商不会复制历史快照：迁移历史要完整复制原加密仓库并保留密码、核验仓库 ID；决定新建空历史时须先确认旧仓库仍被保留，再显式执行 `init`。不要删除原数据或状态卷来解除身份保护。
 

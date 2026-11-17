@@ -586,115 +586,32 @@ class Job:
                 raise BackupError("Restore destination must be separate from repository")
         return destination
 
-    def snapshot_manifest(self, receipt, format_version):
-        """Find the export by its authenticated manifest, not by path order.
-
-        A configured source may itself be named job-*. In that case examine
-        both candidates and reject ambiguous metadata rather than guessing.
-        """
-        paths = receipt.get("paths")
-        if (not isinstance(paths, list) or len(paths) != 2 or paths[0] == paths[1]
-                or not all(isinstance(path, str) and Path(path).is_absolute()
-                           and Path(path).as_posix() == path and ".." not in Path(path).parts for path in paths)):
-            raise BackupError("Application snapshot paths are invalid")
-        candidates = [path for path in paths if Path(path).name.startswith("job-")]
-        verified = []
-        for export in candidates:
-            source = next(path for path in paths if path != export)
-            try:
-                manifest = json.loads(self.restic("Application manifest verification", [
-                    "dump", receipt["id"], str(Path(export) / "manifest.json")]))
-            except BackupError:
-                if STOPPING or time.monotonic() >= self.deadline or len(candidates) == 1:
-                    raise
-                continue
-            except (ValueError, TypeError):
-                continue
-            if (not isinstance(manifest, dict) or type(manifest.get("format")) is not int
-                    or manifest["format"] != format_version):
-                continue
-            if format_version == 2:
-                if manifest.get("source") != source:
-                    continue
-            else:
-                databases = manifest.get("databases")
-                if (manifest.get("consistency") != "online-uncoordinated"
-                        or not isinstance(databases, list) or not databases
-                        or not all(isinstance(item, dict) and isinstance(item.get("name"), str)
-                                   and isinstance(item.get("file"), str)
-                                   and re.fullmatch(r"database-[0-9]{3,}\.dump", item["file"])
-                                   and isinstance(item.get("sha256"), str)
-                                   and re.fullmatch(r"[0-9a-f]{64}", item["sha256"]) for item in databases)):
-                    continue
-            verified.append((source, manifest))
-        if len(verified) != 1:
-            raise BackupError("Application snapshot manifest cannot be uniquely identified")
-        return verified[0]
-
     def snapshot_logs_path(self, receipt):
         paths = receipt.get("paths")
-        if (APP_ROLE in receipt["tags"] or not isinstance(paths, list) or not paths
+        if (LOG_ROLE not in receipt["tags"] or APP_ROLE in receipt["tags"]
+                or not isinstance(paths, list) or len(paths) != 1
                 or not all(isinstance(path, str) and Path(path).is_absolute()
                            and Path(path).as_posix() == path and ".." not in Path(path).parts for path in paths)):
             raise BackupError("Snapshot is not a valid log archive")
-        if LOG_ROLE in receipt["tags"]:
-            if len(paths) != 1 or Path(paths[0]).name != "logs":
-                raise BackupError("Log archive must contain exactly one logs directory")
-            return paths[0]
-        # Old complete snapshots have one source and a randomized export path.
-        sources = [path for path in paths if not Path(path).name.startswith("job-")]
-        if not sources and len(paths) == 2:
-            source, _manifest = self.snapshot_manifest(receipt, 1)
-            return str(Path(source) / "logs")
-        if len(sources) != 1:
-            raise BackupError("Legacy snapshot source directory cannot be uniquely identified")
-        return str(Path(sources[0]) / "logs")
-
-    def application_logs(self, receipt):
-        """Authenticate a v2 manifest and its log reference before creating output."""
-        source, manifest = self.snapshot_manifest(receipt, 2)
-        try:
-            logs = manifest["logs"]
-            if (not isinstance(logs, dict) or type(logs["missing"]) is not bool
-                    or logs["path"] != str(Path(source) / "logs")
-                    or not isinstance(logs["captured_at"], str)
-                    or dt.datetime.fromisoformat(logs["captured_at"]).utcoffset() is None):
-                raise ValueError
-            if logs["missing"]:
-                if logs["snapshot_id"] is not None:
-                    raise ValueError
-                return None, logs["path"]
-            if not isinstance(logs["snapshot_id"], str) or not re.fullmatch(r"[0-9a-f]{64}", logs["snapshot_id"]):
-                raise ValueError
-        except (ValueError, TypeError, KeyError, AttributeError):
-            raise BackupError("Application log manifest is invalid; refusing partial restore") from None
-        archived = self.snapshot_receipt(logs["snapshot_id"])
-        if (LOG_ROLE not in archived["tags"] or APP_ROLE in archived["tags"]
-                or archived.get("paths") != [logs["path"]]):
-            raise BackupError("Application log reference does not match the archived snapshot")
-        return archived["id"], logs["path"]
+        if Path(paths[0]).name != "logs":
+            raise BackupError("Log archive must contain exactly one logs directory")
+        return paths[0]
 
     def restore_files(self, snapshot_id, value, logs_only=False):
         destination = self.restore_destination(value)
         receipt = self.snapshot_receipt(snapshot_id)
-        log_id = None
         log_path = None
         if logs_only:
             log_path = self.snapshot_logs_path(receipt)
-        elif LOG_ROLE in receipt["tags"]:
-            raise BackupError("Use restore-logs for a log-only snapshot")
-        elif APP_ROLE in receipt["tags"]:
-            log_id, log_path = self.application_logs(receipt)
-        # All references are authenticated before the first file is restored.
+        elif APP_ROLE not in receipt["tags"] or LOG_ROLE in receipt["tags"]:
+            raise BackupError("Snapshot is not an application backup; use restore-logs for log archives")
+        # Application and log recovery are independent. A log reference in the
+        # export manifest is informational and cannot block application recovery.
         destination.mkdir(mode=0o700)
         args = ["restore", receipt["id"], "--target", str(destination), "--verify"]
         if logs_only:
             args.extend(["--include", re.sub(r"([*?\[\]\\])", r"\\\1", log_path)])
         print(self.restic("File restore verification", args))
-        if log_id:
-            print(self.restic("Log restore verification", [
-                "restore", log_id, "--target", str(destination), "--verify", "--include",
-                re.sub(r"([*?\[\]\\])", r"\\\1", log_path)]))
 
     def backup(self):
         config = self.config
@@ -917,12 +834,10 @@ def main(argv=None):
                             or config.tag not in tags):
                         raise ValueError
                     if args.command == "snapshots":
-                        if LOG_ROLE not in tags:
+                        if APP_ROLE in tags and LOG_ROLE not in tags:
                             selected.append(snapshot)
-                    elif APP_ROLE not in tags:
-                        legacy = LOG_ROLE not in tags
-                        selected.append({**snapshot, "legacy": legacy,
-                                         "archive_type": "legacy_full" if legacy else "logs"})
+                    elif LOG_ROLE in tags and APP_ROLE not in tags:
+                        selected.append(snapshot)
             except (ValueError, TypeError, KeyError):
                 raise BackupError("Snapshot listing could not be verified") from None
             print(json.dumps(selected, ensure_ascii=False, indent=2))
@@ -934,8 +849,8 @@ def main(argv=None):
             daily = integer(config.env, "BACKUP_KEEP_DAILY", 7, minimum=2)
             weekly = integer(config.env, "BACKUP_KEEP_WEEKLY", 4, minimum=0)
             monthly = integer(config.env, "BACKUP_KEEP_MONTHLY", 6, minimum=0)
-            # Only v2 application snapshots expire. Legacy complete snapshots
-            # retain their historical logs, and log archives have a second guard.
+            # Only application snapshots expire; log archives have a second
+            # keep-tag guard and are never selected for normal retention.
             options = ["forget", "--host", config.host, "--tag", config.tag + "," + APP_ROLE,
                        "--keep-tag", LOG_ROLE, "--group-by", "host,tags",
                        "--keep-last", "2", "--keep-daily", str(daily), "--keep-weekly", str(weekly), "--keep-monthly", str(monthly)]

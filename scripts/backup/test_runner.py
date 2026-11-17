@@ -556,9 +556,9 @@ class RunnerTests(unittest.TestCase):
         def restic(stage, args):
             calls.append(args)
             if args[0] == "snapshots":
-                # Existing complete snapshots remain directly restorable.
+                # Application recovery is independent of the log archive.
                 return json.dumps([{"id": SNAPSHOT, "hostname": self.config.host,
-                                    "tags": [self.config.tag]}])
+                                    "tags": [self.config.tag, runner.APP_ROLE]}])
             return "verified"
 
         destination = self.root / "restore"

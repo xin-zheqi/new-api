@@ -1,6 +1,6 @@
 # 不使用 .env 的完整 Compose 模板
 
-`compose.yml` 包含 New API、PostgreSQL 15、Redis、备份容器四个服务，参数直接填写在 YAML 中；没有 `.env` 挂载，也没有依赖 `.env` 的变量表达式。备份镜像使用 `thefoolishfox1/new-api-backup:20261117-log-archive`，默认启用 `BACKUP_AUTO_INIT: "true"`。对象存储默认采用统一 S3 配置连接 MinIO，也可切换到阿里云 OSS。
+`compose.yml` 包含 New API、PostgreSQL 15、Redis、备份容器四个服务，参数直接填写在 YAML 中；没有 `.env` 挂载，也没有依赖 `.env` 的变量表达式。备份镜像使用 `thefoolishfox1/new-api-backup:20261117-independent-logs`，默认启用 `BACKUP_AUTO_INIT: "true"`。对象存储默认采用统一 S3 配置连接 MinIO，也可切换到阿里云 OSS。
 
 根目录 `docker-compose.yml` 同样已采用直接填写方式，默认服务名为 `new-api`、`postgres`、`redis`；本示例使用 lab 服务名并显式复用已有卷和网络，方便对照之前的服务器部署。在已经运行的服务器上，主要合并 `backup` 服务、顶部两段 `x-backup-storage-*` 定义和 `backup_state`、`backup_cache` 两个卷；其他配置值以服务器原文件为准。若使用共享密码别名，也需合并顶部 `x-credentials`，或将别名改成直接填写的原值。Redis 使用直接传参的命令列表，不需要 shell 变量展开。
 
@@ -87,9 +87,9 @@ docker inspect postgres-lab --format '{{json .NetworkSettings.Networks}}'
 
 默认每轮先把 `/source/logs` 单独归档，之后再备份数据库、`data` 和配置。日志使用原生 Restic 加密数据块去重，并非每轮重复上传完整文件：追加通常只上传新块，变化文件仍可能完整读取，未变化文件复用父快照。归档完成后，日志轮转、截断、同名重建、删除、目录清空或运行中消失，都不会删除已采集的历史；尚未采集就被删除的字节无法找回。读取权限错误会导致失败，不能当作空目录。
 
-日志快照默认永久保留，空间随新增内容增长。`BACKUP_KEEP_*` 和普通 `retention` 只清理新应用角色快照；旧版未带角色标签的完整快照也全部保留，防止删除唯一的历史日志，因此它们的旧数据库和 `data` 也会继续占用空间。不要手动扩大原生 `forget` 的范围或设置按对象年龄删除的存储生命周期规则。
+日志快照默认永久保留，空间随新增内容增长。`BACKUP_KEEP_*` 和普通 `retention` 只清理当前应用角色快照，并保护日志角色快照。不要手动扩大原生 `forget` 的范围或设置按对象年龄删除的存储生命周期规则。工具只管理当前角色快照，不提供旧格式兼容恢复，也不主动删除其他未知对象。
 
-`snapshots` 列出普通恢复点；格式 `2` 清单关联该轮日志 ID，`restore-files` 自动组合恢复该轮日志与应用文件。它不会把所有日志历史合并进最新恢复点，日志与数据库也不是同一时刻的原子快照。需要查看某次历史日志时，在实际部署目录运行：
+`snapshots` 只列出当前普通应用恢复点；`restore-files` 恢复数据库导出、`data` 和配置，不读取日志快照，输出也不包含 `source/logs`。格式 `2` 清单里的日志 ID 和采集时间仅供查询，日志始终从独立的 `log-snapshots` 列表选择并通过 `restore-logs` 恢复，两种快照角色不能混用。数据库内的使用日志仍包含在数据库导出中，文件日志与数据库不是同一时刻的原子快照。在实际部署目录运行：
 
 ```bash
 docker compose -f compose.yml --profile backup run --rm --no-deps backup log-snapshots
@@ -100,7 +100,7 @@ docker compose -f compose.yml --profile backup run --rm --no-deps \
   backup restore-logs REPLACE_WITH_LOG_SNAPSHOT_ID /restore/logs-001
 ```
 
-从列表的时间与 ID 选择恢复点，`legacy: true` 表示旧版完整快照也可提取日志。恢复结果默认在 `restore-test/logs-001/source/logs`，目标子目录必须尚不存在；只恢复该次日志视图，不恢复数据库或 `data`，也不会拼接不同版本的同名文件。独立灾后恢复环境的命令见 [RECOVERY.md](RECOVERY.md)。对象存储被删除或有删除权限的凭据被攻破后，工具无法保证找回已丢失的历史。
+从日志列表的时间与 ID 选择恢复点。恢复结果默认在 `restore-test/logs-001/source/logs`，目标子目录必须尚不存在；只恢复该次日志视图，不恢复数据库或 `data`，也不会拼接不同版本的同名文件。独立灾后恢复环境的命令见 [RECOVERY.md](RECOVERY.md)。对象存储被删除或有删除权限的凭据被攻破后，工具无法保证找回已丢失的历史。
 
 默认临时加密数据块写入磁盘 `/cache`。主机内存充足且需要尝试减少临时块磁盘读写时，可只向备份服务合并以下配置；数据库导出仍写磁盘：
 

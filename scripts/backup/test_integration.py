@@ -194,7 +194,8 @@ def main():
         return json.loads(command("snapshots", "--json", entrypoint="restic", overrides=overrides).stdout)
 
     def snapshots(repository=None):
-        return [item for item in repository_snapshots(repository) if LOG_ROLE not in item.get("tags", [])]
+        return [item for item in repository_snapshots(repository)
+                if APP_ROLE in item.get("tags", []) and LOG_ROLE not in item.get("tags", [])]
 
     def logs_snapshots(repository=None):
         return [item for item in repository_snapshots(repository) if LOG_ROLE in item.get("tags", [])]
@@ -216,10 +217,9 @@ def main():
             volumes.append(volume)
         return {"state_volume": pair[0], "cache_volume": pair[1]}
 
-    def raw_snapshot(host, tag, timestamp=None, *, repository=None, application=True):
-        options = ["backup", "--json", "--host", host, "--tag", tag]
-        if application:
-            options += ["--tag", APP_ROLE, "--exclude", "/source/logs"]
+    def raw_snapshot(host, tag, timestamp=None, *, repository=None):
+        options = ["backup", "--json", "--host", host, "--tag", tag,
+                   "--tag", APP_ROLE, "--exclude", "/source/logs"]
         if timestamp:
             options += ["--time", timestamp]
         overrides = {"RESTIC_REPOSITORY": repository} if repository else None
@@ -234,13 +234,20 @@ def main():
         manifests = list(target.rglob("manifest.json"))
         checked(dirname + ": exactly one manifest", len(manifests) == 1)
         manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
-        checked(dirname + ": application manifest links its separately archived logs",
+        checked(dirname + ": application manifest records the separate log capture",
                 manifest["format"] == 2 and manifest["source"] == "/source"
                 and manifest["logs"]["path"] == "/source/logs" and not manifest["logs"]["missing"]
                 and manifest["logs"]["snapshot_id"] in {item["id"] for item in logs_snapshots()})
         checked(dirname + ": explicit online consistency", manifest["consistency"] == "online-uncoordinated")
         checked(dirname + ": both databases exported", {item["name"] for item in manifest["databases"]} == {"app", "logdb"})
-        checked(dirname + ": restored source contents", files_digest(target / "source") == expected_files)
+        application_files = {name: digest for name, digest in expected_files.items() if not name.startswith("logs/")}
+        checked(dirname + ": application restore excludes log files",
+                files_digest(target / "source") == application_files and not (target / "source" / "logs").exists())
+        command("restore-logs", manifest["logs"]["snapshot_id"], "/restore/" + dirname + "-logs")
+        expected_logs = {name.removeprefix("logs/"): digest for name, digest in expected_files.items() if name.startswith("logs/")}
+        checked(dirname + ": independently restored log files match their capture",
+                files_digest(restore / (dirname + "-logs") / "source" / "logs") == expected_logs
+                and not (restore / (dirname + "-logs") / "source" / "data").exists())
         for item in manifest["databases"]:
             dump = manifests[0].parent / item["file"]
             checked(dirname + ": " + item["name"] + " checksum",
@@ -652,21 +659,17 @@ print(json.dumps({"verified_repository_id": repository_id, "init_calls": init_ca
                     command("health", overrides=log_settings, ok=False, **log_state).returncode != 0)
             archive_log_case("recovered")
 
-            legacy_bytes = b"old-format snapshot contains the only copy of this legacy log\n"
-            active_log.write_bytes(legacy_bytes)
-            legacy_snapshot = raw_snapshot("integration", "new-api-test", "2020-01-01 00:00:00",
-                                           repository=log_repository, application=False)
             raw_snapshot("integration", "new-api-test", "2020-01-01 00:00:00", repository=log_repository)
             log_history_ids = {item["id"] for item in logs_snapshots(log_repository)}
             main_ids = {item["id"] for item in snapshots(log_repository)}
             command("retention", "--apply", overrides={**log_settings, "BACKUP_KEEP_DAILY": "2",
                                                         "BACKUP_KEEP_WEEKLY": "0", "BACKUP_KEEP_MONTHLY": "0"}, **log_state)
-            checked("ordinary retention prunes application snapshots while preserving every log view and legacy snapshot",
+            checked("ordinary retention prunes application snapshots while preserving every log view",
                     {item["id"] for item in logs_snapshots(log_repository)} == log_history_ids
-                    and legacy_snapshot in {item["id"] for item in snapshots(log_repository)}
                     and len(snapshots(log_repository)) < len(main_ids))
             listed_logs = json.loads(command("log-snapshots", overrides=log_settings, **log_state).stdout)
-            checked("log history listing exposes archived recovery points", log_history_ids <= {item["id"] for item in listed_logs})
+            checked("log history listing exposes only archived log recovery points",
+                    log_history_ids == {item["id"] for item in listed_logs})
             for name, case in log_cases.items():
                 if case["snapshot_id"] is None:
                     continue
@@ -675,19 +678,18 @@ print(json.dumps({"verified_repository_id": repository_id, "init_calls": init_ca
                 restored_logs = restore / ("log-history-" + name) / "source" / "logs"
                 checked(name + ": historical log files restore exactly after pruning",
                         restored_logs.is_dir() and files_digest(restored_logs) == case["expected"])
-            command("restore-logs", legacy_snapshot, "/restore/log-history-legacy-logs", overrides=log_settings, **log_state)
-            checked("legacy snapshot log recovery remains available after retention",
-                    (restore / "log-history-legacy-logs" / "source" / "logs" / "audit.log").read_bytes() == legacy_bytes
-                    and not (restore / "log-history-legacy-logs" / "source" / "data").exists())
-            command("restore-files", legacy_snapshot, "/restore/log-history-legacy-full", overrides=log_settings, **log_state)
-            checked("legacy full snapshot recovery remains compatible",
-                    (restore / "log-history-legacy-full" / "source" / "logs" / "audit.log").read_bytes() == legacy_bytes
-                    and (restore / "log-history-legacy-full" / "source" / "data" / "attachment.txt").read_bytes()
-                    == (source / "data" / "attachment.txt").read_bytes())
+            checked("application restore rejects a log-only snapshot",
+                    command("restore-files", log_cases["initial"]["snapshot_id"], "/restore/log-role-rejected",
+                            overrides=log_settings, ok=False, **log_state).returncode != 0
+                    and not (restore / "log-role-rejected").exists())
+            checked("log restore rejects an application snapshot",
+                    command("restore-logs", log_cases["recovered"]["main_snapshot"], "/restore/app-role-rejected",
+                            overrides=log_settings, ok=False, **log_state).returncode != 0
+                    and not (restore / "app-role-rejected").exists())
             command("check", overrides=log_settings, **log_state)
             checked("permanent log history remains intact after ordinary retention and pruning")
             report["log_history"] = {"repository": log_repository, "log_snapshot_ids": sorted(log_history_ids),
-                                     "legacy_snapshot_id": legacy_snapshot, "cases": list(log_cases)}
+                                     "cases": list(log_cases)}
         finally:
             log_directory.mkdir(exist_ok=True)
             for path in log_directory.iterdir():

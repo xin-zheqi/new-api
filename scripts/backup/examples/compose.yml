@@ -99,7 +99,7 @@ services:
   backup:
     # 常规启动不启用备份；显式使用 --profile backup。
     profiles: ["backup"]
-    image: thefoolishfox1/new-api-backup:20261117-log-archive
+    image: thefoolishfox1/new-api-backup:20261117-independent-logs
     restart: unless-stopped
     init: true
     read_only: true

@@ -24,7 +24,7 @@ x-backup-storage-aliyun: &backup-storage-aliyun
 
 services:
   restore:
-    image: thefoolishfox1/new-api-backup:20261117-s3-backup
+    image: thefoolishfox1/new-api-backup:20261117-log-archive
     command: ["snapshots"]
     # 这是一次性恢复工具，退出码代表结果，不使用“最近备份成功时间”健康检查。
     healthcheck:

@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,8 @@ class BackupError(Exception):
 
 STOPPING = False
 MB = 1024 * 1024
+APP_ROLE = "new-api:application:v2"
+LOG_ROLE = "new-api:logs:v1"
 
 
 def stop(_signum, _frame):
@@ -94,6 +97,8 @@ class Config:
         self.tag = self.env.get("BACKUP_TAG", "new-api")
         if not self.host or not self.tag or "," in self.tag:
             raise BackupError("BACKUP_HOST and a single BACKUP_TAG are required")
+        if self.tag in (APP_ROLE, LOG_ROLE):
+            raise BackupError("BACKUP_TAG must not use a reserved snapshot role")
         try:
             self.zone = ZoneInfo(self.env.get("TZ", "Asia/Shanghai"))
         except (ValueError, ZoneInfoNotFoundError):
@@ -302,6 +307,7 @@ class Job:
         self.config = config
         self.deadline = time.monotonic() + config.timeout
         self.work = None
+        self.logs_snapshot_id = None
         self.previous_status = read_status(config) if previous_status is None else previous_status
 
     def space_guard(self):
@@ -517,6 +523,179 @@ class Job:
                 elif path.is_dir():
                     shutil.rmtree(path)
 
+    def snapshot_receipt(self, snapshot_id):
+        if not isinstance(snapshot_id, str) or not re.fullmatch(r"[0-9a-f]{8,64}", snapshot_id):
+            raise BackupError("Restore requires an explicit hexadecimal snapshot ID (not latest)")
+        try:
+            snapshots = json.loads(self.restic("Snapshot receipt verification", ["snapshots", "--json", snapshot_id]))
+            if not isinstance(snapshots, list) or len(snapshots) != 1:
+                raise ValueError
+            receipt = snapshots[0]
+            actual_id = receipt["id"]
+            tags = receipt["tags"]
+            if (not isinstance(actual_id, str) or not re.fullmatch(r"[0-9a-f]{64}", actual_id)
+                    or not actual_id.startswith(snapshot_id) or receipt.get("hostname") != self.config.host
+                    or not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags)
+                    or self.config.tag not in tags):
+                raise ValueError
+        except (ValueError, TypeError, KeyError):
+            raise BackupError("Snapshot does not belong to this backup host/tag or has an invalid receipt") from None
+        return receipt
+
+    def backup_snapshot(self, stage, paths, tags, exclude=()):
+        args = ["backup", "--json", "--quiet", "--group-by", "host,tags",
+                "--host", self.config.host, "--tag", ",".join(tags)]
+        for path in exclude:
+            args.extend(["--exclude", re.sub(r"([*?\[\]\\])", r"\\\1", str(path))])
+        args.extend(str(path) for path in paths)
+        output = self.restic(stage, args)
+        summaries = []
+        for line in output.splitlines():
+            try:
+                item = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(item, dict) and item.get("message_type") == "summary":
+                summaries.append(item)
+        if (len(summaries) != 1 or not isinstance(summaries[0].get("snapshot_id"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", summaries[0]["snapshot_id"])):
+            raise BackupError("Backup completed without a unique snapshot receipt")
+        print(json.dumps({"state": "verifying", "kind": "logs" if LOG_ROLE in tags else "application",
+                          "at": utcnow()}), flush=True)
+        receipt = self.snapshot_receipt(summaries[0]["snapshot_id"])
+        forbidden = APP_ROLE if LOG_ROLE in tags else LOG_ROLE
+        if (not all(tag in receipt["tags"] for tag in tags) or forbidden in receipt["tags"]
+                or not isinstance(receipt.get("paths"), list) or not all(isinstance(path, str) for path in receipt["paths"])
+                or sorted(receipt["paths"]) != sorted(str(path) for path in paths)):
+            raise BackupError("Snapshot receipt does not match this backup")
+        return receipt["id"], summaries[0]
+
+    def restore_destination(self, value):
+        destination = Path(value)
+        if not destination.is_absolute() or destination.exists() or destination.is_symlink():
+            raise BackupError("Restore destination must be an absolute, nonexisting directory")
+        destination = destination.resolve()
+        config = self.config
+        for directory in (config.source, config.state, config.cache, config.temp):
+            if destination == directory or directory in destination.parents or destination in directory.parents:
+                raise BackupError("Restore destination must be separate from live sources/state/cache")
+        repository = config.env.get("BACKUP_REPOSITORY", "")
+        if Path(repository).is_absolute():
+            repo_path = Path(repository).resolve()
+            if destination == repo_path or repo_path in destination.parents or destination in repo_path.parents:
+                raise BackupError("Restore destination must be separate from repository")
+        return destination
+
+    def snapshot_manifest(self, receipt, format_version):
+        """Find the export by its authenticated manifest, not by path order.
+
+        A configured source may itself be named job-*. In that case examine
+        both candidates and reject ambiguous metadata rather than guessing.
+        """
+        paths = receipt.get("paths")
+        if (not isinstance(paths, list) or len(paths) != 2 or paths[0] == paths[1]
+                or not all(isinstance(path, str) and Path(path).is_absolute()
+                           and Path(path).as_posix() == path and ".." not in Path(path).parts for path in paths)):
+            raise BackupError("Application snapshot paths are invalid")
+        candidates = [path for path in paths if Path(path).name.startswith("job-")]
+        verified = []
+        for export in candidates:
+            source = next(path for path in paths if path != export)
+            try:
+                manifest = json.loads(self.restic("Application manifest verification", [
+                    "dump", receipt["id"], str(Path(export) / "manifest.json")]))
+            except BackupError:
+                if STOPPING or time.monotonic() >= self.deadline or len(candidates) == 1:
+                    raise
+                continue
+            except (ValueError, TypeError):
+                continue
+            if (not isinstance(manifest, dict) or type(manifest.get("format")) is not int
+                    or manifest["format"] != format_version):
+                continue
+            if format_version == 2:
+                if manifest.get("source") != source:
+                    continue
+            else:
+                databases = manifest.get("databases")
+                if (manifest.get("consistency") != "online-uncoordinated"
+                        or not isinstance(databases, list) or not databases
+                        or not all(isinstance(item, dict) and isinstance(item.get("name"), str)
+                                   and isinstance(item.get("file"), str)
+                                   and re.fullmatch(r"database-[0-9]{3,}\.dump", item["file"])
+                                   and isinstance(item.get("sha256"), str)
+                                   and re.fullmatch(r"[0-9a-f]{64}", item["sha256"]) for item in databases)):
+                    continue
+            verified.append((source, manifest))
+        if len(verified) != 1:
+            raise BackupError("Application snapshot manifest cannot be uniquely identified")
+        return verified[0]
+
+    def snapshot_logs_path(self, receipt):
+        paths = receipt.get("paths")
+        if (APP_ROLE in receipt["tags"] or not isinstance(paths, list) or not paths
+                or not all(isinstance(path, str) and Path(path).is_absolute()
+                           and Path(path).as_posix() == path and ".." not in Path(path).parts for path in paths)):
+            raise BackupError("Snapshot is not a valid log archive")
+        if LOG_ROLE in receipt["tags"]:
+            if len(paths) != 1 or Path(paths[0]).name != "logs":
+                raise BackupError("Log archive must contain exactly one logs directory")
+            return paths[0]
+        # Old complete snapshots have one source and a randomized export path.
+        sources = [path for path in paths if not Path(path).name.startswith("job-")]
+        if not sources and len(paths) == 2:
+            source, _manifest = self.snapshot_manifest(receipt, 1)
+            return str(Path(source) / "logs")
+        if len(sources) != 1:
+            raise BackupError("Legacy snapshot source directory cannot be uniquely identified")
+        return str(Path(sources[0]) / "logs")
+
+    def application_logs(self, receipt):
+        """Authenticate a v2 manifest and its log reference before creating output."""
+        source, manifest = self.snapshot_manifest(receipt, 2)
+        try:
+            logs = manifest["logs"]
+            if (not isinstance(logs, dict) or type(logs["missing"]) is not bool
+                    or logs["path"] != str(Path(source) / "logs")
+                    or not isinstance(logs["captured_at"], str)
+                    or dt.datetime.fromisoformat(logs["captured_at"]).utcoffset() is None):
+                raise ValueError
+            if logs["missing"]:
+                if logs["snapshot_id"] is not None:
+                    raise ValueError
+                return None, logs["path"]
+            if not isinstance(logs["snapshot_id"], str) or not re.fullmatch(r"[0-9a-f]{64}", logs["snapshot_id"]):
+                raise ValueError
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise BackupError("Application log manifest is invalid; refusing partial restore") from None
+        archived = self.snapshot_receipt(logs["snapshot_id"])
+        if (LOG_ROLE not in archived["tags"] or APP_ROLE in archived["tags"]
+                or archived.get("paths") != [logs["path"]]):
+            raise BackupError("Application log reference does not match the archived snapshot")
+        return archived["id"], logs["path"]
+
+    def restore_files(self, snapshot_id, value, logs_only=False):
+        destination = self.restore_destination(value)
+        receipt = self.snapshot_receipt(snapshot_id)
+        log_id = None
+        log_path = None
+        if logs_only:
+            log_path = self.snapshot_logs_path(receipt)
+        elif LOG_ROLE in receipt["tags"]:
+            raise BackupError("Use restore-logs for a log-only snapshot")
+        elif APP_ROLE in receipt["tags"]:
+            log_id, log_path = self.application_logs(receipt)
+        # All references are authenticated before the first file is restored.
+        destination.mkdir(mode=0o700)
+        args = ["restore", receipt["id"], "--target", str(destination), "--verify"]
+        if logs_only:
+            args.extend(["--include", re.sub(r"([*?\[\]\\])", r"\\\1", log_path)])
+        print(self.restic("File restore verification", args))
+        if log_id:
+            print(self.restic("Log restore verification", [
+                "restore", log_id, "--target", str(destination), "--verify", "--include",
+                re.sub(r"([*?\[\]\\])", r"\\\1", log_path)]))
+
     def backup(self):
         config = self.config
         # Recover only our marked temporary directories, including after SIGKILL/OOM.
@@ -527,7 +706,7 @@ class Job:
                 shutil.rmtree(path)
         self.clear_cache()
         self.space_guard()
-        for name in ("data", "logs", "config"):
+        for name in ("data", "config"):
             if not (config.source / name).is_dir():
                 raise BackupError(f"Required source directory missing: {name}")
         if not any(path.is_file() for path in (config.source / "config").rglob("*")):
@@ -538,8 +717,31 @@ class Job:
         if any("=" in name or name.startswith(("postgres://", "postgresql://")) or
                any(ord(char) < 32 or ord(char) == 127 for char in name) for name in databases):
             raise BackupError("BACKUP_DATABASES must contain database names, not connection strings")
-        database_env = config.database_env()
         self.ensure_repository()
+        logs_path = config.source / "logs"
+        captured_at = utcnow()
+        try:
+            logs_stat = logs_path.lstat()
+        except FileNotFoundError:
+            logs_stat = None
+        except OSError:
+            raise BackupError("Cannot access the logs directory") from None
+        self.logs_snapshot_id = None
+        if logs_stat is None:
+            print(json.dumps({"state": "logs_missing", "at": captured_at}), flush=True)
+        else:
+            if not stat.S_ISDIR(logs_stat.st_mode):
+                raise BackupError("Logs source must be a directory, not a symbolic link or file")
+            print(json.dumps({"state": "archiving_logs", "at": captured_at}), flush=True)
+            # Keep complete log views as native snapshots. Main retention never
+            # selects this role, including when a later database export fails.
+            self.logs_snapshot_id, log_summary = self.backup_snapshot(
+                "Encrypted log archive", [logs_path], [config.tag, LOG_ROLE])
+            print(json.dumps({"state": "logs_archived", "snapshot_id": self.logs_snapshot_id,
+                              "data_added": log_summary.get("data_added", 0),
+                              "total_bytes_processed": log_summary.get("total_bytes_processed", 0),
+                              "at": utcnow()}), flush=True)
+        database_env = config.database_env()
         versions = {}
         for tool in ("pg_dump", "restic", "rclone"):
             versions[tool] = self.command(f"{tool} version", [tool, "version" if tool != "pg_dump" else "--version"]).splitlines()[0]
@@ -547,8 +749,10 @@ class Job:
         if not match:
             raise BackupError("Cannot determine PostgreSQL client version")
         client_major = int(match.group(1))
-        manifest = {"format": 1, "consistency": "online-uncoordinated", "started_at": utcnow(),
-                    "tools": versions, "databases": []}
+        manifest = {"format": 2, "consistency": "online-uncoordinated", "started_at": utcnow(),
+                    "tools": versions, "databases": [], "source": str(config.source),
+                    "logs": {"snapshot_id": self.logs_snapshot_id, "path": str(logs_path),
+                             "captured_at": captured_at, "missing": logs_stat is None}}
         self.work = Path(tempfile.mkdtemp(prefix="job-", dir=config.state))
         (self.work / ".backup-owned").touch(mode=0o600)
         try:
@@ -578,24 +782,10 @@ class Job:
             manifest["dump_finished_at"] = utcnow()
             (self.work / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
             print(json.dumps({"state": "uploading", "at": utcnow()}), flush=True)
-            output = self.restic("Encrypted repository backup", ["backup", "--json", "--quiet", "--group-by", "host,tags",
-                                 "--host", config.host, "--tag", config.tag,
-                                 str(self.work), str(config.source)])
-            snapshots = []
-            for line in output.splitlines():
-                try:
-                    item = json.loads(line)
-                except ValueError:
-                    continue
-                if item.get("message_type") == "summary" and item.get("snapshot_id"):
-                    snapshots.append(item["snapshot_id"])
-            if len(snapshots) != 1 or not re.fullmatch(r"[0-9a-f]{8,64}", snapshots[0]):
-                raise BackupError("Backup completed without a unique snapshot receipt")
-            print(json.dumps({"state": "verifying", "at": utcnow()}), flush=True)
-            receipt = json.loads(self.restic("Snapshot receipt verification", ["snapshots", "--json", snapshots[0]]))
-            if len(receipt) != 1 or not receipt[0]["id"].startswith(snapshots[0]) or receipt[0].get("hostname") != config.host or config.tag not in receipt[0].get("tags", []):
-                raise BackupError("Snapshot receipt does not match this backup")
-            return receipt[0]["id"]
+            snapshot_id, _summary = self.backup_snapshot(
+                "Encrypted repository backup", [self.work, config.source], [config.tag, APP_ROLE],
+                exclude=[logs_path])
+            return snapshot_id
         finally:
             shutil.rmtree(self.work)
             self.work = None
@@ -624,7 +814,9 @@ def perform_backup(config):
             status.update(state="success", finished_at=utcnow(), success_at=utcnow(), snapshot_id=snapshot,
                           repository_used=True)
             write_status(config, status)
-            print(json.dumps({"state": "success", "snapshot_id": snapshot, "finished_at": status["finished_at"]}), flush=True)
+            print(json.dumps({"state": "success", "snapshot_id": snapshot,
+                              "logs_snapshot_id": job.logs_snapshot_id,
+                              "finished_at": status["finished_at"]}), flush=True)
         except Exception as error:
             message = str(error) if isinstance(error, BackupError) else "Backup failed; inspect local configuration and permissions"
             status.update(state="failed", finished_at=utcnow(), error=message)
@@ -670,11 +862,12 @@ def health(config):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("init", "backup", "run", "snapshots", "check", "health"):
+    for name in ("init", "backup", "run", "snapshots", "log-snapshots", "check", "health"):
         commands.add_parser(name)
-    restore = commands.add_parser("restore-files")
-    restore.add_argument("snapshot")
-    restore.add_argument("destination")
+    for name in ("restore-files", "restore-logs"):
+        restore = commands.add_parser(name)
+        restore.add_argument("snapshot")
+        restore.add_argument("destination")
     retention = commands.add_parser("retention")
     retention.add_argument("--apply", action="store_true", help="Explicitly forget/prune expired snapshots")
     args = parser.parse_args(argv)
@@ -711,35 +904,40 @@ def main(argv=None):
         job.clear_cache()
         if args.command == "init":
             job.ensure_repository(explicit_init=True)
-        elif args.command == "snapshots":
-            print(job.restic("Snapshot listing", ["snapshots", "--host", config.host, "--tag", config.tag]))
+        elif args.command in ("snapshots", "log-snapshots"):
+            try:
+                snapshots = json.loads(job.restic("Snapshot listing", [
+                    "snapshots", "--json", "--host", config.host, "--tag", config.tag]))
+                if not isinstance(snapshots, list):
+                    raise ValueError
+                selected = []
+                for snapshot in snapshots:
+                    tags = snapshot["tags"]
+                    if (snapshot.get("hostname") != config.host or not isinstance(tags, list)
+                            or config.tag not in tags):
+                        raise ValueError
+                    if args.command == "snapshots":
+                        if LOG_ROLE not in tags:
+                            selected.append(snapshot)
+                    elif APP_ROLE not in tags:
+                        legacy = LOG_ROLE not in tags
+                        selected.append({**snapshot, "legacy": legacy,
+                                         "archive_type": "legacy_full" if legacy else "logs"})
+            except (ValueError, TypeError, KeyError):
+                raise BackupError("Snapshot listing could not be verified") from None
+            print(json.dumps(selected, ensure_ascii=False, indent=2))
         elif args.command == "check":
             print(job.restic("Repository integrity check", ["check", "--read-data"]))
-        elif args.command == "restore-files":
-            if not re.fullmatch(r"[0-9a-f]{8,64}", args.snapshot):
-                raise BackupError("Restore requires an explicit hexadecimal snapshot ID (not latest)")
-            destination = Path(args.destination)
-            if not destination.is_absolute() or destination.exists() or destination.is_symlink():
-                raise BackupError("Restore destination must be an absolute, nonexisting directory")
-            destination = destination.resolve()
-            for directory in (config.source, config.state, config.cache, config.temp):
-                if destination == directory or directory in destination.parents or destination in directory.parents:
-                    raise BackupError("Restore destination must be separate from live sources/state/cache")
-            repository = config.env.get("BACKUP_REPOSITORY", "")
-            if Path(repository).is_absolute():
-                repo_path = Path(repository).resolve()
-                if destination == repo_path or repo_path in destination.parents or destination in repo_path.parents:
-                    raise BackupError("Restore destination must be separate from repository")
-            receipt = json.loads(job.restic("Restore snapshot verification", ["snapshots", "--json", args.snapshot]))
-            if len(receipt) != 1 or receipt[0].get("hostname") != config.host or config.tag not in receipt[0].get("tags", []):
-                raise BackupError("Snapshot does not belong to this backup host/tag")
-            destination.mkdir(mode=0o700)
-            print(job.restic("File restore verification", ["restore", args.snapshot, "--target", str(destination), "--verify"]))
+        elif args.command in ("restore-files", "restore-logs"):
+            job.restore_files(args.snapshot, args.destination, logs_only=args.command == "restore-logs")
         elif args.command == "retention":
             daily = integer(config.env, "BACKUP_KEEP_DAILY", 7, minimum=2)
             weekly = integer(config.env, "BACKUP_KEEP_WEEKLY", 4, minimum=0)
             monthly = integer(config.env, "BACKUP_KEEP_MONTHLY", 6, minimum=0)
-            options = ["forget", "--host", config.host, "--tag", config.tag, "--group-by", "host,tags",
+            # Only v2 application snapshots expire. Legacy complete snapshots
+            # retain their historical logs, and log archives have a second guard.
+            options = ["forget", "--host", config.host, "--tag", config.tag + "," + APP_ROLE,
+                       "--keep-tag", LOG_ROLE, "--group-by", "host,tags",
                        "--keep-last", "2", "--keep-daily", str(daily), "--keep-weekly", str(weekly), "--keep-monthly", str(monthly)]
             if args.apply:
                 status = read_status(config)

@@ -30,6 +30,33 @@
 
 `pg_dump` 对单个数据库提供一致性快照。不同数据库、数据库与文件之间没有同一事务快照，manifest 会标记 `online-uncoordinated` 并记录采集时间。在线备份不等于严格时间点恢复，也不保证最后一条请求都已包含；最终迁移或要求数据库与附件严格一致时，需要协调停写。需要更小的数据丢失窗口时，应另行配置 PostgreSQL WAL 归档/PITR。
 
+## 程序日志永久历史
+
+从 `20261117-log-archive` 起，每轮先把 `/source/logs` 保存为独立的原生 Restic 日志快照，再导出数据库并保存普通应用快照。日志快照不参与普通保留清理，默认永久保存；数据库中的使用日志仍属于数据库导出，遵循普通应用快照策略。
+
+每个日志快照记录当轮可读取的完整文件目录视图，但对象存储保存的是加密、去重后的 Restic 数据块，不是每轮重复上传一份完整日志文件。首次读取并上传全部新内容；后续追加通常只新增变化的数据块和少量元数据。变化的文件仍可能需要完整读取以计算数据块，未变化文件可复用父快照结果，因此“增量上传”不等于只读取追加字节。
+
+追加、轮转、重命名、截断、同名重建、删除，以及源目录清空或消失，都不会删除已经采集的历史。恢复某个日志快照得到的是该轮的文件名与内容，不会把不同轮次的同名文件拼接在一起。空目录也有日志快照；目录不存在时记录 `logs_missing`，不会伪造一份空归档。读取无权限等错误会让任务失败，不能作为“没有日志”忽略。
+
+普通应用快照不再重复包含日志文件；格式 `2` 的 `manifest.json` 记录关联的日志快照 ID、源路径和采集时间。`restore-files` 自动验证并恢复该轮应用与关联日志，保留完整恢复入口；如果该轮日志目录缺失，就保留这个缺失状态。更早已删除的日志应从历史日志快照单独恢复。日志归档完成后即使数据库导出失败，已成功的日志快照仍保留，但整轮任务仍是失败，不会显示为完整备份成功。
+
+按时间查看日志恢复点：
+
+```bash
+docker compose --profile backup run --rm --no-deps backup log-snapshots
+
+mkdir -p restore-test
+docker compose --profile backup run --rm --no-deps \
+  -v "$PWD/restore-test:/restore" \
+  backup restore-logs REPLACE_WITH_LOG_SNAPSHOT_ID /restore/logs-001
+```
+
+`log-snapshots` 返回 JSON 列表，包含时间、ID 和 `legacy` 标记；按所需时间选择明确 ID，`legacy: true` 表示旧版包含日志的完整快照。`restore-logs` 只取日志，默认恢复至宿主机 `restore-test/logs-001/source/logs`，不会恢复数据库或 `data`。目标子目录必须尚不存在，ID 至少 8 位十六进制；迁移过源路径时保留原路径层级。独立恢复模板的等价命令见 [恢复说明](examples/RECOVERY.md)。
+
+采集只发生在备份执行时，不能找回两轮之间产生、又在下一轮采集前删除的字节，也不保证运行中日志的同一时刻一致性。需要更小的遗漏窗口时，应合理缩短备份间隔或另用实时日志采集。永久历史会随新增内容和快照元数据增长，需要监控容量。程序不会自动清理这些历史，也不能保证对象存储或有删除权限的凭据被攻破后仍能找回已被删除的备份。
+
+默认 Compose 的 `./logs` 绑定设置了 `create_host_path: false`，因此宿主机目录在创建备份容器前仍须存在。上述“目录缺失”是容器能够访问源目录后运行时的处理，不能使 Docker 忽略缺失的绑定源路径。
+
 ## 代码放在哪里
 
 ```text
@@ -44,7 +71,7 @@ scripts/backup/
 
 新容器不调用原宿主机脚本，不需要安装宿主机 Docker CLI。业务镜像与备份镜像分别构建，修改备份代码不需要重新编译 New API。
 
-默认从 Docker Hub 拉取独立镜像 `thefoolishfox1/new-api-backup:20261117-s3-backup`，不需要在服务器编译。部署目录需保留 Compose、实际业务配置、要备份的目录和密码文件，不需要复制 `scripts/backup/`。镜像版本直接修改 `backup.image`；`latest` 用于跟随更新。当前发布镜像仅支持 `linux/amd64`。
+默认从 Docker Hub 拉取独立镜像 `thefoolishfox1/new-api-backup:20261117-log-archive`，不需要在服务器编译。部署目录需保留 Compose、实际业务配置、要备份的目录和密码文件，不需要复制 `scripts/backup/`。镜像版本直接修改 `backup.image`；`latest` 用于跟随更新。当前发布镜像仅支持 `linux/amd64`。
 
 镜像中的 Restic、rclone 固定源码版本，并用 Go 1.26.10 编译；编译器不进入运行镜像。如需修改或自行构建，在仓库根目录执行：
 
@@ -141,7 +168,7 @@ docker compose --profile backup run --rm --no-deps backup check
 
 ## 自动检查与初始化仓库
 
-`BACKUP_AUTO_INIT` 默认是 `true`。每次 `backup` 或调度任务开始时，先检查仓库，再导出数据库：
+`BACKUP_AUTO_INIT` 默认是 `true`。每次 `backup` 或调度任务开始时，先检查仓库，再归档日志、导出数据库并保存应用快照：
 
 - 已有可解密的有效仓库：校验仓库 ID 后直接复用，更新或重建容器不需要重复初始化。
 - 明确返回“仓库不存在”，并确认所选前缀为空：自动创建仓库，再验证其配置和 ID，成功后才继续备份。
@@ -167,11 +194,11 @@ docker compose --profile backup run --rm --no-deps backup init
 docker compose --profile backup run --rm --no-deps backup backup
 ```
 
-`snapshots`、`check` 和 `restore-files` 不会自动创建仓库。恢复或检查时遇到不存在、密码错误等问题，应先查明原因，不要将空仓库当作旧备份。
+`snapshots`、`log-snapshots`、`check`、`restore-files` 和 `restore-logs` 不会自动创建仓库。恢复或检查时遇到不存在、密码错误等问题，应先查明原因，不要将空仓库当作旧备份。
 
 调度服务每次启动或重启后先备份一次，再按配置的计划运行。默认仍为每天北京时间 `03:30`。任务失败只影响备份服务，New API 不依赖它的启动或健康状态。
 
-日志依次显示 `repository_ready`、每个数据库的 `exporting` / `exported`、`uploading`、`verifying`，最后才是 `success` 和快照 ID。导出日志只记录数据库序号、字节数和时间；`repository_ready` 仅表示仓库可打开，不代表数据已备份。`waiting` 只表示正在等待下一次计划，不表示上一轮已成功。失败日志会显示可识别的固定错误码（例如 `AccessDenied`、`NoSuchBucket`、`NoSpaceLeft`），不会输出原始错误中的凭据或签名 URL。
+日志先显示 `repository_ready`，再显示 `archiving_logs` / `logs_archived`（源日志目录缺失时为 `logs_missing`），随后是数据库的 `exporting` / `exported`、应用 `uploading` / `verifying`，最后才是 `success` 和应用快照 ID。`logs_archived` 还记录日志快照 ID、新增块大小与处理字节数。导出日志只记录数据库序号、字节数和时间；`repository_ready` 仅表示仓库可打开，`logs_archived` 仅表示日志已归档，两者都不代表整轮备份成功。`waiting` 只表示正在等待下一次计划，不表示上一轮已成功。失败日志会显示可识别的固定错误码（例如 `AccessDenied`、`NoSuchBucket`、`NoSpaceLeft`），不会输出原始错误中的凭据或签名 URL。
 
 Restic 使用 `--json --quiet` 并固定 `RESTIC_PROGRESS_FPS=0`，关闭高频周期进度，保留最终快照回执和错误。这样避免长任务仅因进度输出累计超过捕获上限而失败。`uploading` 阶段可能持续较久，可据阶段时间判断导出与存储传输的耗时；不要因为没有逐秒进度反复重启任务。
 
@@ -284,7 +311,7 @@ docker compose --profile backup exec backup python3 /opt/backup/runner.py health
 
 ## 保留策略
 
-默认保留最近 7 个日备份、4 个周备份、6 个月备份，并至少保留最近两份。日/周/月是 Restic 的时间分组保留规则，不等于分别精确保留这些天数；这些规则取并集。可用周期不足时，Restic 还可能保留最旧快照以延长可恢复历史，因此实际数量可能更多。
+新普通应用快照默认保留最近 7 个日备份、4 个周备份、6 个月备份，并至少保留最近两份。日/周/月是 Restic 的时间分组保留规则，不等于分别精确保留这些天数；这些规则取并集。可用周期不足时，Restic 还可能保留最旧快照以延长可恢复历史，因此实际数量可能更多。
 
 不会在每次备份后自动删除历史数据。先查看计划，再确认执行：
 
@@ -296,7 +323,11 @@ docker compose --profile backup run --rm --no-deps backup retention
 docker compose --profile backup run --rm --no-deps backup retention --apply
 ```
 
-保留规则仅针对相同 `BACKUP_HOST` 和 `BACKUP_TAG` 的任务。`--apply` 会删除符合条件的历史快照并清理不再被引用的数据，属于不可随意撤销的维护操作。不要在有其他主机备份时并行维护，也不要在备份失败后为了腾空间立即清除仅存的可用恢复点。
+保留规则只选择相同 `BACKUP_HOST`、同时带基础 `BACKUP_TAG` 和应用角色 `new-api:application:v2` 的新普通快照，并额外保护日志角色 `new-api:logs:v1`。日志历史不会自动 `forget`；`prune` 只回收没有任何保留快照引用的数据块，不会清掉仍被日志快照引用的历史内容。
+
+没有新角色标签的旧版完整快照也全部保留，避免其中唯一的旧日志被一起清理。这意味着旧快照中的数据库和 `data` 数据块也继续占用空间，是兼容保护的额外成本。不要自行扩大原生 Restic 的 `forget` 选择范围，否则可能绕过这些保护。
+
+`--apply` 会删除符合条件的应用快照并清理不再被引用的数据，属于不可随意撤销的维护操作。不要在有其他主机备份时并行维护，也不要在备份失败后为了腾空间立即清除仅存的可用恢复点。
 
 ## 恢复演练
 
@@ -309,7 +340,7 @@ docker compose --profile backup run --rm --no-deps \
   backup restore-files REPLACE_WITH_SNAPSHOT_ID /restore/rehearsal-001
 ```
 
-这里仅执行 `restic restore --verify`，不会导入数据库或覆盖线上 `data`/`logs`。恢复结果保留备份中的绝对路径层级；在目标目录里找到 `manifest.json`、对应的 `.dump` 及 `source` 文件，按 manifest 对齐数据库和文件。校验和用于检查导出文件是否完整，不替代真正恢复。
+新格式由工具先验证应用清单及其日志引用，再执行 `restic restore --verify` 组合恢复该轮文件；旧版完整快照继续直接恢复。它不会导入数据库或覆盖线上 `data`/`logs`。恢复结果保留备份中的绝对路径层级；在目标目录里找到 `manifest.json`、对应的 `.dump` 及 `source` 文件，按 manifest 对齐数据库和文件。校验和用于检查导出文件是否完整，不替代真正恢复。数据库导出和日志采集各有时间记录，组合恢复不代表它们采集于同一时刻。
 
 接下来在**另一个全新、空的测试数据库**上使用匹配版本的 `pg_restore`，例如：
 
@@ -337,7 +368,7 @@ pg_restore --no-password --no-owner --no-acl \
 docker build -t newapi-backup:test scripts/backup
 docker run --rm --entrypoint python3 \
   -v "$PWD/scripts/backup:/tests:ro" \
-  newapi-backup:test -m unittest discover -s /tests -p test_runner.py
+  newapi-backup:test -m unittest discover -s /tests -p 'test_*.py'
 python scripts/backup/test_integration.py --image newapi-backup:test
 ```
 
@@ -356,5 +387,7 @@ python scripts/backup/test_integration.py --image newapi-backup:s3-test --postgr
 ```
 
 覆盖统一 S3/MinIO、统一 S3/Alibaba 和旧 OSS 配置的初始化、备份、双数据库及文件恢复、留存清理、定时任务、重部署及失败保护；160 MiB 文件分别使用磁盘暂存和独立 256 MiB 内存盘备份、恢复后 SHA256 一致。另用真实 Restic 验证 quiet/FPS=0 保留唯一成功 summary 且不产生周期 status，父快照按主机和标签选择、删除文件不复活、更换源目录不混入旧文件。测试未连接生产或真实阿里云；三种模式的本地对象存储测试不等于真实 OSS 网络与权限验证。
+
+2026-11-17 日志永久历史版本：81 项单元测试通过；使用上述 PostgreSQL 15.20、MinIO 2024.6.13、Restic 0.18.1 和 rclone 1.71.2，三种存储配置各通过 151 项集成检查。验证 16 MiB 固定不可压缩日志追加 64 KiB 后复用已有内容块，以及轮转、截断、同名重建、删除、空目录和整个目录缺失；执行普通 `forget/prune` 后逐份恢复历史日志并精确比较 SHA256。日志成功但数据库失败时保留日志快照，整轮健康仍失败；旧版完整快照不被普通清理删除，日志单独恢复和旧版完整恢复均通过。单元测试另覆盖角色互斥、外来主机/标签/ID、恶意引用、恢复目标隔离和迁移后的 `job-*` 源路径。独立真实 Restic 检查验证特殊字符路径的日志排除/恢复。所有验证均在本地隔离资源中进行，未操作生产或真实阿里云。
 
 2026-11-17 临时空间修复验证：60 项单元测试、124 项集成检查通过，仍使用上述客户端、PostgreSQL 15.20 和 MinIO 版本。完整 runner 在 512 MiB 内存和 64 MiB `/tmp` 下完成 160 MiB 不可压缩文件的备份与恢复，SHA256 一致。另在本地限速 REST 存储做容量对照：临时数据写 `/tmp` 时明确因空间耗尽退出 `1`，只改用 `/cache` 磁盘卷后成功。该验证证明旧默认配置存在容量缺陷，不能据此认定此前生产上传失败的具体原因。

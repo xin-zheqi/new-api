@@ -8,7 +8,7 @@
 
 在有 Docker Compose 的 Linux 机器上新建专用目录，把本目录的 `recovery.compose.yml` 复制进去。它只启动恢复工具，不要求原来的应用、数据库、`data` 或 `logs` 目录存在。
 
-恢复模板使用 `thefoolishfox1/new-api-backup:20261117-s3-backup`，默认以统一 S3 配置连接 MinIO。自动初始化仅适用于备份任务；这里的 `snapshots`、`check`、`restore-files` 不会创建仓库。新机器只需正确连接已有仓库，不需要先执行 `init`。找不到仓库、密码错误或本地身份记录不匹配时，应核对原地址、权限、密码及仓库迁移情况，不要通过创建空仓库来继续恢复。
+恢复模板使用 `thefoolishfox1/new-api-backup:20261117-log-archive`，默认以统一 S3 配置连接 MinIO。自动初始化仅适用于备份任务；这里的 `snapshots`、`log-snapshots`、`check`、`restore-files`、`restore-logs` 不会创建仓库。新机器只需正确连接已有仓库，不需要先执行 `init`。找不到仓库、密码错误或本地身份记录不匹配时，应核对原地址、权限、密码及仓库迁移情况，不要通过创建空仓库来继续恢复。
 
 ```bash
 mkdir -p newapi-recovery
@@ -56,12 +56,14 @@ docker compose -f recovery.compose.yml run --rm --no-deps restore \
 
 `incident-001` 必须尚不存在。工具会执行 `restic restore --verify`，并验证快照属于配置的原 HOST/TAG；它不会把恢复内容覆盖到业务目录，也不会导入数据库。失败会返回非零状态；不要把部分恢复目录当作完整备份，处理原因后换一个新的目标子目录重试。
 
+新备份把程序日志存为独立、永久保留的日志快照，格式 `2` 的应用清单关联当轮日志 ID；`restore-files` 会先核验关联，再组合恢复应用与该轮日志。旧版格式 `1` 完整快照继续按原方式恢复。日志与数据库有各自的采集时间，组合恢复不表示同一时刻的事务一致性。
+
 默认备份布局恢复后为：
 
 ```text
 restore-output/incident-001/
   source/data/                    应用文件
-  source/logs/                    程序日志
+  source/logs/                    关联的该轮程序日志；当轮源目录缺失时没有此目录
   source/config/                  备份时的 Compose、配置文件
   state/job-随机目录/
     manifest.json                 数据库名称、导出文件名、校验和
@@ -85,7 +87,7 @@ if len(manifests) != 1:
     raise SystemExit("未找到唯一导出清单；如修改过 BACKUP_STATE_DIR，请先核对恢复目录布局")
 manifest = manifests[0]
 data = json.loads(manifest.read_text(encoding="utf-8"))
-if data.get("format") != 1 or not data.get("databases"):
+if data.get("format") not in (1, 2) or not data.get("databases"):
     raise SystemExit("导出清单格式不正确")
 for item in data["databases"]:
     dump = (manifest.parent / item["file"]).resolve()
@@ -101,6 +103,23 @@ for item in data["databases"]:
 print("全部数据库导出校验通过")
 PY
 ```
+
+### 只按时间恢复程序日志
+
+查看历史日志恢复点，不需要先恢复数据库：
+
+```bash
+docker compose -f recovery.compose.yml run --rm --no-deps restore log-snapshots
+
+docker compose -f recovery.compose.yml run --rm --no-deps restore \
+  restore-logs REPLACE_WITH_LOG_SNAPSHOT_ID /restore/logs-001
+```
+
+列表为 JSON，按 `time` 及其时区选择需要的明确 ID；`legacy: true` 表示升级前包含日志的旧完整快照。`logs-001` 必须尚不存在，ID 至少 8 位十六进制。默认结果在 `restore-output/logs-001/source/logs`；改过源路径时保留原路径层级。命令只恢复所选轮次的日志，不恢复数据库、`data` 或部署配置，也不会把不同轮次的同名文件拼接。
+
+新日志快照保存的是该轮完整目录视图，底层按 Restic 加密数据块去重，并非每次重复上传完整日志。源文件追加、轮转、截断、同名重建或删除后，之前已采集的版本仍可以从各自 ID 恢复。目录空或缺失也不会删除历史；缺失轮次没有新的日志快照，可选择更早的恢复点。权限错误不能作为“空日志”忽略，且两轮采集之间生成又被删除的字节无法事后找回。
+
+普通 `retention` 不清理日志历史，旧版无角色标签的完整快照也全部保留，防止丢失其中唯一的旧日志；旧数据库和 `data` 因而也会继续占用空间。永久历史会随新内容增长，应留足存储容量。恢复工具依赖仓库对象与加密密码仍然存在，不能保证拥有删除权限的存储凭据被攻破后仍可恢复已被删除的数据。
 
 ## 3. 导入全新的 PostgreSQL
 
@@ -164,9 +183,15 @@ docker exec "$PG_CONTAINER" psql -X -U root -d new-api -v ON_ERROR_STOP=1 \
   set -eu
   mkdir recovered-app-001
   cp -a restore-output/incident-001/source/data recovered-app-001/data
-  cp -a restore-output/incident-001/source/logs recovered-app-001/logs
+  if test -d restore-output/incident-001/source/logs; then
+    cp -a restore-output/incident-001/source/logs recovered-app-001/logs
+  else
+    mkdir recovered-app-001/logs
+  fi
 )
 ```
+
+如果清单明确记录该轮日志目录缺失，上例只为新应用创建空目录；需要更早历史时，另用 `restore-logs` 恢复到独立目录核对。现有应用与备份 Compose 的日志绑定采用 `create_host_path: false`，启动前仍须准备宿主机日志目录，不能依赖运行时缺失处理自动创建绑定源。
 
 在新应用目录重新审阅并填写可信的部署配置，指向新恢复库和新 `data`/`logs`。沿用原 `CRYPTO_SECRET` 才能解密存量渠道等数据；不能随意生成一个新值替代。恢复启动时保留原应用密钥及必要配置，后续轮换应使用应用支持的流程；若需使旧登录失效，再有计划地轮换会话密钥。
 

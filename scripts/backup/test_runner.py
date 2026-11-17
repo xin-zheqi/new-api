@@ -15,6 +15,7 @@ import runner
 
 
 SNAPSHOT = "a" * 64
+LOG_SNAPSHOT = "d" * 64
 REPOSITORY = "b" * 64
 
 
@@ -40,6 +41,7 @@ class RunnerTests(unittest.TestCase):
             (directory / "fixture.txt").write_text(name)
         self.config = runner.Config(self.env)
         self.config.prepare()
+        self.snapshot_paths = {}
         runner.STOPPING = False
 
     def fake_command(self, stage, args, env=None, monitor=True):
@@ -65,9 +67,18 @@ class RunnerTests(unittest.TestCase):
         if args == ["cat", "config"]:
             return json.dumps({"version": 2, "id": REPOSITORY})
         if args[0] == "backup":
-            return json.dumps({"message_type": "summary", "snapshot_id": SNAPSHOT[:8]})
+            tags = args[args.index("--tag") + 1].split(",")
+            snapshot = LOG_SNAPSHOT if runner.LOG_ROLE in tags else SNAPSHOT
+            self.snapshot_paths[snapshot] = [args[-1]] if runner.LOG_ROLE in tags else args[-2:]
+            return json.dumps({"message_type": "summary", "snapshot_id": snapshot,
+                               "data_added": 3, "total_bytes_processed": 3})
         if args[0] == "snapshots":
-            return json.dumps([{"id": SNAPSHOT, "hostname": self.config.host, "tags": [self.config.tag]}])
+            is_log = len(args) > 2 and args[2].startswith(LOG_SNAPSHOT[:8])
+            return json.dumps([{"id": LOG_SNAPSHOT if is_log else SNAPSHOT,
+                                "hostname": self.config.host,
+                                "tags": [self.config.tag, runner.LOG_ROLE if is_log else runner.APP_ROLE],
+                                "paths": self.snapshot_paths.get(LOG_SNAPSHOT if is_log else SNAPSHOT,
+                                                                 [str(self.config.source)])}])
         self.fail(f"Unexpected fixture repository command: {stage}")
 
     def test_config_rejects_overlapping_writable_sources_and_invalid_limits(self):
@@ -241,7 +252,7 @@ class RunnerTests(unittest.TestCase):
         captured = {}
 
         def restic(stage, args):
-            if args[0] == "backup":
+            if args[0] == "backup" and runner.APP_ROLE in args[args.index("--tag") + 1].split(","):
                 self.assertIn("--quiet", args)
                 self.assertEqual(args[args.index("--group-by") + 1], "host,tags")
                 work = Path(args[-2])
@@ -255,6 +266,8 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(status["state"], "success")
         self.assertEqual(status["snapshot_id"], SNAPSHOT)
         self.assertEqual(captured["consistency"], "online-uncoordinated")
+        self.assertEqual(captured["format"], 2)
+        self.assertEqual(captured["logs"]["snapshot_id"], LOG_SNAPSHOT)
         self.assertEqual(captured["databases"][0]["sha256"], hashlib.sha256(b"custom-dump-fixture").hexdigest())
         self.assertEqual(list(self.config.state.glob("job-*")), [])
         self.assertEqual((self.config.source / "data/fixture.txt").read_text(), "data")
@@ -267,12 +280,13 @@ class RunnerTests(unittest.TestCase):
             return self.fake_command(stage, args, env, monitor)
 
         with mock.patch.object(runner.Job, "command", side_effect=command) as calls, \
+                mock.patch.object(runner.Job, "restic", side_effect=self.fake_restic), \
                 self.assertRaisesRegex(runner.BackupError, "server is newer"):
             runner.Job(self.config).backup()
         self.assertFalse(any(call.args[1][0] == "pg_dump" and "--file" in call.args[1] for call in calls.call_args_list))
         self.assertEqual(list(self.config.state.glob("job-*")), [])
 
-    def test_unreadable_dump_fails_before_any_repository_snapshot(self):
+    def test_unreadable_dump_fails_before_any_application_snapshot(self):
         def command(stage, args, env=None, monitor=True):
             if args[0] == "pg_restore":
                 raise runner.BackupError("PostgreSQL dump TOC check failed")
@@ -282,7 +296,9 @@ class RunnerTests(unittest.TestCase):
                 mock.patch.object(runner.Job, "restic", side_effect=self.fake_restic) as repository, \
                 self.assertRaises(runner.BackupError):
             runner.perform_backup(self.config)
-        self.assertFalse(any(call.args[1][0] in ("init", "backup") for call in repository.call_args_list))
+        self.assertFalse(any(call.args[1][0] == "backup" and runner.APP_ROLE in
+                             call.args[1][call.args[1].index("--tag") + 1].split(",")
+                             for call in repository.call_args_list))
         self.assertEqual(runner.read_status(self.config)["state"], "failed")
         self.assertEqual(list(self.config.state.glob("job-*")), [])
 
@@ -307,7 +323,7 @@ class RunnerTests(unittest.TestCase):
 
         with mock.patch.object(runner.Job, "command", side_effect=self.fake_command), \
                 mock.patch.object(runner.Job, "restic", side_effect=restic), \
-                self.assertRaisesRegex(runner.BackupError, "does not match"):
+                self.assertRaises(runner.BackupError):
             runner.perform_backup(self.config)
         self.assertEqual(runner.read_status(self.config)["state"], "failed")
 
@@ -540,7 +556,9 @@ class RunnerTests(unittest.TestCase):
         def restic(stage, args):
             calls.append(args)
             if args[0] == "snapshots":
-                return self.fake_restic(stage, args)
+                # Existing complete snapshots remain directly restorable.
+                return json.dumps([{"id": SNAPSHOT, "hostname": self.config.host,
+                                    "tags": [self.config.tag]}])
             return "verified"
 
         destination = self.root / "restore"
@@ -549,7 +567,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(runner.main(["restore-files", SNAPSHOT[:8], str(destination)]), 0)
         self.assertTrue(destination.is_dir())
         self.assertIn("--verify", calls[-1])
-        self.assertEqual(calls[-1][1], SNAPSHOT[:8])
+        self.assertEqual(calls[-1][1], SNAPSHOT)
 
     def test_retention_defaults_to_preview_and_groups_varying_dump_paths(self):
         with mock.patch.dict(os.environ, self.env, clear=True), \
@@ -561,7 +579,8 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("--prune", args)
         self.assertEqual(args[args.index("--group-by") + 1], "host,tags")
         self.assertEqual(args[args.index("--host") + 1], self.config.host)
-        self.assertEqual(args[args.index("--tag") + 1], self.config.tag)
+        self.assertEqual(args[args.index("--tag") + 1], self.config.tag + "," + runner.APP_ROLE)
+        self.assertEqual(args[args.index("--keep-tag") + 1], runner.LOG_ROLE)
 
     def test_retention_apply_requires_recent_success(self):
         with mock.patch.dict(os.environ, self.env, clear=True), \

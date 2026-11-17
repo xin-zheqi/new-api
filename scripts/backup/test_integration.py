@@ -17,6 +17,10 @@ import time
 from pathlib import Path
 
 
+APP_ROLE = "new-api:application:v2"
+LOG_ROLE = "new-api:logs:v1"
+
+
 def docker(*args, input_text=None, ok=True, timeout=240):
     result = subprocess.run(
         ["docker", *map(str, args)], input=input_text, capture_output=True,
@@ -65,7 +69,8 @@ def main():
     password_file = root / "restic-password"
     password_file.write_text(secrets.token_urlsafe(32), encoding="ascii")
     pg_password = secrets.token_urlsafe(24)
-    oss_secret = secrets.token_urlsafe(24)
+    # Keep this positional mc argument from being parsed as an option.
+    oss_secret = "backup-" + secrets.token_urlsafe(24)
     oss_admin_secret = secrets.token_urlsafe(24)
     network = prefix + "-network"
     pg = prefix + "-postgres"
@@ -184,9 +189,15 @@ def main():
         return docker("exec", "-i", pg, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "backup", "-d", database,
                       "--no-align", "--tuples-only", input_text=text).stdout.strip()
 
-    def snapshots(repository=None):
+    def repository_snapshots(repository=None):
         overrides = {"RESTIC_REPOSITORY": repository} if repository else None
         return json.loads(command("snapshots", "--json", entrypoint="restic", overrides=overrides).stdout)
+
+    def snapshots(repository=None):
+        return [item for item in repository_snapshots(repository) if LOG_ROLE not in item.get("tags", [])]
+
+    def logs_snapshots(repository=None):
+        return [item for item in repository_snapshots(repository) if LOG_ROLE in item.get("tags", [])]
 
     def backup(**settings):
         output = command("backup", **settings).stdout
@@ -205,14 +216,17 @@ def main():
             volumes.append(volume)
         return {"state_volume": pair[0], "cache_volume": pair[1]}
 
-    def raw_snapshot(host, tag, timestamp=None):
+    def raw_snapshot(host, tag, timestamp=None, *, repository=None, application=True):
         options = ["backup", "--json", "--host", host, "--tag", tag]
+        if application:
+            options += ["--tag", APP_ROLE, "--exclude", "/source/logs"]
         if timestamp:
             options += ["--time", timestamp]
-        output = command(*options, "/source", entrypoint="restic").stdout
+        overrides = {"RESTIC_REPOSITORY": repository} if repository else None
+        output = command(*options, "/source", entrypoint="restic", overrides=overrides).stdout
         records = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
         snapshot_prefix = next(item["snapshot_id"] for item in records if item.get("message_type") == "summary")
-        return next(item["id"] for item in snapshots() if item["id"].startswith(snapshot_prefix))
+        return next(item["id"] for item in snapshots(repository) if item["id"].startswith(snapshot_prefix))
 
     def restore_and_compare(snapshot, dirname, expected_files, expected_rows):
         command("restore-files", snapshot, "/restore/" + dirname)
@@ -220,6 +234,10 @@ def main():
         manifests = list(target.rglob("manifest.json"))
         checked(dirname + ": exactly one manifest", len(manifests) == 1)
         manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+        checked(dirname + ": application manifest links its separately archived logs",
+                manifest["format"] == 2 and manifest["source"] == "/source"
+                and manifest["logs"]["path"] == "/source/logs" and not manifest["logs"]["missing"]
+                and manifest["logs"]["snapshot_id"] in {item["id"] for item in logs_snapshots()})
         checked(dirname + ": explicit online consistency", manifest["consistency"] == "online-uncoordinated")
         checked(dirname + ": both databases exported", {item["name"] for item in manifest["databases"]} == {"app", "logdb"})
         checked(dirname + ": restored source contents", files_digest(target / "source") == expected_files)
@@ -372,7 +390,7 @@ print(json.dumps({"verified_repository_id": repository_id, "init_calls": init_ca
         command("init")
         command("init")
         checked("repeated initialization preserves the existing repository identity", repository_id() == original_repository_id)
-        checked("successful backup has exactly one snapshot", len(snapshots()) == 1)
+        checked("successful application backup has exactly one application snapshot", len(snapshots()) == 1)
         command("health")
         checked("health succeeds after backup")
         command("check")
@@ -557,6 +575,125 @@ print(json.dumps({"verified_repository_id": repository_id, "init_calls": init_ca
                                           "new_repository_id": auto_repository_id,
                                           "snapshot_ids": [auto_first, auto_second, auto_recovered]}
         report["snapshot_ids"] = [historical, second, third, foreign]
+
+        # A separate repository keeps ordinary retention fixtures independent of
+        # permanent log history. Each view must restore a whole point in time,
+        # never concatenate file versions by name or resurrect deleted files.
+        log_repository = "rclone:oss:backups/log-history"
+        log_state = new_state("log-history")
+        log_settings = {"BACKUP_REPOSITORY": log_repository}
+        log_directory = source / "logs"
+        original_log = (log_directory / "application.log").read_bytes()
+        log_cases = {}
+
+        def archive_log_case(name):
+            expected = files_digest(log_directory) if log_directory.exists() else None
+            output = command("backup", overrides=log_settings, **log_state).stdout
+            records = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
+            main_snapshot = next(item["snapshot_id"] for item in records if item.get("state") == "success")
+            if expected is None:
+                checked(name + ": missing log directory is explicit", any(item.get("state") == "logs_missing" for item in records))
+                log_cases[name] = {"snapshot_id": None, "expected": None, "main_snapshot": main_snapshot}
+                return None
+            archived = next(item for item in records if item.get("state") == "logs_archived")
+            log_cases[name] = {"snapshot_id": archived["snapshot_id"], "expected": expected, "main_snapshot": main_snapshot}
+            return archived
+
+        try:
+            (log_directory / "application.log").unlink()
+            active_log = log_directory / "audit.log"
+            log_bytes = hashlib.shake_256(b"permanent-log-deduplication-regression").digest(16 * 1024 * 1024)
+            active_log.write_bytes(log_bytes)
+            archive_log_case("initial")
+            with active_log.open("ab") as stream:
+                stream.write(hashlib.shake_256(b"appended-log-content").digest(64 * 1024))
+            appended = archive_log_case("appended")
+            checked("appended log reuses existing encrypted content blocks",
+                    0 <= appended["data_added"] < len(log_bytes)
+                    and appended["total_bytes_processed"] == len(log_bytes) + 64 * 1024)
+            active_log.rename(log_directory / "audit.log.1")
+            active_log.write_bytes(b"new active log after rotation\n")
+            archive_log_case("rotated")
+            active_log.write_bytes(b"truncated\n")
+            archive_log_case("truncated")
+            active_log.unlink()
+            active_log.write_bytes(b"replacement file with the same name\n")
+            archive_log_case("recreated")
+            active_log.unlink()
+            archive_log_case("deleted")
+            (log_directory / "audit.log.1").unlink()
+            archive_log_case("empty")
+            before_missing = {item["id"] for item in logs_snapshots(log_repository)}
+            log_directory.rmdir()
+            archive_log_case("missing")
+            checked("missing log directory does not erase or fabricate a log snapshot",
+                    {item["id"] for item in logs_snapshots(log_repository)} == before_missing)
+            command("restore-files", log_cases["missing"]["main_snapshot"], "/restore/log-history-missing",
+                    overrides=log_settings, **log_state)
+            missing_manifest = json.loads(next((restore / "log-history-missing").rglob("manifest.json")).read_text(encoding="utf-8"))
+            checked("ordinary restore preserves an explicitly missing log directory",
+                    missing_manifest["logs"]["missing"] and missing_manifest["logs"]["snapshot_id"] is None
+                    and not (restore / "log-history-missing" / "source" / "logs").exists())
+
+            # A database failure must not discard an already archived log view.
+            log_directory.mkdir()
+            active_log.write_bytes(b"archived before a database authentication failure\n")
+            before_failure = {item["id"] for item in snapshots(log_repository)}
+            result = command("backup", overrides={**log_settings, "BACKUP_DB_PASSWORD": "wrong-log-fixture-password"},
+                             ok=False, **log_state)
+            records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
+            failed_archive = next(item for item in records if item.get("state") == "logs_archived")
+            log_cases["database-failed"] = {"snapshot_id": failed_archive["snapshot_id"], "expected": files_digest(log_directory)}
+            checked("database failure preserves independently archived logs without a false application receipt",
+                    result.returncode != 0 and not any(item.get("state") == "success" for item in records)
+                    and failed_archive["snapshot_id"] in {item["id"] for item in logs_snapshots(log_repository)}
+                    and {item["id"] for item in snapshots(log_repository)} == before_failure)
+            checked("archived logs do not make a failed database backup healthy",
+                    command("health", overrides=log_settings, ok=False, **log_state).returncode != 0)
+            archive_log_case("recovered")
+
+            legacy_bytes = b"old-format snapshot contains the only copy of this legacy log\n"
+            active_log.write_bytes(legacy_bytes)
+            legacy_snapshot = raw_snapshot("integration", "new-api-test", "2020-01-01 00:00:00",
+                                           repository=log_repository, application=False)
+            raw_snapshot("integration", "new-api-test", "2020-01-01 00:00:00", repository=log_repository)
+            log_history_ids = {item["id"] for item in logs_snapshots(log_repository)}
+            main_ids = {item["id"] for item in snapshots(log_repository)}
+            command("retention", "--apply", overrides={**log_settings, "BACKUP_KEEP_DAILY": "2",
+                                                        "BACKUP_KEEP_WEEKLY": "0", "BACKUP_KEEP_MONTHLY": "0"}, **log_state)
+            checked("ordinary retention prunes application snapshots while preserving every log view and legacy snapshot",
+                    {item["id"] for item in logs_snapshots(log_repository)} == log_history_ids
+                    and legacy_snapshot in {item["id"] for item in snapshots(log_repository)}
+                    and len(snapshots(log_repository)) < len(main_ids))
+            listed_logs = json.loads(command("log-snapshots", overrides=log_settings, **log_state).stdout)
+            checked("log history listing exposes archived recovery points", log_history_ids <= {item["id"] for item in listed_logs})
+            for name, case in log_cases.items():
+                if case["snapshot_id"] is None:
+                    continue
+                destination = "/restore/log-history-" + name
+                command("restore-logs", case["snapshot_id"], destination, overrides=log_settings, **log_state)
+                restored_logs = restore / ("log-history-" + name) / "source" / "logs"
+                checked(name + ": historical log files restore exactly after pruning",
+                        restored_logs.is_dir() and files_digest(restored_logs) == case["expected"])
+            command("restore-logs", legacy_snapshot, "/restore/log-history-legacy-logs", overrides=log_settings, **log_state)
+            checked("legacy snapshot log recovery remains available after retention",
+                    (restore / "log-history-legacy-logs" / "source" / "logs" / "audit.log").read_bytes() == legacy_bytes
+                    and not (restore / "log-history-legacy-logs" / "source" / "data").exists())
+            command("restore-files", legacy_snapshot, "/restore/log-history-legacy-full", overrides=log_settings, **log_state)
+            checked("legacy full snapshot recovery remains compatible",
+                    (restore / "log-history-legacy-full" / "source" / "logs" / "audit.log").read_bytes() == legacy_bytes
+                    and (restore / "log-history-legacy-full" / "source" / "data" / "attachment.txt").read_bytes()
+                    == (source / "data" / "attachment.txt").read_bytes())
+            command("check", overrides=log_settings, **log_state)
+            checked("permanent log history remains intact after ordinary retention and pruning")
+            report["log_history"] = {"repository": log_repository, "log_snapshot_ids": sorted(log_history_ids),
+                                     "legacy_snapshot_id": legacy_snapshot, "cases": list(log_cases)}
+        finally:
+            log_directory.mkdir(exist_ok=True)
+            for path in log_directory.iterdir():
+                path.unlink()
+            (log_directory / "application.log").write_bytes(original_log)
+        checked("log history regression restores the original application source tree", files_digest(source) == second_files)
         report["result"] = "passed"
     except Exception as error:
         report["result"] = "failed"

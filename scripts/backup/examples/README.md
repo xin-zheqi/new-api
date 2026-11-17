@@ -1,6 +1,6 @@
 # 不使用 .env 的完整 Compose 模板
 
-`compose.yml` 包含 New API、PostgreSQL 15、Redis、备份容器四个服务，参数直接填写在 YAML 中；没有 `.env` 挂载，也没有依赖 `.env` 的变量表达式。备份镜像使用 `thefoolishfox1/new-api-backup:20261117-s3-backup`，默认启用 `BACKUP_AUTO_INIT: "true"`。对象存储默认采用统一 S3 配置连接 MinIO，也可切换到阿里云 OSS。
+`compose.yml` 包含 New API、PostgreSQL 15、Redis、备份容器四个服务，参数直接填写在 YAML 中；没有 `.env` 挂载，也没有依赖 `.env` 的变量表达式。备份镜像使用 `thefoolishfox1/new-api-backup:20261117-log-archive`，默认启用 `BACKUP_AUTO_INIT: "true"`。对象存储默认采用统一 S3 配置连接 MinIO，也可切换到阿里云 OSS。
 
 根目录 `docker-compose.yml` 同样已采用直接填写方式，默认服务名为 `new-api`、`postgres`、`redis`；本示例使用 lab 服务名并显式复用已有卷和网络，方便对照之前的服务器部署。在已经运行的服务器上，主要合并 `backup` 服务、顶部两段 `x-backup-storage-*` 定义和 `backup_state`、`backup_cache` 两个卷；其他配置值以服务器原文件为准。若使用共享密码别名，也需合并顶部 `x-credentials`，或将别名改成直接填写的原值。Redis 使用直接传参的命令列表，不需要 shell 变量展开。
 
@@ -10,7 +10,7 @@
 2. 原 `SESSION_SECRET`、Cookie 设置、端口、镜像和其他业务参数，均按当前部署填写；原部署已设置 `CRYPTO_SECRET` 时沿用原值，不要随意新增或更换。
 3. 实际 PostgreSQL 数据卷和 Docker 网络名称。模板将两者声明为 `external`，填错时会失败，不会自动创建一个空数据库。
 4. 已预创建的 MinIO 或 OSS Bucket、S3 API Endpoint、访问凭据，以及备份计划。备份程序不会重复创建 Bucket；密钥和密码中包含 `$` 时，在 YAML 中写成 `$$`；URL 密码还需另做百分号编码。
-5. 应用的实际 `data`、`logs` 路径，以及配置文件本身的文件名。复制到 `docker-compose.yml` 时，把备份挂载的 `source: ./compose.yml` 相应改为 `./docker-compose.yml`。额外的 Compose override 和外部密钥文件也需只读挂入 `/source/config/`。
+5. 应用的实际 `data`、`logs` 路径，以及配置文件本身的文件名。复制到 `docker-compose.yml` 时，把备份挂载的 `source: ./compose.yml` 相应改为 `./docker-compose.yml`。额外的 Compose override 和外部密钥文件也需只读挂入 `/source/config/`。绑定源设置了 `create_host_path: false`，包括 `./logs` 在内的宿主机目录必须预先存在；程序运行时对日志目录缺失的处理不能替代 Docker 挂载要求。
 
 将模板放到实际部署目录后，相对路径才指向部署目录内的文件。继续使用原来的 Compose 项目名、启动目录及 `-p` 参数。**不要在仓库示例目录直接启动业务服务。** 填好真实凭据的部署文件留在服务器，不回写到 Git。
 
@@ -81,7 +81,26 @@ docker inspect postgres-lab --format '{{json .NetworkSettings.Networks}}'
 
 备份范围、在线一致性、恢复和保留策略见上一级 `README.md`。
 
-日志会显示仓库就绪、`exporting` / `exported`、`uploading`、`verifying` 等阶段；只有 `success` 和快照 ID 才表示完成。内部 Restic 使用 `--quiet` 加固定 `RESTIC_PROGRESS_FPS=0`，避免长备份的周期进度耗尽输出上限。父快照按 `host,tags` 选择，省去随机导出路径引起的应用文件重复读取；不同部署应设置独立 `BACKUP_HOST`，这不会改变单库快照与跨文件采集的非原子边界。
+日志会显示仓库就绪、`archiving_logs` / `logs_archived`、`exporting` / `exported`、`uploading`、`verifying` 等阶段；源日志目录缺失时显示 `logs_missing`。只有 `success` 和应用快照 ID 才表示整轮完成，`logs_archived` 后数据库仍可能失败。内部 Restic 使用 `--quiet` 加固定 `RESTIC_PROGRESS_FPS=0`，避免长备份的周期进度耗尽输出上限。父快照按 `host,tags` 选择，省去随机导出路径引起的未变化文件重复读取；不同部署应设置独立 `BACKUP_HOST`，这不会改变单库快照与跨文件采集的非原子边界。
+
+## 程序日志历史与恢复
+
+默认每轮先把 `/source/logs` 单独归档，之后再备份数据库、`data` 和配置。日志使用原生 Restic 加密数据块去重，并非每轮重复上传完整文件：追加通常只上传新块，变化文件仍可能完整读取，未变化文件复用父快照。归档完成后，日志轮转、截断、同名重建、删除、目录清空或运行中消失，都不会删除已采集的历史；尚未采集就被删除的字节无法找回。读取权限错误会导致失败，不能当作空目录。
+
+日志快照默认永久保留，空间随新增内容增长。`BACKUP_KEEP_*` 和普通 `retention` 只清理新应用角色快照；旧版未带角色标签的完整快照也全部保留，防止删除唯一的历史日志，因此它们的旧数据库和 `data` 也会继续占用空间。不要手动扩大原生 `forget` 的范围或设置按对象年龄删除的存储生命周期规则。
+
+`snapshots` 列出普通恢复点；格式 `2` 清单关联该轮日志 ID，`restore-files` 自动组合恢复该轮日志与应用文件。它不会把所有日志历史合并进最新恢复点，日志与数据库也不是同一时刻的原子快照。需要查看某次历史日志时，在实际部署目录运行：
+
+```bash
+docker compose -f compose.yml --profile backup run --rm --no-deps backup log-snapshots
+
+mkdir -p restore-test
+docker compose -f compose.yml --profile backup run --rm --no-deps \
+  -v "$PWD/restore-test:/restore" \
+  backup restore-logs REPLACE_WITH_LOG_SNAPSHOT_ID /restore/logs-001
+```
+
+从列表的时间与 ID 选择恢复点，`legacy: true` 表示旧版完整快照也可提取日志。恢复结果默认在 `restore-test/logs-001/source/logs`，目标子目录必须尚不存在；只恢复该次日志视图，不恢复数据库或 `data`，也不会拼接不同版本的同名文件。独立灾后恢复环境的命令见 [RECOVERY.md](RECOVERY.md)。对象存储被删除或有删除权限的凭据被攻破后，工具无法保证找回已丢失的历史。
 
 默认临时加密数据块写入磁盘 `/cache`。主机内存充足且需要尝试减少临时块磁盘读写时，可只向备份服务合并以下配置；数据库导出仍写磁盘：
 
